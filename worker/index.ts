@@ -1,10 +1,11 @@
 import { handleAuth } from "./auth";
 import { handleTrips } from "./trips";
+import { handleMcp } from "./mcp";
 import { API, BASE, error, type Env } from "./util";
 
 export { TripRoom } from "./room";
 
-// Later phases add /travelplanner/mcp (Claude connector) and an email() handler for trips@.
+// Phase 5 adds an email() handler for trips@adityajain.ca.
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
@@ -12,6 +13,9 @@ export default {
 
     if (!url.pathname.startsWith(BASE)) return new Response("Not found", { status: 404 });
     if (url.pathname === BASE) return Response.redirect(`${url.origin}${BASE}/`, 301);
+
+    // Claude connector (custom connector URL: https://adityajain.ca/travelplanner/mcp)
+    if (url.pathname === `${BASE}/mcp`) return handleMcp(request, env);
 
     if (url.pathname.startsWith(`${API}/`)) {
       // Cookie-auth'd writes must come from our own pages

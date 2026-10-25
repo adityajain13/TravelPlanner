@@ -16,7 +16,7 @@ Hosted at **adityajain.ca/travelplanner** by the `travelplanner` Cloudflare Work
 | Google | Optional live "Google details" button only; store `googlePlaceId` only (ToS: only place IDs may be kept) |
 | Sync / sharing | Yjs over a **Durable Object per trip**; share links carry a view or edit token |
 | Login | Own email-code login on the Worker, 1-year rolling session cookie (Access caps sessions at 1 month) |
-| Claude | **Remote MCP server** (custom connector in claude.ai). View link → read tools, edit link → write tools. Write tools set to "needs approval" in claude.ai; every Claude edit tagged with origin `claude` for revert. No in-app chat panel (API cost) |
+| Claude | **Remote MCP server** at `/travelplanner/mcp` (custom connector in claude.ai). View link → read tools, edit link → write tools. Write tools set to "needs approval" in claude.ai; every Claude edit tagged with origin `claude` for revert. No in-app chat panel (API cost) |
 | Email | Manual forward to **trips@adityajain.ca** → Email Worker → Claude (Haiku) structured extraction → review inbox → approve into trip |
 | Hosting | Worker route `adityajain.ca/travelplanner*` (beats the personal site's `/*` route) |
 
@@ -35,10 +35,12 @@ Hosted at **adityajain.ca/travelplanner** by the `travelplanner` Cloudflare Work
   - Delete removes the trip on the server too (owner only); shared trips are just removed from the device.
   - Tested locally with `wrangler dev` + headless Chromium: login by code, 365-day cookie, live owner↔editor sync, viewer read-only, unauthenticated socket gets nothing, link reset → 404, second device pulls the trip.
   - Not built yet: edit-history panel / per-origin undo (moved to phase 6).
-- [ ] **4. Claude MCP connector** — `/travelplanner/mcp` on the same Worker (Cloudflare `agents` McpAgent, streamable HTTP).
-  - Tools: `open_trip(link)`, `get_trip`, `get_day`, `search_place` (Photon), `add_place`, `add_note`, `move_item`, `update_item`, `remove_item`.
-  - Token from the pasted share link scopes access; write tools refuse with a view token.
-  - Writes applied to the trip's Durable Object doc with origin `claude`.
+- [x] **4. Claude MCP connector** — `https://adityajain.ca/travelplanner/mcp` (`worker/mcp.ts`, `worker/tripOps.ts`)
+  - Hand-rolled stateless MCP over Streamable HTTP (JSON responses), no SDK dependency. Server `instructions` explain the share-link model.
+  - Tools: `get_trip`, `search_places` (Photon, biased to trip centre), `add_place`, `add_note`, `update_item`, `move_item`, `remove_item`, `update_trip`. Read tools carry `readOnlyHint`; writes don't (remove_item is `destructiveHint`), so claude.ai can require approval per call.
+  - Auth: every tool takes `trip_link`; the HMAC share token is the credential. View link → reads only; edit link → writes. Resetting links in the app revokes Claude's access too.
+  - Writes run inside the trip's Durable Object (`TripRoom.mutate`, origin `"claude"`) and reach open app clients live. Errors are phrased for the model (bad section lists valid ones, view link asks for the edit link).
+  - Tested locally: initialize, tools/list, add/move/update, view-link write refused, invalid link refused, live delivery to an open client, get_trip rendering.
 - [ ] **5. Email import** — Cloudflare Email Routing rule `trips@adityajain.ca` → this Worker's `email()` handler.
   - `postal-mime` parse → Claude API (Haiku, structured output: flight / hotel / train / car / reservation, times + tz, confirmation #, address).
   - Match to a trip by dates/destination; store in D1 `inbox`; app shows a review inbox, approve → items.

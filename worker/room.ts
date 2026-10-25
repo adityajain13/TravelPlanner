@@ -5,6 +5,7 @@ import * as encoding from "lib0/encoding";
 import * as decoding from "lib0/decoding";
 import type { Env } from "./util";
 import type { Role } from "./trips";
+import { applyOp, snapshot, type Item, type Op, type Snapshot } from "./tripOps";
 
 /*
  * One Durable Object per trip. Speaks the y-websocket protocol (0 = sync, 1 = awareness),
@@ -120,6 +121,25 @@ export class TripRoom extends DurableObject<Env> {
       void this.ctx.storage.put("doc", Y.encodeStateAsUpdate(doc));
       void this.scheduleIndex();
     });
+  }
+
+  // ---- RPC for the Claude connector (called via the DO stub) ----
+
+  async read(): Promise<Snapshot> {
+    return snapshot(this.doc);
+  }
+
+  /** Runs an edit as origin "claude"; connected app clients receive it live like any other change. */
+  async mutate(op: Op): Promise<{ ok: true; item: Item | null } | { ok: false; error: string }> {
+    try {
+      let item: Item | null = null;
+      this.doc.transact(() => {
+        item = applyOp(this.doc, op);
+      }, "claude");
+      return { ok: true, item };
+    } catch (e) {
+      return { ok: false, error: (e as Error).message };
+    }
   }
 
   private send(ws: WebSocket, msg: Uint8Array) {

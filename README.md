@@ -42,6 +42,14 @@ Every push to `main` deploys through GitHub Actions (`.github/workflows/deploy.y
 
 Then open adityajain.ca/travelplanner and sign in.
 
+## Claude connector
+
+1. In Claude: Settings → Connectors → add a custom connector with the URL `https://adityajain.ca/travelplanner/mcp`. It needs no login.
+2. In that connector's tool permissions, leave `get_trip` and `search_places` always allowed. Set the edit tools to require approval, so Claude asks before every change.
+3. In a chat, paste a trip's share link from the app's Share button. With a view link Claude can read the trip; with an edit link it can also change it. Changes appear live in the app.
+
+Resetting a trip's links in the app also cuts off Claude's access to that trip.
+
 ## How data flows
 
 - Trips live on the device (IndexedDB) and work fully offline.
