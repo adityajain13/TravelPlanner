@@ -1,4 +1,6 @@
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
+import { Photo } from "./Photo";
 import { ImageOff, Link2, Loader2, Search, Trash2, X } from "lucide-react";
 import { searchImages, type PlaceImage } from "../lib/images";
 import { inputCls } from "./NewTripDialog";
@@ -23,6 +25,7 @@ export function ImagePicker({
   const [term, setTerm] = useState(initialQuery);
   const [results, setResults] = useState<PlaceImage[] | null>(null);
   const [link, setLink] = useState("");
+  const [broken, setBroken] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     if (!term.trim()) return;
@@ -39,9 +42,11 @@ export function ImagePicker({
     onClose();
   };
 
-  return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-4 backdrop-blur-sm" onClick={onClose}>
-      <div onClick={(e) => e.stopPropagation()} className="flex max-h-[88vh] w-full max-w-2xl flex-col gap-4 rounded-2xl border border-line bg-surface p-5 shadow-2xl">
+  const shown = results?.filter((r) => !broken.has(r.thumb)) ?? null;
+
+  return createPortal(
+    <div className="fixed inset-0 z-[100] grid place-items-center bg-black/65 p-4 backdrop-blur-sm" onClick={onClose}>
+      <div onClick={(e) => e.stopPropagation()} className="flex max-h-[85vh] w-full max-w-3xl flex-col gap-4 rounded-2xl border border-line bg-surface p-5 shadow-2xl">
         <div className="flex items-center justify-between">
           <h2 className="font-display text-2xl">Choose a photo</h2>
           <button onClick={onClose} className="text-muted hover:text-fg" aria-label="Close">
@@ -63,11 +68,11 @@ export function ImagePicker({
         </form>
 
         <div className="min-h-[200px] flex-1 overflow-y-auto">
-          {results === null ? (
+          {shown === null ? (
             <div className="grid h-48 place-items-center text-muted">
               <Loader2 className="size-5 animate-spin" />
             </div>
-          ) : results.length === 0 ? (
+          ) : shown.length === 0 ? (
             <div className="grid h-48 place-items-center text-center text-sm text-muted">
               <div>
                 <ImageOff className="mx-auto mb-2 size-6" />
@@ -75,15 +80,20 @@ export function ImagePicker({
               </div>
             </div>
           ) : (
-            <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
-              {results.map((img) => (
+            <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
+              {shown.map((img) => (
                 <button
                   key={img.thumb}
                   onClick={() => pick(img)}
-                  className={`group relative aspect-square overflow-hidden rounded-lg bg-surface-2 ring-accent hover:ring-2 ${current?.thumb === img.thumb ? "ring-2" : ""}`}
+                  className={`group relative aspect-[4/3] overflow-hidden rounded-lg bg-surface-2 ring-accent hover:ring-2 ${current?.thumb === img.thumb ? "ring-2" : ""}`}
                   title={[img.title, img.credit].filter(Boolean).join(" · ")}
                 >
-                  <img src={img.thumb} alt={img.title ?? ""} loading="lazy" referrerPolicy="no-referrer" className="size-full object-cover transition-transform group-hover:scale-105" />
+                  <Photo
+                    srcs={[img.thumb, img.url]}
+                    alt={img.title ?? ""}
+                    className="size-full object-cover transition-transform group-hover:scale-105"
+                    onFail={() => setBroken((b) => new Set(b).add(img.thumb))}
+                  />
                   <span className="absolute inset-x-0 bottom-0 truncate bg-gradient-to-t from-black/80 px-1.5 pt-4 pb-1 text-left text-[10px] text-white/90 opacity-0 transition-opacity group-hover:opacity-100">
                     {img.source === "wikipedia" ? "Wikipedia" : img.source === "commons" ? "Commons" : "Openverse"} · {img.credit}
                   </span>
@@ -112,6 +122,7 @@ export function ImagePicker({
         </div>
         <p className="-mt-2 text-[10px] text-muted/70">Photos from Wikipedia, Wikimedia Commons and Openverse, with credits kept. Check each image's license before reusing it elsewhere.</p>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

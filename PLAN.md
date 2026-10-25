@@ -78,3 +78,5 @@ Hosted at **adityajain.ca/travelplanner** by the `travelplanner` Cloudflare Work
 - Keys go in `.env` (see `.env.example`). Without `VITE_PROTOMAPS_KEY` the map shows a placeholder.
 - Not yet verified against real keys: map tiles, satellite, Google details, offline save (sandbox can't reach those hosts). Check these first.
 - Smoke-tested in headless Chromium: create trip, add note, reload persists, drag note into another day.
+
+- Photos fix: covers come from Commons landscape photos (no more "Iceland (supermarket)"); auto-fill only takes exact-title or nearby Wikipedia matches; cards use the API-returned standard-width thumbnails with a fallback chain (Photo.tsx); broken picker tiles are hidden; ImagePicker is portalled to <body> as a centered modal; Cover button sits above the title overlay.
