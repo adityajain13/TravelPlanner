@@ -5,6 +5,8 @@ import { fetchInboxHistory, type InboxItem } from "../lib/inbox";
 import { BOOKING_ICON } from "./InboxPanel";
 
 export const INBOX_ADDRESS = "trips@adityajain.ca";
+/** This trip's own address: mail to trips+<id>@ goes straight to the trip (needs Email Routing subaddressing). */
+export const tripAddress = (tripId?: string) => (tripId ? `trips+${tripId.toLowerCase()}@adityajain.ca` : INBOX_ADDRESS);
 
 const STATUS: Record<NonNullable<InboxItem["status"]>, { label: string; cls: string }> = {
   pending: { label: "Waiting for review", cls: "bg-accent/15 text-accent" },
@@ -36,7 +38,7 @@ export function ForwardDialog({ tripId, tripTitles, initialView = "forward", onC
 
   const copy = async () => {
     try {
-      await navigator.clipboard.writeText(INBOX_ADDRESS);
+      await navigator.clipboard.writeText(tripAddress(tripId));
       setCopied(true);
       setTimeout(() => setCopied(false), 1800);
     } catch {
@@ -59,14 +61,21 @@ export function ForwardDialog({ tripId, tripTitles, initialView = "forward", onC
             <Mail className="mx-auto size-8 text-accent" />
             <h2 className="mt-3 font-display text-[26px]">Forward your confirmation</h2>
             <p className="mx-auto mt-2 max-w-sm text-[16px] leading-relaxed text-muted">
-              Forward booking emails from your own address to the one below. They're matched to the right trip by dates and destination, and wait for you to review.
+              {tripId
+                ? "Forward booking emails from your own address to this trip's address. They land in this trip and wait for you to review."
+                : "Forward booking emails from your own address. They're matched to a trip by dates and destination, and wait for you to review."}
             </p>
             <div className="mt-6 flex items-center gap-2 rounded-2xl border border-line bg-bg p-2 pl-4">
-              <span className="min-w-0 flex-1 truncate text-left text-[17px] select-all">{INBOX_ADDRESS}</span>
+              <span className="min-w-0 flex-1 truncate text-left text-[16px] select-all">{tripAddress(tripId)}</span>
               <button onClick={copy} className="flex items-center gap-1.5 rounded-xl bg-accent px-4 py-2.5 text-[15px] font-bold text-on-accent">
                 {copied ? <Check className="size-4" /> : <Copy className="size-4" />} {copied ? "Copied" : "Copy"}
               </button>
             </div>
+            {tripId && (
+              <p className="mt-2 text-[13px] text-muted">
+                Not sure which trip? Plain <span className="text-fg">{INBOX_ADDRESS}</span> works too and matches by dates.
+              </p>
+            )}
             <button onClick={() => setView("history")} className="mt-5 rounded-full border border-accent/50 px-5 py-2.5 text-[15px] font-bold text-accent hover:bg-accent/10">
               Check imported emails
             </button>

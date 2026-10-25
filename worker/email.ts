@@ -156,9 +156,14 @@ export async function handleEmail(message: ForwardableEmailMessage, env: Env) {
     .bind(sender)
     .all<TripRow>();
 
+  // trips+<trip id>@… (from the trip's Forward dialog) pins the email to that trip, no guessing
+  const tag = message.to.toLowerCase().match(/^[^+@]+\+([a-z0-9_-]+)@/)?.[1];
+  const pinned = tag ? trips.find((t) => t.id.toLowerCase() === tag) : undefined;
+
   let out;
   try {
-    out = await extract(env, subject, body, trips);
+    out = await extract(env, subject, body, pinned ? [pinned] : trips);
+    if (pinned) out.trip_id = pinned.id;
   } catch (e) {
     console.error(e);
     await reply(env, sender, `Couldn't read: ${subject}`, `Something went wrong reading that email (${(e as Error).message}). Try forwarding it again later.`);

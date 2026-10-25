@@ -1,8 +1,8 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { DateField } from "./DatePicker";
 import type * as Y from "yjs";
-import { ArrowLeft, ArrowRight, BedDouble, Car, ChevronDown, ChevronRight, Fuel, Landmark, Pencil, Plane, Plus, Receipt, ShoppingBag, ShoppingCart, Ticket, TrainFront, Trash2, Users, Utensils, Wine, X } from "lucide-react";
+import { ArrowLeft, ArrowRight, Check, BedDouble, Car, ChevronDown, ChevronRight, Fuel, Landmark, Pencil, Plane, Plus, Receipt, ShoppingBag, ShoppingCart, Ticket, TrainFront, Trash2, Users, Utensils, Wine, X } from "lucide-react";
 import { removeExpense, saveExpense, saveReservation, updateItem, updateMeta, type CostSplit, type Expense, type ExpenseCategory, type TripState } from "../lib/trips";
 import { CURRENCIES, formatMoney, useConverter } from "../lib/fx";
 import { budgetLines, CATEGORIES, CATEGORY_LABEL, settleUp, totals, travelersOf, type Line } from "../lib/budget";
@@ -241,7 +241,7 @@ export function BudgetPanel({ doc, state, readOnly }: { doc: Y.Doc; state: TripS
  * right here. For a cost that lives on a stop or reservation (`linked`), the amount is edited
  * there; this sets its category and split.
  */
-function ExpenseForm({ doc, travelers, initial, linked, onClose }: { doc: Y.Doc; travelers: string[]; initial: Partial<Expense>; linked?: Line; onClose: () => void }) {
+export function ExpenseForm({ doc, travelers, initial, linked, onClose }: { doc: Y.Doc; travelers: string[]; initial: Partial<Expense>; linked?: Line; onClose: () => void }) {
   const [e, setE] = useState<Partial<Expense>>({ splitWith: travelers, ...initial });
   const [view, setView] = useState<"form" | "category">("form");
   const [people, setPeople] = useState(travelers);
@@ -249,6 +249,8 @@ function ExpenseForm({ doc, travelers, initial, linked, onClose }: { doc: Y.Doc;
   const set = (p: Partial<Expense>) => setE((x) => ({ ...x, ...p }));
   const split = (e.splitWith?.length ? e.splitWith : people).filter((t) => people.includes(t));
   const everyone = split.length === people.length;
+  type SplitMode = "everyone" | "individuals" | "none";
+  const [mode, setMode] = useState<SplitMode>(everyone ? "everyone" : split.length === 1 && split[0] === (initial.paidBy ?? travelers[0]) ? "none" : "individuals");
   const cat = (e.category ?? "other") as ExpenseCategory;
   const per = e.amount && split.length ? e.amount / split.length : 0;
 
@@ -266,8 +268,8 @@ function ExpenseForm({ doc, travelers, initial, linked, onClose }: { doc: Y.Doc;
     const splitWith = everyone ? undefined : split;
     if (linked) {
       const patch: CostSplit = { costCategory: cat, costPaidBy: e.paidBy, costSplit: splitWith };
-      if (linked.item) updateItem(doc, linked.item.id, patch);
-      else if (linked.fromReservation) saveReservation(doc, { ...linked.fromReservation, ...patch });
+      if (linked.item) updateItem(doc, linked.item.id, { ...patch, cost: e.amount, costCurrency: e.currency });
+      else if (linked.fromReservation) saveReservation(doc, { ...linked.fromReservation, ...patch, cost: e.amount, costCurrency: e.currency });
       return onClose();
     }
     if (!e.title?.trim() || !e.amount) return;
@@ -312,7 +314,6 @@ function ExpenseForm({ doc, travelers, initial, linked, onClose }: { doc: Y.Doc;
 
             <div className={`${box} flex items-center gap-2 px-3 py-2.5`}>
               <select
-                disabled={!!linked}
                 value={e.currency}
                 onChange={(ev) => set({ currency: ev.target.value })}
                 className="rounded-lg bg-surface-2 px-2 py-1.5 text-[14px] font-bold outline-none disabled:opacity-70"
@@ -322,8 +323,7 @@ function ExpenseForm({ doc, travelers, initial, linked, onClose }: { doc: Y.Doc;
                 ))}
               </select>
               <input
-                required={!linked}
-                disabled={!!linked}
+                required
                 type="number"
                 inputMode="decimal"
                 step="any"
@@ -335,7 +335,6 @@ function ExpenseForm({ doc, travelers, initial, linked, onClose }: { doc: Y.Doc;
                 className="min-w-0 flex-1 bg-transparent text-[22px] font-bold outline-none placeholder:text-muted/50 disabled:opacity-80"
               />
             </div>
-            {linked && <p className="-mt-1 px-1 text-[12px] text-muted">Change the amount on the {linked.item ? "stop" : "reservation"} itself.</p>}
 
             <button type="button" onClick={() => setView("category")} className={`${box} flex w-full items-center gap-3 px-4 py-3 text-left text-[15px] hover:border-accent/50`}>
               <span className="[&>svg]:size-5" style={{ color: CAT_COLOR[cat] }}>
@@ -360,31 +359,53 @@ function ExpenseForm({ doc, travelers, initial, linked, onClose }: { doc: Y.Doc;
 
             <div className={`${box} flex items-center justify-between gap-3 px-4 py-3`}>
               <span className="text-[15px] font-bold">Paid by</span>
-              <div className="relative">
-                <select value={e.paidBy ?? people[0]} onChange={(ev) => set({ paidBy: ev.target.value })} className="appearance-none bg-transparent pr-6 text-right text-[15px] outline-none">
-                  {people.map((t) => (
-                    <option key={t}>{t}</option>
-                  ))}
-                </select>
-                <ChevronDown className="pointer-events-none absolute top-1/2 right-0 size-4 -translate-y-1/2 text-muted" />
-              </div>
+              <Menu
+                label={
+                  <>
+                    <Avatar name={e.paidBy ?? people[0]} /> {e.paidBy ?? people[0]}
+                  </>
+                }
+                options={people.map((t) => ({ key: t, label: t, icon: <Avatar name={t} />, on: (e.paidBy ?? people[0]) === t }))}
+                onPick={(t) => set({ paidBy: t, ...(mode === "none" ? { splitWith: [t] } : {}) })}
+              />
             </div>
 
             <div className={box}>
               <div className="flex items-center justify-between px-4 pt-3">
                 <span className="text-[15px] font-bold">Split</span>
-                <button type="button" onClick={() => set({ splitWith: everyone ? [e.paidBy ?? people[0]] : people })} className="text-[14px] font-semibold text-muted hover:text-fg">
-                  {everyone ? "Everyone" : `${split.length} of ${people.length}`} <ChevronDown className="inline size-4" />
-                </button>
+                <Menu
+                  label={mode === "everyone" ? "Everyone" : mode === "none" ? "Don't split" : "Individuals"}
+                  options={[
+                    { key: "individuals", label: "Individuals", hint: "Choose who shares it", on: mode === "individuals" },
+                    { key: "everyone", label: "Everyone", hint: "Split evenly", on: mode === "everyone" },
+                    { key: "none", label: "Don't split", hint: "The payer covers it", on: mode === "none" },
+                  ]}
+                  onPick={(k) => {
+                    setMode(k as SplitMode);
+                    set({ splitWith: k === "none" ? [e.paidBy ?? people[0]] : people });
+                  }}
+                />
               </div>
               <ul className="space-y-1 px-4 py-2.5">
                 {people.map((t) => {
+                  if (mode !== "individuals" && !split.includes(t)) return null;
                   const on = split.includes(t);
                   return (
                     <li key={t}>
                       <label className="flex cursor-pointer items-center gap-3 py-1 text-[15px]">
-                        <input type="checkbox" checked={on} onChange={() => set({ splitWith: on ? split.filter((x) => x !== t) : [...split, t] })} className="size-[18px] accent-[var(--accent)]" />
-                        <span className="grid size-7 place-items-center rounded-full bg-surface-2 text-[12px] font-bold">{t.slice(0, 1).toUpperCase()}</span>
+                        {mode === "individuals" && (
+                          <input
+                            type="checkbox"
+                            checked={on}
+                            onChange={() => {
+                              const next = on ? split.filter((x) => x !== t) : [...split, t];
+                              set({ splitWith: next });
+                              if (next.length === people.length) setMode("everyone");
+                            }}
+                            className="size-[18px] accent-[var(--accent)]"
+                          />
+                        )}
+                        <Avatar name={t} />
                         <span className="flex-1">{t}</span>
                         {on && per > 0 && <span className="text-[13px] text-muted tabular-nums">{formatMoney(per, e.currency ?? "CAD")}</span>}
                       </label>
@@ -435,5 +456,49 @@ function ExpenseForm({ doc, travelers, initial, linked, onClose }: { doc: Y.Doc;
       </div>
     </div>,
     document.body,
+  );
+}
+
+function Avatar({ name }: { name: string }) {
+  return <span className="grid size-7 shrink-0 place-items-center rounded-full bg-surface-2 text-[12px] font-bold text-fg">{name.slice(0, 1).toUpperCase()}</span>;
+}
+
+/** Small styled dropdown (replaces native selects in the expense editor). */
+function Menu({ label, options, onPick }: { label: React.ReactNode; options: { key: string; label: string; hint?: string; icon?: React.ReactNode; on?: boolean }[]; onPick: (key: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const down = (e: MouseEvent) => !ref.current?.contains(e.target as Node) && setOpen(false);
+    document.addEventListener("mousedown", down);
+    return () => document.removeEventListener("mousedown", down);
+  }, [open]);
+  return (
+    <div ref={ref} className="relative">
+      <button type="button" onClick={() => setOpen((o) => !o)} className="flex items-center gap-2 rounded-full py-1 pr-1 pl-2 text-[15px] font-semibold text-fg hover:bg-surface-2">
+        {label}
+        <ChevronDown className={`size-4 text-muted transition-transform ${open ? "rotate-180" : ""}`} />
+      </button>
+      {open && (
+        <ul className="absolute top-full right-0 z-10 mt-1 min-w-48 rounded-xl border border-line bg-surface p-1.5 shadow-2xl">
+          {options.map((o) => (
+            <li key={o.key}>
+              <button
+                type="button"
+                onClick={() => (onPick(o.key), setOpen(false))}
+                className={`flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-[15px] hover:bg-surface-2 ${o.on ? "text-fg" : "text-muted"}`}
+              >
+                {o.icon}
+                <span className="min-w-0 flex-1">
+                  <span className="block">{o.label}</span>
+                  {o.hint && <span className="block text-[12px] text-muted">{o.hint}</span>}
+                </span>
+                {o.on && <Check className="size-4 text-accent" />}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
   );
 }
