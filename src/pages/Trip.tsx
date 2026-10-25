@@ -1,5 +1,6 @@
-import { Suspense, lazy, useMemo, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Suspense, lazy, useEffect, useMemo, useState } from "react";
+import { Link, Navigate, useParams } from "react-router-dom";
+import { useLiveQuery } from "dexie-react-hooks";
 import {
   DndContext,
   DragOverlay,
@@ -13,7 +14,10 @@ import {
   type DragStartEvent,
 } from "@dnd-kit/core";
 import { sortableKeyboardCoordinates } from "@dnd-kit/sortable";
-import { ArrowLeft, Eye, List, Map as MapIcon, Plus } from "lucide-react";
+import { ArrowLeft, Eye, List, Map as MapIcon, Plus, Share2 } from "lucide-react";
+import { db } from "../lib/db";
+import { useSession } from "../lib/api";
+import { useSync } from "../lib/sync";
 import { useTrip } from "../lib/useTrip";
 import { useTheme } from "../lib/theme";
 import { daysBetween } from "../lib/dates";
@@ -22,6 +26,7 @@ import {
   addList,
   moveItem,
   removeItem,
+  setReadOnly,
   renameList,
   sectionsFor,
   updateItem,
@@ -35,8 +40,11 @@ const TripMap = lazy(() => import("../components/TripMap").then((m) => ({ defaul
 import { Section, type SectionInfo } from "../components/Section";
 import { ThemeToggle } from "../components/ThemeToggle";
 import { OfflineMapButton } from "../components/OfflineMapButton";
+import { SyncBadge } from "../components/SyncBadge";
+import { ShareDialog } from "../components/ShareDialog";
 
 const ORPHAN = "orphan";
+const LOADING = "loading" as const;
 
 export function TripPage() {
   const { id } = useParams();
@@ -46,6 +54,26 @@ export function TripPage() {
   const [focus, setFocus] = useState<string | null>(null); // section shown alone on the map
   const [mobileView, setMobileView] = useState<"plan" | "map">("plan");
   const [dragging, setDragging] = useState<Item | null>(null);
+  const [sharing, setSharing] = useState(false);
+  const [waited, setWaited] = useState(false);
+
+  // Trip index row tells us whether this is our trip or one opened from a share link
+  const row = useLiveQuery(() => (id ? db.trips.get(id) : undefined), [id], LOADING);
+  const { status: auth } = useSession();
+  const shareToken = row !== LOADING ? row?.shareToken : undefined;
+  const readOnly = row !== LOADING && row?.role === "view";
+  const isOwner = row !== LOADING && !shareToken && auth === "in";
+  const canSync = row !== LOADING && (!!shareToken || auth === "in");
+  const { status: syncStatus, synced } = useSync(id, doc, { shareToken, enabled: canSync });
+
+  useEffect(() => {
+    if (doc) setReadOnly(doc, readOnly);
+  }, [doc, readOnly]);
+  useEffect(() => {
+    setWaited(false);
+    const t = setTimeout(() => setWaited(true), 8000);
+    return () => clearTimeout(t);
+  }, [id]);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
@@ -92,12 +120,16 @@ export function TripPage() {
     return { sections, pins, routes };
   }, [state, focus]);
 
-  if (!ready) return <div className="grid h-full place-items-center text-muted">Loading…</div>;
+  if (row !== LOADING && !shareToken && auth === "out") return <Navigate to="/login" replace />;
+  if (!ready || row === LOADING) return <div className="grid h-full place-items-center text-muted">Loading…</div>;
   if (!state || !doc || !view) {
+    // A trip from another device (or a share link) arrives over sync on first open
+    if (canSync && syncStatus !== "offline" && !synced && !waited)
+      return <div className="grid h-full place-items-center text-muted">Syncing trip…</div>;
     return (
       <div className="grid h-full place-items-center p-6 text-center">
         <div className="space-y-3">
-          <p className="font-display text-2xl">Trip not found on this device</p>
+          <p className="font-display text-2xl">{canSync && syncStatus === "offline" ? "Connect once to download this trip" : "Trip not found"}</p>
           <Link to="/" className="text-accent">
             Back to trips
           </Link>
@@ -147,9 +179,26 @@ export function TripPage() {
             <Link to="/" className="flex items-center gap-1.5 text-sm text-muted hover:text-fg">
               <ArrowLeft className="size-4" /> Trips
             </Link>
-            <ThemeToggle theme={theme} toggle={toggleTheme} />
+            <div className="flex items-center gap-1">
+              {canSync && <SyncBadge status={syncStatus} />}
+              {isOwner && (
+                <button
+                  onClick={() => setSharing(true)}
+                  className="ml-2 flex items-center gap-1.5 rounded-full bg-surface-2 px-3 py-1.5 text-xs font-medium hover:text-accent"
+                >
+                  <Share2 className="size-3.5" /> Share
+                </button>
+              )}
+              <ThemeToggle theme={theme} toggle={toggleTheme} />
+            </div>
           </div>
+          {readOnly && (
+            <p className="mb-2 inline-flex items-center gap-1.5 rounded-full bg-surface-2 px-3 py-1 text-xs text-muted">
+              <Eye className="size-3.5" /> View only
+            </p>
+          )}
           <input
+            disabled={readOnly}
             key={state.meta.title}
             defaultValue={state.meta.title}
             onBlur={(e) => e.target.value.trim() && e.target.value !== state.meta.title && updateMeta(doc, { title: e.target.value.trim() })}
@@ -158,6 +207,7 @@ export function TripPage() {
           />
           <div className="mt-2 flex flex-wrap items-center gap-2 text-sm text-muted">
             <input
+            disabled={readOnly}
               type="date"
               value={state.meta.startDate}
               onChange={(e) => e.target.value && updateMeta(doc, { startDate: e.target.value, ...(e.target.value > state.meta.endDate ? { endDate: e.target.value } : {}) })}
@@ -165,6 +215,7 @@ export function TripPage() {
             />
             <span>→</span>
             <input
+            disabled={readOnly}
               type="date"
               value={state.meta.endDate}
               min={state.meta.startDate}
@@ -186,7 +237,7 @@ export function TripPage() {
         </header>
 
         <div className="min-h-0 flex-1 overflow-y-auto px-3 pb-28 md:pb-10">
-          <DndContext sensors={sensors} collisionDetection={closestCorners} onDragStart={onDragStart} onDragEnd={onDragEnd}>
+          <DndContext sensors={readOnly ? [] : sensors} collisionDetection={closestCorners} onDragStart={onDragStart} onDragEnd={onDragEnd}>
             {view.sections.map((s) => (
               <Section
                 key={s.key}
@@ -194,6 +245,7 @@ export function TripPage() {
                 focused={focus === s.key}
                 selectedId={selectedId}
                 near={near}
+                readOnly={readOnly}
                 onFocus={() => setFocus((f) => (f === s.key ? null : s.key))}
                 onSelect={(itemId) => setSelectedId((cur) => (cur === itemId ? null : itemId))}
                 onRename={s.listId ? (t) => renameList(doc, s.listId!, t) : undefined}
@@ -216,7 +268,7 @@ export function TripPage() {
             </DragOverlay>
           </DndContext>
 
-          <button
+          {!readOnly && <button
             onClick={() => {
               const t = prompt("List name", "Food to try");
               if (t?.trim()) addList(doc, t.trim());
@@ -224,7 +276,7 @@ export function TripPage() {
             className="mt-2 ml-2 flex items-center gap-1.5 text-sm text-muted hover:text-fg"
           >
             <Plus className="size-4" /> Add a list
-          </button>
+          </button>}
         </div>
       </aside>
 
@@ -242,6 +294,8 @@ export function TripPage() {
         />
         </Suspense>
       </main>
+
+      {sharing && id && <ShareDialog tripId={id} onClose={() => setSharing(false)} />}
 
       {/* Mobile plan/map switch */}
       <button

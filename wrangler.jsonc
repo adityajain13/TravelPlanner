@@ -9,5 +9,29 @@
     "run_worker_first": true
   },
   // More specific than the personal site's adityajain.ca/* route, so it wins for this path.
-  "routes": [{ "pattern": "adityajain.ca/travelplanner*", "zone_name": "adityajain.ca" }]
+  "routes": [{ "pattern": "adityajain.ca/travelplanner*", "zone_name": "adityajain.ca" }],
+
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "travelplanner",
+      // `npx wrangler d1 create travelplanner`, then paste the id here
+      "database_id": "00000000-0000-0000-0000-000000000000",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "durable_objects": {
+    "bindings": [{ "name": "TRIP_ROOM", "class_name": "TripRoom" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["TripRoom"] }],
+
+  // Login emails. Sending to your own verified address works on the free plan.
+  "send_email": [{ "name": "EMAIL" }],
+
+  "vars": {
+    // Comma-separated emails allowed to log in. Set to your Gmail.
+    "ALLOWED_EMAILS": "",
+    "MAIL_FROM": "trips@adityajain.ca"
+  }
+  // Secret (not in this file): SHARE_SECRET  →  npx wrangler secret put SHARE_SECRET
 }

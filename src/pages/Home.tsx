@@ -1,7 +1,9 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useLiveQuery } from "dexie-react-hooks";
-import { CalendarDays, MapPin, Plus, Trash2 } from "lucide-react";
+import { CalendarDays, LogOut, MapPin, Plus, Trash2, Users } from "lucide-react";
+import { useSession } from "../lib/api";
+import { reconcileTrips } from "../lib/sync";
 import { db, type TripIndexRow } from "../lib/db";
 import { formatRange, todayISO } from "../lib/dates";
 import { deleteTrip } from "../lib/trips";
@@ -11,6 +13,12 @@ import { NewTripDialog } from "../components/NewTripDialog";
 
 export function Home() {
   const [theme, toggleTheme] = useTheme();
+  const { email, logout } = useSession();
+
+  // Pull trips from other devices / push ones made offline
+  useEffect(() => {
+    if (navigator.onLine) reconcileTrips().catch(() => undefined);
+  }, []);
   const [creating, setCreating] = useState(false);
   const navigate = useNavigate();
   const trips = useLiveQuery(() => db.trips.orderBy("startDate").toArray(), []);
@@ -22,7 +30,18 @@ export function Home() {
     <div className="mx-auto min-h-full max-w-3xl px-5 pt-[max(env(safe-area-inset-top),1.5rem)] pb-16">
       <header className="mb-10 flex items-center justify-between">
         <span className="text-sm font-semibold tracking-wide text-muted">travel planner</span>
-        <ThemeToggle theme={theme} toggle={toggleTheme} />
+        <div className="flex items-center gap-1">
+          <span className="mr-1 hidden text-xs text-muted sm:inline">{email}</span>
+          <ThemeToggle theme={theme} toggle={toggleTheme} />
+          <button
+            onClick={() => confirm("Sign out on this device? Your trips stay saved here.") && logout()}
+            className="grid size-9 place-items-center rounded-full text-muted transition-colors hover:bg-surface-2 hover:text-fg"
+            aria-label="Sign out"
+            title="Sign out"
+          >
+            <LogOut className="size-4" />
+          </button>
+        </div>
       </header>
 
       <div className="mb-8 flex items-end justify-between gap-4">
@@ -70,11 +89,20 @@ function TripGroup({ title, trips }: { title: string; trips: TripIndexRow[] }) {
                     <CalendarDays className="size-3.5" />
                     {formatRange(t.startDate, t.endDate)}
                   </span>
+                  {t.shareToken && (
+                    <span className="flex items-center gap-1.5 text-accent">
+                      <Users className="size-3.5" />
+                      Shared with you{t.role === "view" ? " · view only" : ""}
+                    </span>
+                  )}
                 </p>
               </div>
             </Link>
             <button
-              onClick={() => confirm(`Delete "${t.title}" from this device?`) && deleteTrip(t.id)}
+              onClick={() => {
+                const msg = t.shareToken ? `Remove "${t.title}" from this device?` : `Delete "${t.title}" everywhere? This can't be undone.`;
+                if (confirm(msg)) deleteTrip(t.id, { server: !t.shareToken }).catch((e) => alert((e as Error).message));
+              }}
               className="mr-3 grid size-9 place-items-center rounded-full text-muted opacity-0 transition hover:text-danger group-hover:opacity-100 focus:opacity-100"
               aria-label={`Delete ${t.title}`}
             >

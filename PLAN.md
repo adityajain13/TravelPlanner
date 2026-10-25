@@ -15,6 +15,7 @@ Hosted at **adityajain.ca/travelplanner** by the `travelplanner` Cloudflare Work
 | Place search | **Photon** (OSM) — records stored offline. No Google Places for storage |
 | Google | Optional live "Google details" button only; store `googlePlaceId` only (ToS: only place IDs may be kept) |
 | Sync / sharing | Yjs over a **Durable Object per trip**; share links carry a view or edit token |
+| Login | Own email-code login on the Worker, 1-year rolling session cookie (Access caps sessions at 1 month) |
 | Claude | **Remote MCP server** (custom connector in claude.ai). View link → read tools, edit link → write tools. Write tools set to "needs approval" in claude.ai; every Claude edit tagged with origin `claude` for revert. No in-app chat panel (API cost) |
 | Email | Manual forward to **trips@adityajain.ca** → Email Worker → Claude (Haiku) structured extraction → review inbox → approve into trip |
 | Hosting | Worker route `adityajain.ca/travelplanner*` (beats the personal site's `/*` route) |
@@ -26,11 +27,14 @@ Hosted at **adityajain.ca/travelplanner** by the `travelplanner` Cloudflare Work
   - "Google details" pill on a selected place (`src/components/GoogleDetails.tsx`, `src/lib/google.ts`): Text Search with a 300 m bias → saves `googlePlaceId` only; details (photos, rating, price, open now, hours, phone, website) fetched live and kept in an in-memory cache. Hidden when `VITE_GOOGLE_PLACES_KEY` is unset; disabled offline.
   - "Save map offline" in the trip header (`src/lib/offlineMap.ts`): pre-downloads the vector tiles for the trip's padded bbox into the service worker's `basemap-tiles` cache, picking the deepest zoom (≤15) under 6,000 tiles, plus label fonts and sprites. Region recorded in Dexie `regions`; button switches to "Update offline map" when new places fall outside it. Satellite stays online-only.
   - Possible upgrade: per-region `.pmtiles` extract in OPFS (smaller, faster, larger areas) if tile prefetch proves limiting.
-- [ ] **3. Sync + share links**
-  - `TripRoom` Durable Object (y-protocols over WebSocket, or `y-partyserver`), state persisted in DO storage.
-  - `POST /travelplanner/api/trips/:id/share` → `{view, edit}` tokens (HMAC'd, stored in D1 so they can be revoked).
-  - Client: `WebsocketProvider` attached to the existing doc when online; share dialog with copy buttons; opening `/trip/:id?t=<token>` joins.
-  - Edit-history panel grouped by origin (me / collaborator / claude / email) with revert (Y.UndoManager per origin).
+- [x] **3. Login + sync + share links**
+  - Login (`worker/auth.ts`, `src/pages/Login.tsx`): email → 6-digit code + one-tap link sent via the Email Service `send_email` binding; allow-list in `ALLOWED_EMAILS`. Session cookie `tp_session` (HttpOnly, Path=/travelplanner) lasts 1 year and rolls forward on use; only its SHA-256 is stored in D1. Cloudflare Access was ruled out: its sessions max out at 1 month.
+  - Sync (`worker/room.ts`, `src/lib/sync.ts`): `TripRoom` Durable Object per trip (SQLite-backed, hibernation API) speaking the y-websocket protocol; doc persisted on every update; meta mirrored into D1 `trips` via a 5 s alarm. Client attaches `WebsocketProvider` to the offline doc; sync badge in the header.
+  - Ownership: logged-in user claims a trip ID on first sync. Home reconciles with `GET /api/trips` (lists trips from other devices, pushes trips created offline).
+  - Share links (`worker/trips.ts`, `ShareDialog`): stateless HMAC tokens `b64(trip.role.version).sig` using `SHARE_SECRET`; "Reset links" bumps `share_version`. `/s/:token` registers the trip on the friend's device (no login). View links: server drops writes, client blocks edits and hides editing UI.
+  - Delete removes the trip on the server too (owner only); shared trips are just removed from the device.
+  - Tested locally with `wrangler dev` + headless Chromium: login by code, 365-day cookie, live owner↔editor sync, viewer read-only, unauthenticated socket gets nothing, link reset → 404, second device pulls the trip.
+  - Not built yet: edit-history panel / per-origin undo (moved to phase 6).
 - [ ] **4. Claude MCP connector** — `/travelplanner/mcp` on the same Worker (Cloudflare `agents` McpAgent, streamable HTTP).
   - Tools: `open_trip(link)`, `get_trip`, `get_day`, `search_place` (Photon), `add_place`, `add_note`, `move_item`, `update_item`, `remove_item`.
   - Token from the pasted share link scopes access; write tools refuse with a view token.
@@ -39,7 +43,7 @@ Hosted at **adityajain.ca/travelplanner** by the `travelplanner` Cloudflare Work
   - `postal-mime` parse → Claude API (Haiku, structured output: flight / hotel / train / car / reservation, times + tz, confirmation #, address).
   - Match to a trip by dates/destination; store in D1 `inbox`; app shows a review inbox, approve → items.
   - Unparseable mail is forwarded on to Gmail. Needs `ANTHROPIC_API_KEY` secret.
-- [ ] **6. Polish** — trip cover image, budget/expenses, packing list, ICS export, travel-time estimates between stops (OSRM), Wanderlog import if an export path exists.
+- [ ] **6. Polish** — edit history with per-origin undo, trip cover image, budget/expenses, packing list, ICS export, travel-time estimates between stops (OSRM), Wanderlog import if an export path exists.
 
 ## Notes for the next session
 

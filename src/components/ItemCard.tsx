@@ -11,13 +11,14 @@ interface Props {
   number?: number;
   color: string;
   selected: boolean;
+  readOnly?: boolean;
   onSelect: () => void;
   onChange: (patch: Partial<Item>) => void;
   onDelete: () => void;
 }
 
-export function ItemCard({ item, number, color, selected, onSelect, onChange, onDelete }: Props) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: item.id });
+export function ItemCard({ item, number, color, selected, readOnly, onSelect, onChange, onDelete }: Props) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: item.id, disabled: readOnly });
   const style = { transform: CSS.Translate.toString(transform), transition };
 
   return (
@@ -30,7 +31,7 @@ export function ItemCard({ item, number, color, selected, onSelect, onChange, on
         selected ? "border-accent/60 bg-surface-2" : "border-transparent hover:bg-surface-2/60"
       } ${isDragging ? "z-10 opacity-40" : ""}`}
     >
-      <button
+      {!readOnly && <button
         {...attributes}
         {...listeners}
         onClick={(e) => e.stopPropagation()}
@@ -38,7 +39,7 @@ export function ItemCard({ item, number, color, selected, onSelect, onChange, on
         aria-label="Drag to reorder"
       >
         <GripVertical className="size-4" />
-      </button>
+      </button>}
 
       {item.kind === "place" ? (
         <span
@@ -72,13 +73,13 @@ export function ItemCard({ item, number, color, selected, onSelect, onChange, on
                 <ExternalLink className="size-3.5" />
               </a>
             )}
-            <button
+            {!readOnly && <button
               onClick={(e) => (e.stopPropagation(), onDelete())}
               className="grid size-7 place-items-center rounded-md text-muted hover:bg-surface hover:text-danger"
               title="Remove"
             >
               <Trash2 className="size-3.5" />
-            </button>
+            </button>}
           </div>
         </div>
 
@@ -87,16 +88,16 @@ export function ItemCard({ item, number, color, selected, onSelect, onChange, on
             {(selected || item.startTime) && item.kind === "place" && (
               <div className="flex items-center gap-1.5 text-xs text-muted">
                 <Clock className="size-3.5" />
-                <TimeInput value={item.startTime} onCommit={(v) => onChange({ startTime: v })} />
+                <TimeInput disabled={readOnly} value={item.startTime} onCommit={(v) => onChange({ startTime: v })} />
                 <span>–</span>
-                <TimeInput value={item.endTime} onCommit={(v) => onChange({ endTime: v })} />
+                <TimeInput disabled={readOnly} value={item.endTime} onCommit={(v) => onChange({ endTime: v })} />
               </div>
             )}
             {selected && item.kind === "place" && (
               <GoogleDetails item={item} onLink={(googlePlaceId) => onChange({ googlePlaceId })} />
             )}
-            {(selected || item.notes) && (
-              <NotesInput value={item.notes ?? ""} onCommit={(v) => onChange({ notes: v })} />
+            {(item.notes || (selected && !readOnly)) && (
+              <NotesInput disabled={readOnly} value={item.notes ?? ""} onCommit={(v) => onChange({ notes: v })} />
             )}
           </div>
         )}
@@ -105,10 +106,11 @@ export function ItemCard({ item, number, color, selected, onSelect, onChange, on
   );
 }
 
-function TimeInput({ value, onCommit }: { value?: string; onCommit: (v: string) => void }) {
+function TimeInput({ value, onCommit, disabled }: { value?: string; onCommit: (v: string) => void; disabled?: boolean }) {
   return (
     <input
       type="time"
+      disabled={disabled}
       defaultValue={value ?? ""}
       key={value}
       onBlur={(e) => e.target.value !== (value ?? "") && onCommit(e.target.value)}
@@ -118,7 +120,7 @@ function TimeInput({ value, onCommit }: { value?: string; onCommit: (v: string) 
 }
 
 /** Local draft while typing; writes to the doc on blur so remote edits don't fight the cursor. */
-function NotesInput({ value, onCommit }: { value: string; onCommit: (v: string) => void }) {
+function NotesInput({ value, onCommit, disabled }: { value: string; onCommit: (v: string) => void; disabled?: boolean }) {
   const [draft, setDraft] = useState(value);
   const [focused, setFocused] = useState(false);
   useEffect(() => {
@@ -126,6 +128,7 @@ function NotesInput({ value, onCommit }: { value: string; onCommit: (v: string) 
   }, [value, focused]);
   return (
     <textarea
+      readOnly={disabled}
       value={draft}
       onChange={(e) => setDraft(e.target.value)}
       onFocus={() => setFocused(true)}

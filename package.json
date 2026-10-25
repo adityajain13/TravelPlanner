@@ -7,7 +7,10 @@
     "preview": "vite preview",
     "typecheck": "tsc -b",
     "cf:dev": "npm run build && wrangler dev",
-    "deploy": "npm run build && wrangler deploy"
+    "deploy": "npm run build && wrangler deploy",
+    "dev:api": "wrangler dev --port 8787",
+    "db:migrate": "wrangler d1 migrations apply travelplanner --remote",
+    "db:migrate:local": "wrangler d1 migrations apply travelplanner --local"
   },
   "repository": {
     "type": "git",
@@ -27,6 +30,7 @@
     "dexie": "^4.4.7",
     "dexie-react-hooks": "^4.4.0",
     "fractional-indexing": "^4.0.0",
+    "lib0": "^0.2.119",
     "lucide-react": "^1.61.0",
     "maplibre-gl": "^6.16.0",
     "nanoid": "^6.0.2",
@@ -34,6 +38,8 @@
     "react-dom": "^19.3.1",
     "react-router-dom": "^7.18.4",
     "y-indexeddb": "^9.0.12",
+    "y-protocols": "^1.0.7",
+    "y-websocket": "^3.1.0",
     "yjs": "^13.6.33"
   },
   "devDependencies": {

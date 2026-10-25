@@ -7,6 +7,10 @@ const BASE = "/travelplanner/";
 
 export default defineConfig({
   base: BASE,
+  server: {
+    // `npm run dev:api` runs the Worker (auth, sync) on :8787
+    proxy: { "/travelplanner/api": { target: "http://localhost:8787", ws: true } },
+  },
   build: {
     // Served by the Worker at adityajain.ca/travelplanner/*, so assets live under dist/travelplanner
     outDir: "dist/travelplanner",
@@ -36,6 +40,7 @@ export default defineConfig({
       },
       workbox: {
         navigateFallback: `${BASE}index.html`,
+        navigateFallbackDenylist: [/\/api\//],
         globPatterns: ["**/*.{js,css,html,svg,png,woff2}"],
         maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
         runtimeCaching: [

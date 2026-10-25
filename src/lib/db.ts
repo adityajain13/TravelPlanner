@@ -11,6 +11,9 @@ export interface TripIndexRow {
   startDate: string;
   endDate: string;
   updatedAt: number;
+  /** Set when this trip was opened from someone else's share link (no login needed). */
+  shareToken?: string;
+  role?: "view" | "edit";
 }
 
 export interface RegionRow {
