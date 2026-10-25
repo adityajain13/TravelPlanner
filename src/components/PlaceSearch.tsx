@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Loader2, MapPin, Search, StickyNote } from "lucide-react";
 import { searchPlaces, type PlaceResult } from "../lib/photon";
+import { isMapsLink, placesFromLink } from "../lib/gmaps";
 
 interface Props {
   near?: [number, number];
@@ -21,6 +22,7 @@ export function PlaceSearch({ near, countryCode, onPick, onNote, autoFocus, onCa
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(0);
   const wrap = useRef<HTMLDivElement>(null);
+  const isLink = isMapsLink(q);
 
   useEffect(() => {
     const term = q.trim();
@@ -33,10 +35,11 @@ export function PlaceSearch({ near, countryCode, onPick, onNote, autoFocus, onCa
       setLoading(true);
       setError(null);
       try {
-        setResults(await searchPlaces(term, near, ctrl.signal, countryCode));
+        setResults(isMapsLink(term) ? await placesFromLink(term, ctrl.signal) : await searchPlaces(term, near, ctrl.signal, countryCode));
         setActive(0);
       } catch (e) {
-        if (!ctrl.signal.aborted) setError(navigator.onLine ? "Search failed" : "Offline — save it as a note instead");
+        if (!ctrl.signal.aborted)
+          setError(isMapsLink(term) ? (e as Error).message : navigator.onLine ? "Search failed" : "Offline — save it as a note instead");
       } finally {
         if (!ctrl.signal.aborted) setLoading(false);
       }
@@ -68,13 +71,14 @@ export function PlaceSearch({ near, countryCode, onPick, onNote, autoFocus, onCa
   };
 
   function onKey(e: React.KeyboardEvent) {
-    const n = results.length + 1; // +1 for the "add as note" row
+    const n = results.length + (isLink ? 0 : 1); // +1 for the "add as note" row
+    if (!n) return;
     if (e.key === "ArrowDown") (e.preventDefault(), setActive((a) => (a + 1) % n));
     else if (e.key === "ArrowUp") (e.preventDefault(), setActive((a) => (a - 1 + n) % n));
     else if (e.key === "Enter") {
       e.preventDefault();
       if (active < results.length) pick(results[active]);
-      else note();
+      else if (!isLink) note();
     } else if (e.key === "Escape") (setOpen(false), onCancel?.());
   }
 
@@ -91,7 +95,7 @@ export function PlaceSearch({ near, countryCode, onPick, onNote, autoFocus, onCa
           onBlur={() => !q.trim() && onCancel?.()}
           autoFocus={autoFocus}
           onKeyDown={onKey}
-          placeholder={onCancel ? "Add a place or note here" : "Add a place"}
+          placeholder={onCancel ? "Add a place or note here" : "Add a place or paste a Google Maps link"}
           className="w-full bg-transparent text-sm outline-none placeholder:text-muted/80"
         />
       </div>
@@ -115,7 +119,9 @@ export function PlaceSearch({ near, countryCode, onPick, onNote, autoFocus, onCa
               </button>
             </li>
           ))}
+          {isLink && loading && <li className="px-3 py-2 text-xs text-muted">Opening Google Maps link…</li>}
           {error && <li className="px-3 py-2 text-xs text-muted">{error}</li>}
+          {!isLink && (
           <li>
             <button
               onMouseDown={(e) => e.preventDefault()}
@@ -127,6 +133,7 @@ export function PlaceSearch({ near, countryCode, onPick, onNote, autoFocus, onCa
               Add “{q.trim()}” as a note
             </button>
           </li>
+          )}
           <li className="px-3 pt-1 pb-1.5 text-[10px] text-muted/70">Search © OpenStreetMap contributors · Photon</li>
         </ul>
       )}

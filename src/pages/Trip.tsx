@@ -18,7 +18,8 @@ import { ArrowLeft, Camera, Eye, ImagePlus, List, Loader2, Map as MapIcon, Panel
 import { Contents, ContentsRail, type Tab } from "../components/Contents";
 import { useConverter } from "../lib/fx";
 import { budgetLines, totals } from "../lib/budget";
-import { bestImage, coverFor, setPhotoShareToken } from "../lib/images";
+import { bestImage, coverFor } from "../lib/images";
+import { setShareToken } from "../lib/shareToken";
 import { ImagePicker } from "../components/ImagePicker";
 import { Photo } from "../components/Photo";
 import { PhotoCredit } from "../components/PhotoCredit";
@@ -109,7 +110,7 @@ export function TripPage() {
   const readOnly = row !== LOADING && row?.role === "view";
   const isOwner = row !== LOADING && !shareToken && auth === "in";
   const canSync = row !== LOADING && (!!shareToken || auth === "in");
-  setPhotoShareToken(shareToken);
+  setShareToken(shareToken);
   const { status: syncStatus, synced } = useSync(id, doc, { shareToken, enabled: canSync });
 
   useEffect(() => {
