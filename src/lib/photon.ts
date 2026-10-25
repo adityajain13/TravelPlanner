@@ -11,6 +11,8 @@ export interface PlaceResult {
   lat: number;
   lng: number;
   countryCode?: string;
+  /** Added from a pasted Google Maps link (the app then links its Google place ID). */
+  fromLink?: boolean;
 }
 
 /** Photon search with a Nominatim fallback (see geocode.ts); results in the trip's country first. */

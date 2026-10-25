@@ -3,7 +3,7 @@
  * the place is then matched to OpenStreetMap so what gets saved is OSM data (see CLAUDE.md).
  */
 import { searchPlaces, type PlaceResult } from "./photon";
-import { distanceKm } from "./geocode";
+import { distanceKm, reversePlaces } from "./geocode";
 import { shareQuery } from "./shareToken";
 
 const LINK = /^https?:\/\/(maps\.app\.goo\.gl|goo\.gl\/maps|g\.co\/kgs|(www\.)?google\.[a-z.]+\/maps|maps\.google\.[a-z.]+)\S*$/i;
@@ -51,8 +51,24 @@ export async function placesFromLink(link: string, signal?: AbortSignal): Promis
   if (p.name) {
     const hits = await searchPlaces(p.name, at, signal).catch(() => []);
     const near = at ? hits.filter((h) => distanceKm(at, [h.lng, h.lat]) < 1).sort((a, b) => distanceKm(at, [a.lng, a.lat]) - distanceKm(at, [b.lng, b.lat])) : hits;
-    if (near.length) return near.slice(0, 3);
+    if (near.length) return near.slice(0, 3).map((h) => ({ ...h, fromLink: true }));
   }
   if (!at) throw new Error("Couldn't find that place on the map");
-  return [{ osmId: `pin:${p.lat!.toFixed(6)},${p.lng!.toFixed(6)}`, name: p.name ?? "Dropped pin", address: `${p.lat!.toFixed(5)}, ${p.lng!.toFixed(5)}`, category: "pin from link", lat: p.lat!, lng: p.lng! }];
+  // Name didn't match OSM (often a local-language name, e.g. "Gestastofa Snæfellsness"):
+  // take the category/address of whatever OSM has right at the pin, or at least the town.
+  const around = await reversePlaces(at, 0.15, signal).catch(() => []);
+  const poi = around.find((h) => h.category && distanceKm(at, [h.lng, h.lat]) < 0.15);
+  const area = around[0] ?? (await reversePlaces(at, 5, signal).catch(() => []))[0];
+  return [
+    {
+      osmId: poi?.osmId ?? `pin:${p.lat!.toFixed(6)},${p.lng!.toFixed(6)}`,
+      name: p.name ?? poi?.name ?? "Dropped pin",
+      address: poi?.address ?? area?.address ?? "",
+      category: poi?.category ?? "",
+      lat: p.lat!,
+      lng: p.lng!,
+      countryCode: poi?.countryCode ?? area?.countryCode,
+      fromLink: true,
+    },
+  ];
 }
