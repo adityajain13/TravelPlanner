@@ -120,3 +120,160 @@ export function TimeField({ value, onChange, placeholder = "Add time", disabled,
     </>
   );
 }
+
+/**
+ * Start + end in one popover (Wanderlog-style): two time boxes on top, a 15-minute list below.
+ * Picking a slot fills the active box; after the start it moves on to the end.
+ */
+export function TimeRangeField({
+  start,
+  end,
+  onChange,
+  disabled,
+  className = "",
+  children,
+  title,
+}: {
+  start?: string;
+  end?: string;
+  onChange: (start: string | undefined, end: string | undefined) => void;
+  disabled?: boolean;
+  className?: string;
+  /** Trigger contents; defaults to "9:00 AM – 11:00 AM" / "Add time". */
+  children?: React.ReactNode;
+  title?: string;
+}) {
+  const btn = useRef<HTMLButtonElement>(null);
+  const list = useRef<HTMLUListElement>(null);
+  const [open, setOpen] = useState(false);
+  const [s, setS] = useState(start);
+  const [e, setE] = useState(end);
+  const [active, setActive] = useState<"start" | "end">("start");
+  const [text, setText] = useState({ start: "", end: "" });
+
+  useEffect(() => {
+    if (!open) return;
+    setS(start);
+    setE(end);
+    setActive(start && !end ? "end" : "start");
+    setText({ start: start ? fmtTime(start) : "", end: end ? fmtTime(end) : "" });
+  }, [open, start, end]);
+
+  // Keep the list scrolled to the active value
+  const focusVal = (active === "start" ? s : (e ?? s)) ?? "09:00";
+  useEffect(() => {
+    if (!open) return;
+    const [h, m] = focusVal.split(":").map(Number);
+    const idx = Math.min(95, h * 4 + Math.floor((m || 0) / 15));
+    requestAnimationFrame(() => {
+      const el = list.current?.children[idx] as HTMLElement | undefined;
+      if (el && list.current) list.current.scrollTop = el.offsetTop - list.current.clientHeight / 2 + el.clientHeight / 2;
+    });
+  }, [open, active, focusVal]);
+
+  const choose = (v: string) => {
+    if (active === "start") {
+      setS(v);
+      setText((t) => ({ ...t, start: fmtTime(v) }));
+      // keep the same length if there was an end, else default 1 hour later
+      if (!e || e <= v) {
+        const [h, m] = v.split(":").map(Number);
+        const nh = Math.min(23, h + 1);
+        const ne = `${String(nh).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+        setE(ne);
+        setText((t) => ({ ...t, end: fmtTime(ne) }));
+      }
+      setActive("end");
+    } else {
+      setE(v);
+      setText((t) => ({ ...t, end: fmtTime(v) }));
+    }
+  };
+  const save = () => {
+    onChange(s, s ? e : undefined);
+    setOpen(false);
+  };
+
+  const box = (k: "start" | "end", label: string) => (
+    <label className={`flex-1 rounded-xl border px-3 py-2 ${active === k ? "border-accent bg-accent/5" : "border-line bg-bg"}`}>
+      <span className="block text-[11px] font-bold tracking-wide text-muted uppercase">{label}</span>
+      <input
+        value={text[k]}
+        onFocus={() => setActive(k)}
+        onChange={(ev) => setText((t) => ({ ...t, [k]: ev.target.value }))}
+        onBlur={(ev) => {
+          const v = parseTime(ev.target.value);
+          if (v) (k === "start" ? setS : setE)(v), setText((t) => ({ ...t, [k]: fmtTime(v) }));
+          else if (!ev.target.value.trim()) (k === "start" ? setS : setE)(undefined);
+        }}
+        onKeyDown={(ev) => ev.key === "Enter" && (ev.preventDefault(), (ev.target as HTMLInputElement).blur(), k === "end" && save())}
+        placeholder="--:--"
+        className="w-full bg-transparent text-[16px] font-semibold outline-none placeholder:text-muted/50"
+      />
+    </label>
+  );
+
+  return (
+    <>
+      <button
+        ref={btn}
+        type="button"
+        disabled={disabled}
+        title={title}
+        onClick={(ev) => (ev.stopPropagation(), setOpen((o) => !o))}
+        className={`flex items-center gap-1.5 whitespace-nowrap disabled:cursor-default ${className}`}
+      >
+        {children ?? (
+          <>
+            <Clock className="size-3.5 shrink-0 opacity-70" />
+            {start ? (
+              `${fmtTime(start)}${end ? ` – ${fmtTime(end)}` : ""}`
+            ) : (
+              <span className="text-muted/70">Add time</span>
+            )}
+          </>
+        )}
+      </button>
+      {open && btn.current && (
+        <Popover anchor={btn.current} onClose={() => setOpen(false)}>
+          <div className="w-72 p-3">
+            <div className="flex items-center gap-2">
+              {box("start", "Start")}
+              <span className="text-muted">–</span>
+              {box("end", "End")}
+            </div>
+            <ul ref={list} className="mt-3 h-56 overflow-y-auto rounded-xl border border-line bg-bg p-1 [scrollbar-width:thin]">
+              {SLOTS.map((v) => {
+                const cur = active === "start" ? s : e;
+                const inRange = s && e && v > s && v < e;
+                return (
+                  <li key={v}>
+                    <button
+                      type="button"
+                      onClick={() => choose(v)}
+                      className={`w-full rounded-lg px-3 py-1.5 text-left text-[14px] ${
+                        v === cur ? "bg-accent font-bold text-on-accent" : v === s || v === e ? "bg-accent/20 text-fg" : inRange ? "bg-accent/5 text-fg" : v.endsWith(":00") ? "text-fg hover:bg-surface-2" : "text-muted hover:bg-surface-2 hover:text-fg"
+                      }`}
+                    >
+                      {fmtTime(v)}
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+            <div className="mt-3 flex justify-end gap-2">
+              {(start || end) && (
+                <button type="button" onClick={() => (onChange(undefined, undefined), setOpen(false))} className="rounded-full border border-line px-4 py-1.5 text-[14px] font-semibold text-muted hover:text-fg">
+                  Clear
+                </button>
+              )}
+              <button type="button" onClick={save} className="rounded-full bg-accent px-5 py-1.5 text-[14px] font-bold text-on-accent">
+                Save
+              </button>
+            </div>
+          </div>
+        </Popover>
+      )}
+    </>
+  );
+}

@@ -400,6 +400,7 @@ export function TripPage() {
     budgetTotal: spent > 0 ? { amount: spent, currency: state.meta.currency ?? "CAD" } : undefined,
     scrollRef,
     go,
+    subtitles: state.meta.subtitles,
   };
 
   return (
@@ -674,6 +675,13 @@ export function TripPage() {
                 targets={readOnly ? undefined : targets}
                 onMoveTo={readOnly ? undefined : (itemId, k) => moveItems(doc, [itemId], k)}
                 onCostDetails={readOnly ? undefined : setCostFor}
+                subtitle={state.meta.subtitles?.[s.key]}
+                onSubtitle={(t) => {
+                  const next = { ...(state.meta.subtitles ?? {}) };
+                  if (t) next[s.key] = t;
+                  else delete next[s.key];
+                  updateMeta(doc, { subtitles: next });
+                }}
               />
               {s.kind === "list" && view.sections[si + 1]?.kind !== "list" && !readOnly && <AddSection onAdd={(t) => addList(doc, t)} />}
               </Fragment>
