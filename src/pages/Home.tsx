@@ -100,8 +100,8 @@ function TripGroup({ title, trips }: { title: string; trips: TripIndexRow[] }) {
       <h2 className="mb-3 text-xs font-semibold tracking-widest text-muted uppercase">{title}</h2>
       <ul className="divide-y divide-line overflow-hidden rounded-2xl border border-line bg-surface">
         {trips.map((t) => (
-          <li key={t.id} className="group flex items-center">
-            <Link to={`/trip/${t.id}`} className="flex flex-1 items-center gap-4 px-5 py-4 transition-colors hover:bg-surface-2">
+          <li key={t.id} className="group flex items-center transition-colors hover:bg-surface-2">
+            <Link to={`/trip/${t.id}`} className="flex min-w-0 flex-1 items-center gap-4 py-4 pr-2 pl-5">
               <div className="min-w-0 flex-1">
                 <p className="truncate font-display text-lg">{t.title}</p>
                 <p className="mt-0.5 flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted">
@@ -127,7 +127,7 @@ function TripGroup({ title, trips }: { title: string; trips: TripIndexRow[] }) {
                 const msg = t.shareToken ? `Remove "${t.title}" from this device?` : `Delete "${t.title}" everywhere? This can't be undone.`;
                 if (confirm(msg)) deleteTrip(t.id, { server: !t.shareToken }).catch((e) => alert((e as Error).message));
               }}
-              className="mr-3 grid size-9 place-items-center rounded-full text-muted opacity-0 transition hover:text-danger group-hover:opacity-100 focus:opacity-100"
+              className="mx-4 grid size-10 shrink-0 place-items-center rounded-full text-muted opacity-0 transition hover:bg-surface hover:text-danger group-hover:opacity-100 focus:opacity-100 max-md:opacity-100"
               aria-label={`Delete ${t.title}`}
             >
               <Trash2 className="size-4" />
