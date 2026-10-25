@@ -14,7 +14,7 @@ import {
   type DragStartEvent,
 } from "@dnd-kit/core";
 import { sortableKeyboardCoordinates } from "@dnd-kit/sortable";
-import { ArrowLeft, Camera, Copy, FolderInput, Trash2, X, Cloud, CloudOff, Moon, Sun, Eye, ImagePlus, List, Loader2, Map as MapIcon, PanelLeft, Plus, Share2 } from "lucide-react";
+import { ArrowLeft, Camera, Redo2, Undo2, Copy, FolderInput, Trash2, X, Cloud, CloudOff, Moon, Sun, Eye, ImagePlus, List, Loader2, Map as MapIcon, PanelLeft, Plus, Share2 } from "lucide-react";
 import { Contents, ContentsRail, type Tab } from "../components/Contents";
 import { useConverter } from "../lib/fx";
 import { budgetLines, totals } from "../lib/budget";
@@ -29,6 +29,7 @@ import { findPlaceId, GOOGLE_KEY } from "../lib/google";
 import { edit } from "../lib/trips";
 import { parseISODate } from "../lib/dates";
 import { scrollToId } from "../lib/scroll";
+import { useUndo } from "../lib/undo";
 import { db } from "../lib/db";
 import { useSession } from "../lib/api";
 import { useSync } from "../lib/sync";
@@ -136,6 +137,7 @@ export function TripPage() {
   const canSync = row !== LOADING && (!!shareToken || auth === "in");
   setShareToken(shareToken);
   const { status: syncStatus, synced } = useSync(id, doc, { shareToken, enabled: canSync });
+  const history = useUndo(doc, readOnly);
 
   useEffect(() => {
     if (doc) setReadOnly(doc, readOnly);
@@ -372,6 +374,17 @@ export function TripPage() {
     }, 40);
   };
   const spent = totals(budgetLines(state, fx.convert)).total;
+  const mod = /Mac|iPhone|iPad/.test(navigator.platform) ? "⌘" : "Ctrl+";
+  const undoBar = readOnly ? null : (
+    <div className="flex items-center gap-1 border-b border-line px-4 py-3">
+      <button onClick={history.undo} disabled={!history.canUndo} title={`Undo (${mod}Z)`} className="flex items-center gap-2 rounded-full px-3 py-1.5 text-[15px] font-semibold text-muted hover:bg-surface-2 hover:text-fg disabled:opacity-40 disabled:hover:bg-transparent">
+        <Undo2 className="size-4" /> Undo
+      </button>
+      <button onClick={history.redo} disabled={!history.canRedo} title={`Redo (${mod}⇧Z)`} className="flex items-center gap-2 rounded-full px-3 py-1.5 text-[15px] font-semibold text-muted hover:bg-surface-2 hover:text-fg disabled:opacity-40 disabled:hover:bg-transparent">
+        <Redo2 className="size-4" /> Redo
+      </button>
+    </div>
+  );
   const contentsProps = {
     sections: view.sections.filter((s) => s.key !== ORPHAN),
     reservations: state.reservations,
@@ -388,8 +401,8 @@ export function TripPage() {
         {contentsHidden ? (
           <ContentsRail onShow={() => hideContents(false)} />
         ) : (
-          <div className="h-full w-[220px] xl:w-[240px]">
-            <Contents {...contentsProps} variant="column" onHide={() => hideContents(true)} />
+          <div className="h-full w-[250px] xl:w-[280px]">
+            <Contents {...contentsProps} variant="column" header={undoBar} onHide={() => hideContents(true)} />
           </div>
         )}
       </div>
@@ -397,7 +410,7 @@ export function TripPage() {
         <div className="fixed inset-0 z-[90] lg:hidden" onClick={() => setContentsDrawer(false)}>
           <div className="absolute inset-0 bg-black/50" />
           <div onClick={(e) => e.stopPropagation()} className="absolute inset-y-0 left-0 w-[280px] max-w-[85vw] border-r border-line bg-bg shadow-2xl">
-            <Contents {...contentsProps} variant="drawer" onHide={() => setContentsDrawer(false)} />
+            <Contents {...contentsProps} variant="drawer" header={undoBar} onHide={() => setContentsDrawer(false)} />
           </div>
         </div>
       )}
