@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { DateRangeField } from "./DatePicker";
 import { X } from "lucide-react";
 import { addDays, todayISO } from "../lib/dates";
 import { searchPlaces } from "../lib/photon";
@@ -54,14 +55,9 @@ export function NewTripDialog({ onClose, onCreated }: { onClose: () => void; onC
         <Field label="Trip name (optional)">
           <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder={destination ? `Trip to ${destination}` : "Trip to …"} className={inputCls} />
         </Field>
-        <div className="grid grid-cols-2 gap-3">
-          <Field label="Start">
-            <input type="date" value={startDate} onChange={(e) => setStart(e.target.value)} className={inputCls} />
-          </Field>
-          <Field label="End">
-            <input type="date" value={endDate} min={startDate} onChange={(e) => setEnd(e.target.value)} className={inputCls} />
-          </Field>
-        </div>
+        <Field label="Dates">
+          <DateRangeField start={startDate} end={endDate} onChange={(s, e) => (setStart(s), setEnd(e))} className={`${inputCls} w-full`} />
+        </Field>
         <button disabled={busy} className="w-full rounded-xl bg-accent py-2.5 font-semibold text-on-accent transition-opacity disabled:opacity-60">
           {busy ? "Creating…" : "Start planning"}
         </button>

@@ -99,3 +99,4 @@ Hosted at **adityajain.ca/travelplanner** by the `travelplanner` Cloudflare Work
 - Branding: "Atlas Journeys", logo = Atlas New Tab globe recoloured green (Logo.tsx, public/icon.svg), new icon.svg + PNG/maskable/apple icons, manifest/title/emails/MCP renamed. URL stays /travelplanner.
 - Save map offline button moved into the tab row (icon-only on phones).
 - Drag: overlay renders the full card (ItemCardDragPreview, no sortable hooks); grip handle 28x48 hit area with hover bg.
+- Date pickers: react-day-picker@9 (headless) themed in DatePicker.tsx: DateRangeField (trip hero + new trip, 2 months on wide screens) and DateField (reservations, expenses); ISO strings in/out, popover portalled to body.

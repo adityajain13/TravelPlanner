@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { DateField } from "./DatePicker";
 import type * as Y from "yjs";
 import { ArrowRight, Pencil, Plus, Trash2, Users, X } from "lucide-react";
 import { removeExpense, saveExpense, updateMeta, type Expense, type ExpenseCategory, type TripState } from "../lib/trips";
@@ -247,7 +248,7 @@ function ExpenseForm({ doc, travelers, initial, onClose }: { doc: Y.Doc; travele
               </option>
             ))}
           </select>
-          <input type="date" value={e.date ?? ""} onChange={(ev) => set({ date: ev.target.value })} className={inputCls} />
+          <DateField value={e.date} onChange={(v) => set({ date: v })} clearable placeholder="Date" className={inputCls} />
         </div>
         {travelers.length > 1 && (
           <>
