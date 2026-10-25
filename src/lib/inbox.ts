@@ -1,6 +1,6 @@
 import { api } from "./api";
 import { searchPlaces } from "./photon";
-import type { Item } from "./trips";
+import type { Item, Reservation, ReservationType } from "./trips";
 
 export interface Booking {
   type: "flight" | "hotel" | "train" | "bus" | "car" | "restaurant" | "activity" | "other";
@@ -61,5 +61,45 @@ export async function bookingToItem(b: Booking, near?: [number, number]): Promis
     lat: geo.lat,
     lng: geo.lng,
     osmId: geo.osmId,
+  };
+}
+
+const RES_TYPE: Partial<Record<Booking["type"], ReservationType>> = {
+  flight: "flight",
+  hotel: "lodging",
+  train: "train",
+  bus: "train",
+  car: "car",
+  restaurant: "restaurant",
+};
+
+/** Flights, hotels, trains, cars and restaurants become reservations; activities stay itinerary items. */
+export const reservationTypeFor = (b: Booking) => RES_TYPE[b.type];
+
+export async function bookingToReservation(b: Booking, near?: [number, number]): Promise<Omit<Reservation, "id" | "createdAt">> {
+  const type = RES_TYPE[b.type] ?? "other";
+  let geo: { lat?: number; lng?: number; address?: string } = {};
+  if ((type === "lodging" || type === "restaurant") && (b.address || b.location_name)) {
+    try {
+      const [hit] = await searchPlaces([b.location_name, b.address].filter(Boolean).join(", "), near);
+      if (hit) geo = { lat: hit.lat, lng: hit.lng, address: b.address || hit.address };
+    } catch {
+      /* offline */
+    }
+  }
+  return {
+    type,
+    title: b.title,
+    confirmation: b.confirmation,
+    startDate: b.start_date,
+    startTime: b.start_time,
+    endDate: b.end_date,
+    endTime: b.end_time,
+    from: b.from ?? (type === "car" ? b.location_name : undefined),
+    to: b.to,
+    address: geo.address ?? b.address,
+    lat: geo.lat,
+    lng: geo.lng,
+    notes: b.notes,
   };
 }

@@ -44,6 +44,9 @@ import { SyncBadge } from "../components/SyncBadge";
 import { ShareDialog } from "../components/ShareDialog";
 import { InboxPanel } from "../components/InboxPanel";
 import { fetchInbox, type InboxItem } from "../lib/inbox";
+import { ReservationForm, ReservationsPanel, dayChips } from "../components/Reservations";
+import { BudgetPanel } from "../components/Budget";
+import type { Reservation } from "../lib/trips";
 
 const ORPHAN = "orphan";
 const LOADING = "loading" as const;
@@ -57,6 +60,8 @@ export function TripPage() {
   const [mobileView, setMobileView] = useState<"plan" | "map">("plan");
   const [dragging, setDragging] = useState<Item | null>(null);
   const [sharing, setSharing] = useState(false);
+  const [tab, setTab] = useState<"plan" | "bookings" | "budget">("plan");
+  const [editingRes, setEditingRes] = useState<Reservation | null>(null);
   const [waited, setWaited] = useState(false);
 
   // Trip index row tells us whether this is our trip or one opened from a share link
@@ -128,6 +133,11 @@ export function TripPage() {
       }
       if (s.kind === "day") routes.push({ color: s.color, coords });
     }
+    // Lodging and restaurant bookings with a location get their own pins
+    if (!focus)
+      for (const r of state.reservations)
+        if (r.lat != null && r.lng != null && (r.type === "lodging" || r.type === "restaurant" || r.type === "other"))
+          pins.push({ id: `res:${r.id}`, lat: r.lat, lng: r.lng, color: "#e8ece9", label: r.type === "lodging" ? "H" : r.type === "restaurant" ? "R" : "•" });
     return { sections, pins, routes };
   }, [state, focus]);
 
@@ -170,6 +180,11 @@ export function TripPage() {
   }
 
   const selectFromMap = (itemId: string) => {
+    if (itemId.startsWith("res:")) {
+      setTab("bookings");
+      setMobileView("plan");
+      return;
+    }
     setSelectedId(itemId);
     setMobileView("plan");
     requestAnimationFrame(() =>
@@ -237,7 +252,24 @@ export function TripPage() {
           <div className="mt-3">
             <OfflineMapButton tripId={id!} state={state} />
           </div>
-          {focus && (
+          <nav className="mt-4 -mb-4 flex gap-5 text-sm">
+            {(
+              [
+                ["plan", "Itinerary"],
+                ["bookings", `Reservations${state.reservations.length ? ` · ${state.reservations.length}` : ""}`],
+                ["budget", "Budget"],
+              ] as const
+            ).map(([k, label]) => (
+              <button
+                key={k}
+                onClick={() => setTab(k)}
+                className={`border-b-2 pb-2.5 transition-colors ${tab === k ? "border-accent text-fg" : "border-transparent text-muted hover:text-fg"}`}
+              >
+                {label}
+              </button>
+            ))}
+          </nav>
+          {focus && tab === "plan" && (
             <button
               onClick={() => setFocus(null)}
               className="mt-3 flex items-center gap-1.5 rounded-full bg-accent/15 px-3 py-1 text-xs font-medium text-accent"
@@ -248,6 +280,9 @@ export function TripPage() {
         </header>
 
         <div className="min-h-0 flex-1 overflow-y-auto px-3 pb-28 md:pb-10">
+          {tab === "bookings" && <ReservationsPanel doc={doc} state={state} readOnly={readOnly} />}
+          {tab === "budget" && <BudgetPanel doc={doc} state={state} readOnly={readOnly} />}
+          {tab === "plan" && (<>
           {isOwner && <InboxPanel items={inbox} doc={doc} state={state} onDone={(itemId) => setInbox((xs) => xs.filter((x) => x.id !== itemId))} />}
           <DndContext sensors={readOnly ? [] : sensors} collisionDetection={closestCorners} onDragStart={onDragStart} onDragEnd={onDragEnd}>
             {view.sections.map((s) => (
@@ -258,6 +293,8 @@ export function TripPage() {
                 selectedId={selectedId}
                 near={near}
                 readOnly={readOnly}
+                chips={s.kind === "day" ? dayChips(state.reservations, s.date!) : []}
+                onChipClick={(r) => !readOnly && setEditingRes(r)}
                 onFocus={() => setFocus((f) => (f === s.key ? null : s.key))}
                 onSelect={(itemId) => setSelectedId((cur) => (cur === itemId ? null : itemId))}
                 onRename={s.listId ? (t) => renameList(doc, s.listId!, t) : undefined}
@@ -289,6 +326,7 @@ export function TripPage() {
           >
             <Plus className="size-4" /> Add a list
           </button>}
+          </>)}
         </div>
       </aside>
 
@@ -307,6 +345,7 @@ export function TripPage() {
         </Suspense>
       </main>
 
+      {editingRes && <ReservationForm doc={doc} state={state} initial={editingRes} onClose={() => setEditingRes(null)} />}
       {sharing && id && <ShareDialog tripId={id} onClose={() => setSharing(false)} />}
 
       {/* Mobile plan/map switch */}

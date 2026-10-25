@@ -48,6 +48,11 @@ Hosted at **adityajain.ca/travelplanner** by the `travelplanner` Cloudflare Work
   - Results stored in D1 `inbox` (migration 0002). A receipt email goes back ("Got it: 2 bookings…", "No booking found", or an error).
   - App: matched bookings show at the top of the trip ("From your email") with "Add to <day>" (or the first list when outside the trip dates) and Dismiss. Hotels, restaurants and activities get geocoded with Photon so they get a pin. Unmatched bookings show on Home with a trip picker.
   - Tested locally: allowed sender processed, stranger rejected, inbox add/dismiss/assign flows in the browser. Claude extraction itself is untested here (no API access from the sandbox).
+- [x] **5b. Reservations + Budget (Wanderlog parity)** — `src/components/Reservations.tsx`, `Budget.tsx`, `src/lib/budget.ts`, `src/lib/fx.ts`
+  - Trip doc gains `reservations` and `expenses` maps (flat records, CRDT-friendly) plus `meta.currency/budget/travelers`.
+  - Tabs: Itinerary / Reservations / Budget. Reservation types: flight, lodging, car, train/bus, restaurant, other, with per-type fields, cost, confirmation, notes; lodging/restaurant geocoded to H/R pins. Day chips (departs/arrives, check-in/staying/check-out, pick-up/drop-off).
+  - Budget: trip currency + budget bar, category breakdown, travelers, paid-by / split-between, greedy settle-up. Reservation costs count automatically. FX: Frankfurter (ECB) `api.frankfurter.dev/v1/latest?base=`, cached daily in Dexie for offline.
+  - Email inbox creates reservations for flights/hotels/trains/cars/restaurants. Connector: `get_trip` shows reservations + expenses; bulk `add_reservations` and `add_expenses` tools.
 - [ ] **6. Polish** — free in-app Wanderlog PDF parser (needs a sample PDF to target the layout), edit history with per-origin undo, trip cover image, budget/expenses, packing list, ICS export, travel-time estimates between stops (OSRM), Wanderlog import if an export path exists.
 
 ## Notes for the next session

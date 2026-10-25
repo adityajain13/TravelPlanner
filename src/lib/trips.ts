@@ -46,6 +46,50 @@ export interface TripMeta {
   startDate: string;
   endDate: string;
   center?: [number, number];
+  /** Budget: everything is totalled in this currency (ISO code, e.g. "CAD"). */
+  currency?: string;
+  budget?: number;
+  /** People splitting costs; the first is "you". */
+  travelers?: string[];
+}
+
+export type ReservationType = "flight" | "lodging" | "car" | "train" | "restaurant" | "other";
+
+/** Wanderlog-style booking: lives in its own tab and shows as chips on the matching days. */
+export interface Reservation {
+  id: string;
+  type: ReservationType;
+  title: string; // "AC1 Toronto → Tokyo", "Hotel Granvia Kyoto"
+  confirmation?: string;
+  startDate?: string; // depart / check-in / pickup / reservation date
+  startTime?: string;
+  endDate?: string; // arrive / check-out / drop-off
+  endTime?: string;
+  from?: string; // flights, trains, car pickup location
+  to?: string; // destination, car drop-off location
+  address?: string;
+  lat?: number;
+  lng?: number;
+  notes?: string;
+  cost?: number;
+  costCurrency?: string;
+  createdAt: number;
+}
+
+export type ExpenseCategory = "flights" | "lodging" | "transport" | "food" | "activities" | "shopping" | "other";
+
+export interface Expense {
+  id: string;
+  title: string;
+  amount: number;
+  currency: string;
+  category: ExpenseCategory;
+  date?: string;
+  paidBy?: string;
+  /** Traveler names sharing this cost; empty/missing = everyone. */
+  splitWith?: string[];
+  notes?: string;
+  createdAt: number;
 }
 
 export interface ListMeta {
@@ -58,6 +102,8 @@ export interface TripState {
   meta: TripMeta;
   lists: ListMeta[];
   items: Item[];
+  reservations: Reservation[];
+  expenses: Expense[];
 }
 
 export type EditOrigin = { by: "me" | "remote" | "claude" | "email"; label?: string };
@@ -155,8 +201,57 @@ export function readTrip(doc: Y.Doc): TripState {
   const items = [...doc.getMap<Y.Map<unknown>>("items").values()]
     .map((m) => m.toJSON() as Item)
     .sort(byOrder);
-  return { meta, lists, items };
+  const reservations = records<Reservation>(doc, "reservations").sort((a, b) =>
+    `${a.startDate ?? "9999"}${a.startTime ?? ""}`.localeCompare(`${b.startDate ?? "9999"}${b.startTime ?? ""}`),
+  );
+  const expenses = records<Expense>(doc, "expenses").sort(
+    (a, b) => (b.date ?? "").localeCompare(a.date ?? "") || b.createdAt - a.createdAt,
+  );
+  return { meta, lists, items, reservations, expenses };
 }
+
+const records = <T,>(doc: Y.Doc, name: string) =>
+  [...doc.getMap<Y.Map<unknown>>(name).entries()].map(([id, m]) => ({ ...(m.toJSON() as object), id }) as T);
+
+/* ---- Reservations & expenses: flat maps of records, same CRDT-friendly shape as items ---- */
+
+function upsert(doc: Y.Doc, name: string, id: string, data: Record<string, unknown>, origin: EditOrigin) {
+  edit(
+    doc,
+    () => {
+      const map = doc.getMap<Y.Map<unknown>>(name);
+      let m = map.get(id);
+      if (!m) {
+        m = new Y.Map<unknown>();
+        map.set(id, m);
+      }
+      for (const [k, v] of Object.entries(data)) {
+        if (k === "id") continue;
+        if (v === undefined || v === "" || v === null || (typeof v === "number" && Number.isNaN(v))) m.delete(k);
+        else m.set(k, v);
+      }
+    },
+    origin,
+  );
+}
+
+export function saveReservation(doc: Y.Doc, r: Omit<Reservation, "id" | "createdAt"> & { id?: string; createdAt?: number }, origin: EditOrigin = ME) {
+  const id = r.id ?? nanoid(10);
+  upsert(doc, "reservations", id, { ...r, createdAt: r.createdAt ?? Date.now() }, origin);
+  return id;
+}
+
+export const removeReservation = (doc: Y.Doc, id: string, origin: EditOrigin = ME) =>
+  edit(doc, () => doc.getMap("reservations").delete(id), origin);
+
+export function saveExpense(doc: Y.Doc, e: Omit<Expense, "id" | "createdAt"> & { id?: string; createdAt?: number }, origin: EditOrigin = ME) {
+  const id = e.id ?? nanoid(10);
+  upsert(doc, "expenses", id, { ...e, createdAt: e.createdAt ?? Date.now() }, origin);
+  return id;
+}
+
+export const removeExpense = (doc: Y.Doc, id: string, origin: EditOrigin = ME) =>
+  edit(doc, () => doc.getMap("expenses").delete(id), origin);
 
 const byOrder = (a: { order: string }, b: { order: string }) =>
   a.order < b.order ? -1 : a.order > b.order ? 1 : 0;

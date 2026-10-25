@@ -1,8 +1,8 @@
 import { useState } from "react";
 import { BedDouble, Car, Check, Loader2, Mail, Plane, Ticket, TrainFront, Utensils, X } from "lucide-react";
 import type * as Y from "yjs";
-import { addItem, daySection, type TripState } from "../lib/trips";
-import { bookingToItem, patchInbox, type Booking, type InboxItem } from "../lib/inbox";
+import { addItem, daySection, saveReservation, type TripState } from "../lib/trips";
+import { bookingToItem, bookingToReservation, patchInbox, reservationTypeFor, type Booking, type InboxItem } from "../lib/inbox";
 import { formatShort } from "../lib/dates";
 
 export const BOOKING_ICON: Record<Booking["type"], React.ReactNode> = {
@@ -22,6 +22,7 @@ export function InboxPanel({ items, doc, state, onDone }: { items: InboxItem[]; 
   if (items.length === 0) return null;
 
   const target = (b: Booking) => {
+    if (reservationTypeFor(b)) return { section: "", label: "Add to reservations" };
     const d = b.start_date;
     if (d && d >= state.meta.startDate && d <= state.meta.endDate) return { section: daySection(d), label: `Add to ${formatShort(d)}` };
     const list = state.lists[0];
@@ -31,8 +32,11 @@ export function InboxPanel({ items, doc, state, onDone }: { items: InboxItem[]; 
   async function add(it: InboxItem) {
     setBusy(it.id);
     try {
-      const t = target(it.booking);
-      addItem(doc, t.section, await bookingToItem(it.booking, state.meta.center), { by: "email" });
+      if (reservationTypeFor(it.booking)) {
+        saveReservation(doc, await bookingToReservation(it.booking, state.meta.center), { by: "email" });
+      } else {
+        addItem(doc, target(it.booking).section, await bookingToItem(it.booking, state.meta.center), { by: "email" });
+      }
       await patchInbox(it.id, { status: "added" });
       onDone(it.id);
     } finally {

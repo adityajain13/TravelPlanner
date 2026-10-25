@@ -1,5 +1,5 @@
 import { verifyShareToken, type Role } from "./trips";
-import { render, type Item, type ItemInput, type Op } from "./tripOps";
+import { EXPENSE_CATEGORIES, render, RES_TYPES, type Item, type ItemInput, type Op, type Rec } from "./tripOps";
 import { json, type Env } from "./util";
 
 /*
@@ -19,7 +19,7 @@ Every tool needs a trip share link (https://adityajain.ca/travelplanner/s/...). 
 Call get_trip first: it returns days, lists and the item ids the edit tools need.
 Sections are addressed as "day 3", a date like "2026-12-03", or a list name like "Places to visit".
 Use search_places to get real coordinates before add_place when possible, so the place appears on the map.
-For single edits, make one change per call and say what you changed. To import a whole itinerary (e.g. a Wanderlog PDF the user attached), add everything with one add_items call, using the trip's day numbers or dates; set the trip dates first with update_trip if they differ.`;
+For single edits, make one change per call and say what you changed. To import a whole itinerary (e.g. a Wanderlog PDF the user attached), add everything with one add_items call, using the trip's day numbers or dates; set the trip dates first with update_trip if they differ. Put flights, hotels, car rentals, trains and restaurant bookings in add_reservations (not as places), and any budget expenses in add_expenses.`;
 
 const linkProp = {
   trip_link: { type: "string", description: "The trip's share link (https://adityajain.ca/travelplanner/s/<token>) or just the token." },
@@ -120,6 +120,73 @@ const TOOLS = [
       required: ["trip_link", "items"],
     },
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
+  },
+  {
+    name: "add_reservations",
+    title: "Add reservations",
+    description:
+      "Adds bookings to the trip's Reservations tab: flights, lodging, rental cars, trains/buses, restaurants, other. They also appear as chips on the matching days, and their cost counts toward the budget. Use for confirmations and when importing a Wanderlog trip. Needs an edit link.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        ...linkProp,
+        reservations: {
+          type: "array",
+          maxItems: 100,
+          items: {
+            type: "object",
+            properties: {
+              type: { type: "string", enum: [...RES_TYPES] },
+              title: { type: "string", description: 'e.g. "AC1 Air Canada", "Hotel Granvia Kyoto", "Toyota Rent a Car".' },
+              confirmation: { type: "string" },
+              start_date: { type: "string", pattern: "^\\d{4}-\\d{2}-\\d{2}$", description: "Depart / check-in / pick-up / reservation date, local." },
+              start_time: { type: "string", pattern: "^\\d{2}:\\d{2}$" },
+              end_date: { type: "string", pattern: "^\\d{4}-\\d{2}-\\d{2}$", description: "Arrive / check-out / drop-off." },
+              end_time: { type: "string", pattern: "^\\d{2}:\\d{2}$" },
+              from: { type: "string", description: "Origin airport/station or car pick-up location." },
+              to: { type: "string", description: "Destination or car drop-off location." },
+              address: { type: "string", description: "For lodging/restaurants; used to place a map pin." },
+              cost: { type: "number" },
+              cost_currency: { type: "string", description: "ISO code, e.g. JPY. Defaults to the trip currency." },
+              notes: { type: "string" },
+            },
+            required: ["type", "title"],
+          },
+        },
+      },
+      required: ["trip_link", "reservations"],
+    },
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
+  },
+  {
+    name: "add_expenses",
+    title: "Add expenses",
+    description: "Adds expenses to the trip's Budget tab. Don't add reservation costs here; they're counted automatically. Needs an edit link.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        ...linkProp,
+        expenses: {
+          type: "array",
+          maxItems: 300,
+          items: {
+            type: "object",
+            properties: {
+              title: { type: "string" },
+              amount: { type: "number" },
+              currency: { type: "string", description: "ISO code. Defaults to the trip currency." },
+              category: { type: "string", enum: [...EXPENSE_CATEGORIES] },
+              date: { type: "string", pattern: "^\\d{4}-\\d{2}-\\d{2}$" },
+              paid_by: { type: "string", description: "Traveler name, if the trip splits costs." },
+              notes: { type: "string" },
+            },
+            required: ["title", "amount"],
+          },
+        },
+      },
+      required: ["trip_link", "expenses"],
+    },
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
   },
   {
     name: "update_item",
@@ -338,6 +405,76 @@ async function callTool(env: Env, name: string, a: Args): Promise<string> {
       ]
         .filter(Boolean)
         .join("\n");
+    }
+    case "add_reservations": {
+      const list = a.reservations;
+      if (!Array.isArray(list) || !list.length) throw new ToolError('"reservations" must be a non-empty array.');
+      const { room } = await access(env, a, "edit");
+      const snap = await room.read();
+      if (!snap.meta.title) throw new ToolError("This trip has no data on the server yet. Open it once in the app while online.");
+      const records = [];
+      for (const [i, raw] of list.entries()) {
+        const x = (raw ?? {}) as Args;
+        try {
+          const type = str(x, "type", true)!;
+          if (!(RES_TYPES as readonly string[]).includes(type)) throw new ToolError(`type must be one of ${RES_TYPES.join(", ")}`);
+          const rec: Omit<Rec, "id"> = {
+            type,
+            title: str(x, "title", true),
+            confirmation: str(x, "confirmation"),
+            startDate: str(x, "start_date"),
+            startTime: time(x, "start_time"),
+            endDate: str(x, "end_date"),
+            endTime: time(x, "end_time"),
+            from: str(x, "from"),
+            to: str(x, "to"),
+            address: str(x, "address"),
+            cost: num(x, "cost"),
+            costCurrency: str(x, "cost_currency")?.toUpperCase(),
+            notes: str(x, "notes"),
+          };
+          if ((type === "lodging" || type === "restaurant") && (rec.address || rec.title)) {
+            const hit = await geocode([rec.title, rec.address].filter(Boolean).join(", "), snap.meta.center);
+            if (hit) Object.assign(rec, { lat: hit.lat, lng: hit.lng, address: rec.address ?? hit.address });
+          }
+          records.push(rec);
+        } catch (e) {
+          throw new ToolError(`Reservation ${i + 1}: ${(e as Error).message}`);
+        }
+      }
+      const r = await room.mutate({ type: "addRecords", map: "reservations", records });
+      if (!r.ok) throw new ToolError(r.error);
+      return `Added ${records.length} reservation${records.length > 1 ? "s" : ""}. They show in the Reservations tab and on their days.`;
+    }
+    case "add_expenses": {
+      const list = a.expenses;
+      if (!Array.isArray(list) || !list.length) throw new ToolError('"expenses" must be a non-empty array.');
+      const { room } = await access(env, a, "edit");
+      const snap = await room.read();
+      if (!snap.meta.title) throw new ToolError("This trip has no data on the server yet. Open it once in the app while online.");
+      const records = list.map((raw, i) => {
+        const x = (raw ?? {}) as Args;
+        try {
+          const amount = num(x, "amount");
+          if (amount == null) throw new ToolError('Missing "amount".');
+          const category = str(x, "category") ?? "other";
+          if (!(EXPENSE_CATEGORIES as readonly string[]).includes(category)) throw new ToolError(`category must be one of ${EXPENSE_CATEGORIES.join(", ")}`);
+          return {
+            title: str(x, "title", true)!,
+            amount,
+            currency: (str(x, "currency") || snap.meta.currency || "CAD").toUpperCase(),
+            category,
+            date: str(x, "date"),
+            paidBy: str(x, "paid_by"),
+            notes: str(x, "notes"),
+          };
+        } catch (e) {
+          throw new ToolError(`Expense ${i + 1}: ${(e as Error).message}`);
+        }
+      });
+      const r = await room.mutate({ type: "addRecords", map: "expenses", records });
+      if (!r.ok) throw new ToolError(r.error);
+      return `Added ${records.length} expense${records.length > 1 ? "s" : ""} to the budget.`;
     }
     case "update_item": {
       const patch: Record<string, unknown> = {
