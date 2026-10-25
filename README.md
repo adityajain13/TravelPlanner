@@ -13,6 +13,8 @@ My own Wanderlog. It's an offline-first trip planner, dark down to the map, with
 - Place search on OpenStreetMap (Photon, with Nominatim as a fallback). Each stop takes a time, notes and a cost. An optional live **Google details** button shows photos, hours and ratings; only the place ID is stored.
 - **Routing between stops:** each leg shows "🚗 21 min · 8.7 km". Tap it to switch to walk, bike or transit. The map draws the real road, path or transit line, and each day header shows that day's total travel.
 - **Photos** for every place: pick from Unsplash, the place's Wikipedia article, or large landscape shots from Wikimedia Commons and Openverse (or paste a link). **Auto-fill photos** adds confident Wikipedia matches for the whole trip, and every trip gets a cover photo.
+- **Place panel over the map** when you open a stop: Wikipedia summary, photo, address, time, cost, notes, live Google details, links, and "6 of 12" stepping. Shrink it to a compact card; your choice sticks between stops.
+- **Move or select:** each card's "Added to ▾" menu moves it to another day or list. Tick the checkbox (shift-click for a range) to copy, move or delete many at once.
 - Dark vector map with Wanderlog-style numbered pins per day, photo popups, and a **satellite** toggle. Jump between days with the date chips, and focus the map on one day with the eye icon.
 
 **Book and budget**

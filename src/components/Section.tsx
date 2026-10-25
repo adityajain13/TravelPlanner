@@ -10,6 +10,7 @@ import type { PlaceResult } from "../lib/photon";
 import { formatDayHeading } from "../lib/dates";
 import { ItemCard } from "./ItemCard";
 import { PlaceSearch } from "./PlaceSearch";
+import type { SectionTarget } from "./SectionPicker";
 
 export interface SectionInfo {
   key: string;
@@ -45,6 +46,10 @@ interface Props {
   onAddNote: (text: string, index?: number) => void;
   onChange: (id: string, patch: Partial<Item>) => void;
   onDelete: (id: string) => void;
+  checked?: Set<string>;
+  onCheck?: (id: string, checked: boolean, shift: boolean) => void;
+  targets?: SectionTarget[];
+  onMoveTo?: (id: string, section: string) => void;
 }
 
 export function Section(p: Props) {
@@ -183,6 +188,11 @@ export function Section(p: Props) {
                 onSelect={() => p.onSelect(it.id)}
                 onChange={(patch) => p.onChange(it.id, patch)}
                 onDelete={() => p.onDelete(it.id)}
+                checked={p.checked?.has(it.id)}
+                selecting={!!p.checked?.size}
+                onCheck={p.onCheck && info.key !== "orphan" ? (c, shift) => p.onCheck!(it.id, c, shift) : undefined}
+                targets={p.targets}
+                onMoveTo={p.onMoveTo ? (k) => p.onMoveTo!(it.id, k) : undefined}
               />
               </div>
             ))}

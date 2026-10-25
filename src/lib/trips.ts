@@ -328,6 +328,56 @@ export function removeItem(doc: Y.Doc, id: string, origin: EditOrigin = ME) {
   edit(doc, () => doc.getMap("items").delete(id), origin);
 }
 
+/** Remove several items in one undoable change. */
+export function removeItems(doc: Y.Doc, ids: string[], origin: EditOrigin = ME) {
+  edit(doc, () => ids.forEach((id) => doc.getMap("items").delete(id)), origin);
+}
+
+/** Append items to the end of `section`, keeping their current relative order. */
+export function moveItems(doc: Y.Doc, ids: string[], section: string, origin: EditOrigin = ME) {
+  const items = doc.getMap<Y.Map<unknown>>("items");
+  const picked = [...items.values()].map((m) => m.toJSON() as Item).filter((i) => ids.includes(i.id)).sort(sortForMove);
+  edit(
+    doc,
+    () => {
+      let last = itemsIn(doc, section).filter((i) => !ids.includes(i.id)).at(-1)?.order ?? null;
+      for (const it of picked) {
+        last = generateKeyBetween(last, null);
+        const m = items.get(it.id)!;
+        m.set("section", section);
+        m.set("order", last);
+      }
+    },
+    origin,
+  );
+}
+
+/** Duplicate items onto the end of `section` (new ids; photos, notes, costs copied). */
+export function copyItems(doc: Y.Doc, ids: string[], section: string, origin: EditOrigin = ME): string[] {
+  const items = doc.getMap<Y.Map<unknown>>("items");
+  const picked = [...items.values()].map((m) => m.toJSON() as Item).filter((i) => ids.includes(i.id)).sort(sortForMove);
+  const out: string[] = [];
+  edit(
+    doc,
+    () => {
+      let last = itemsIn(doc, section).at(-1)?.order ?? null;
+      for (const it of picked) {
+        last = generateKeyBetween(last, null);
+        const id = nanoid(10);
+        const m = new Y.Map<unknown>();
+        for (const [k, v] of Object.entries({ ...it, id, section, order: last, createdAt: Date.now() })) if (v !== undefined) m.set(k, v);
+        items.set(id, m);
+        out.push(id);
+      }
+    },
+    origin,
+  );
+  return out;
+}
+
+// Keep trip order when moving a selection that spans days: by section, then position
+const sortForMove = (a: Item, b: Item) => (a.section === b.section ? byOrder(a, b) : a.section < b.section ? -1 : 1);
+
 /** Move an item into `section` at position `index` (counted without the moved item). */
 export function moveItem(doc: Y.Doc, id: string, section: string, index: number, origin: EditOrigin = ME) {
   const siblings = itemsIn(doc, section, id);
