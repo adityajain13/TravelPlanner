@@ -85,3 +85,4 @@ Hosted at **adityajain.ca/travelplanner** by the `travelplanner` Cloudflare Work
 - Picker quality: Unsplash via Worker proxy (/api/photos, secret UNSPLASH_ACCESS_KEY, edge-cached 1 day, download tracking on pick); Wikipedia only for the place's own article; Commons/Openverse limited to >=1400px landscape photos and non-chart titles. Pointer cursor restored on buttons (Tailwind v4 default).
 - Unsplash attribution: linked "Photo by <name> on Unsplash" under every picker tile, on the cover, in the expanded card and in map popups (PhotoCredit.tsx).
 - Insert between stops: hover "+" in the gap/leg row opens an inline search; addItem takes an index.
+- lib/scroll.ts: rAF scroller that re-targets each frame (content-visibility sections resize mid-scroll and cancel native smooth scroll, esp. upward). Used by contents, day chips, map selection.
