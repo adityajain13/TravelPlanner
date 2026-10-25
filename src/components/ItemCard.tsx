@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { Clock, ExternalLink, GripVertical, StickyNote, Trash2 } from "lucide-react";
+import { Clock, ExternalLink, GripVertical, StickyNote, Trash2, Wallet } from "lucide-react";
+import { CURRENCIES, formatMoney } from "../lib/fx";
 import type { Item } from "../lib/trips";
 import { googleMapsLink } from "../lib/photon";
 import { GoogleDetails } from "./GoogleDetails";
@@ -12,12 +13,14 @@ interface Props {
   color: string;
   selected: boolean;
   readOnly?: boolean;
+  /** Trip currency, the default for a new cost. */
+  currency?: string;
   onSelect: () => void;
   onChange: (patch: Partial<Item>) => void;
   onDelete: () => void;
 }
 
-export function ItemCard({ item, number, color, selected, readOnly, onSelect, onChange, onDelete }: Props) {
+export function ItemCard({ item, number, color, selected, readOnly, currency = "CAD", onSelect, onChange, onDelete }: Props) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: item.id, disabled: readOnly });
   const style = { transform: CSS.Translate.toString(transform), transition };
 
@@ -83,6 +86,11 @@ export function ItemCard({ item, number, color, selected, readOnly, onSelect, on
           </div>
         </div>
 
+        {!selected && item.cost != null && (
+          <p className="mt-1 flex items-center gap-1 text-xs text-muted">
+            <Wallet className="size-3.5" /> {formatMoney(item.cost, item.costCurrency ?? currency)}
+          </p>
+        )}
         {(selected || item.startTime || item.notes) && (
           <div className="mt-2 space-y-2" onClick={(e) => e.stopPropagation()}>
             {(selected || item.startTime) && item.kind === "place" && (
@@ -93,6 +101,14 @@ export function ItemCard({ item, number, color, selected, readOnly, onSelect, on
                 <TimeInput disabled={readOnly} value={item.endTime} onCommit={(v) => onChange({ endTime: v })} />
               </div>
             )}
+            {selected && (item.cost != null || !readOnly) && (
+              <CostInput
+                disabled={readOnly}
+                amount={item.cost}
+                currency={item.costCurrency ?? currency}
+                onCommit={(cost, costCurrency) => onChange({ cost, costCurrency: cost == null || costCurrency === currency ? undefined : costCurrency })}
+              />
+            )}
             {selected && item.kind === "place" && (
               <GoogleDetails item={item} onLink={(googlePlaceId) => onChange({ googlePlaceId })} />
             )}
@@ -102,6 +118,39 @@ export function ItemCard({ item, number, color, selected, readOnly, onSelect, on
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+function CostInput({ amount, currency, disabled, onCommit }: { amount?: number; currency: string; disabled?: boolean; onCommit: (a: number | undefined, c: string) => void }) {
+  return (
+    <div className="flex items-center gap-1.5 text-xs text-muted">
+      <Wallet className="size-3.5" />
+      <input
+        type="number"
+        min="0"
+        step="any"
+        disabled={disabled}
+        key={amount}
+        defaultValue={amount ?? ""}
+        placeholder="Cost"
+        onBlur={(e) => {
+          const v = e.target.value === "" ? undefined : Number(e.target.value);
+          if (v !== amount) onCommit(v, currency);
+        }}
+        onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()}
+        className="w-24 rounded-md bg-transparent px-1 py-0.5 text-fg outline-none placeholder:text-muted/60 focus:bg-surface"
+      />
+      <select
+        disabled={disabled}
+        value={currency}
+        onChange={(e) => amount != null && onCommit(amount, e.target.value)}
+        className="rounded-md bg-transparent py-0.5 text-fg outline-none focus:bg-surface"
+      >
+        {CURRENCIES.map((c) => (
+          <option key={c}>{c}</option>
+        ))}
+      </select>
     </div>
   );
 }

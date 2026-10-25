@@ -293,6 +293,7 @@ export function TripPage() {
                 selectedId={selectedId}
                 near={near}
                 readOnly={readOnly}
+                currency={state.meta.currency ?? "CAD"}
                 chips={s.kind === "day" ? dayChips(state.reservations, s.date!) : []}
                 onChipClick={(r) => !readOnly && setEditingRes(r)}
                 onFocus={() => setFocus((f) => (f === s.key ? null : s.key))}

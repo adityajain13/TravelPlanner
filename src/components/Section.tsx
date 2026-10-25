@@ -25,6 +25,7 @@ interface Props {
   info: SectionInfo;
   focused: boolean;
   readOnly?: boolean;
+  currency?: string;
   chips?: { r: Reservation; label: string }[];
   onChipClick?: (r: Reservation) => void;
   selectedId: string | null;
@@ -110,6 +111,7 @@ export function Section(p: Props) {
                 color={info.color}
                 selected={p.selectedId === it.id}
                 readOnly={p.readOnly}
+                currency={p.currency}
                 onSelect={() => p.onSelect(it.id)}
                 onChange={(patch) => p.onChange(it.id, patch)}
                 onDelete={() => p.onDelete(it.id)}

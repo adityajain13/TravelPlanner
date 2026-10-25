@@ -25,6 +25,8 @@ export interface Item {
   category?: string;
   osmId?: string;
   googlePlaceId?: string;
+  cost?: number;
+  costCurrency?: string;
   createdAt: number;
 }
 
@@ -197,6 +199,7 @@ export function render(snap: Snapshot, role: string): string {
     let s = `${bits.join(" ")}  {id: ${it.id}}`;
     if (it.address) s += `\n   ${it.address}`;
     if (it.lat != null) s += `\n   coords: ${it.lat.toFixed(5)}, ${it.lng!.toFixed(5)}`;
+    if (it.cost != null) s += `\n   cost: ${it.cost} ${it.costCurrency ?? meta.currency ?? "CAD"}`;
     if (it.notes) s += `\n   notes: ${it.notes.replace(/\n/g, " / ")}`;
     return s;
   };
