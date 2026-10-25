@@ -26,6 +26,7 @@ import { RES_ICON, RES_SINGULAR } from "../components/Reservations";
 import { GENERIC_PLACE } from "../lib/geocode";
 import { edit } from "../lib/trips";
 import { parseISODate } from "../lib/dates";
+import { scrollToId } from "../lib/scroll";
 import { db } from "../lib/db";
 import { useSession } from "../lib/api";
 import { useSync } from "../lib/sync";
@@ -287,7 +288,7 @@ export function TripPage() {
     setSelectedId(itemId);
     setMobileView("plan");
     requestAnimationFrame(() =>
-      document.getElementById(`item-${itemId}`)?.scrollIntoView({ behavior: "smooth", block: "center" }),
+      scrollToId(scrollRef.current, `item-${itemId}`, "center"),
     );
   };
 
@@ -305,9 +306,7 @@ export function TripPage() {
     setContentsDrawer(false);
     // let the tab render before scrolling to its section
     setTimeout(() => {
-      const el = targetId && document.getElementById(targetId);
-      if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
-      else scrollRef.current?.scrollTo({ top: headerRef.current?.offsetHeight ?? 0, behavior: "smooth" });
+      if (!(targetId && scrollToId(scrollRef.current, targetId))) scrollRef.current?.scrollTo({ top: headerRef.current?.offsetHeight ?? 0, behavior: "smooth" });
     }, 40);
   };
   const spent = totals(budgetLines(state, fx.convert)).total;
@@ -455,7 +454,7 @@ export function TripPage() {
                 .map((s) => (
                   <button
                     key={s.key}
-                    onClick={() => document.getElementById(`sec-${s.key}`)?.scrollIntoView({ behavior: "smooth", block: "start" })}
+                    onClick={() => scrollToId(scrollRef.current, `sec-${s.key}`)}
                     className="flex shrink-0 items-center gap-1.5 rounded-full border border-line px-2.5 py-1 text-xs text-muted hover:border-accent hover:text-fg"
                   >
                     <span className="size-2 rounded-full" style={{ background: s.color }} />
