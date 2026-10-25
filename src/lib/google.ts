@@ -1,5 +1,5 @@
-// Google Places API (New), used live only. Per Google's terms the only thing we persist is the
-// place ID (on the item as `googlePlaceId`). Details stay in this in-memory cache for the session.
+// Google Places API (New). Personal app: Google's name/address/pin/type for picked places and a
+// snapshot of details (rating, hours, phone, website) are saved on the stop so they work offline.
 // Restrict the key to HTTP referrers adityajain.ca/* and localhost in Google Cloud Console.
 
 export const GOOGLE_KEY = import.meta.env.VITE_GOOGLE_PLACES_KEY as string | undefined;
@@ -119,7 +119,7 @@ export const PRICE_LABEL: Record<string, string> = {
 /*
  * Google Places Autocomplete (New), live only, for places OpenStreetMap doesn't find
  * ("YYZ Terminal 3", a bakery counter inside a department store). Picking one looks up its
- * location once, then the app matches it to OpenStreetMap; only the place ID is kept.
+ * place's details once and saves Google's name, address, pin and type on the stop.
  * One session token per typing session keeps billing to a single autocomplete session.
  */
 export interface GoogleSuggestion {
@@ -149,10 +149,37 @@ export async function autocomplete(input: string, near?: [number, number], signa
     .map((p) => ({ placeId: p.placeId, main: p.structuredFormat?.mainText?.text ?? p.text?.text ?? "", secondary: p.structuredFormat?.secondaryText?.text }));
 }
 
-/** Where a suggestion is (ends the autocomplete session). Used only to find the OSM match. */
-export async function suggestionLocation(placeId: string): Promise<{ lat: number; lng: number } | null> {
-  const qs = session ? `?sessionToken=${session}` : "";
+/** Google's own data for a picked suggestion (ends the autocomplete session). Saved on the stop. */
+export async function suggestionPlace(placeId: string): Promise<{
+  name: string;
+  address?: string;
+  lat: number;
+  lng: number;
+  type?: string;
+  countryCode?: string;
+} | null> {
+  const qs = session ? `?sessionToken=${session}&languageCode=en` : "?languageCode=en";
   session = null;
-  const p = await call<{ location?: { latitude: number; longitude: number } }>(`${API}/places/${encodeURIComponent(placeId)}${qs}`, { method: "GET" }, "location");
-  return p.location ? { lat: p.location.latitude, lng: p.location.longitude } : null;
+  type P = {
+    displayName?: { text: string };
+    formattedAddress?: string;
+    shortFormattedAddress?: string;
+    location?: { latitude: number; longitude: number };
+    primaryTypeDisplayName?: { text: string };
+    addressComponents?: { shortText?: string; types?: string[] }[];
+  };
+  const p = await call<P>(
+    `${API}/places/${encodeURIComponent(placeId)}${qs}`,
+    { method: "GET" },
+    "displayName,formattedAddress,shortFormattedAddress,location,primaryTypeDisplayName,addressComponents",
+  );
+  if (!p.location) return null;
+  return {
+    name: p.displayName?.text ?? "",
+    address: p.formattedAddress ?? p.shortFormattedAddress,
+    lat: p.location.latitude,
+    lng: p.location.longitude,
+    type: p.primaryTypeDisplayName?.text,
+    countryCode: p.addressComponents?.find((c) => c.types?.includes("country"))?.shortText?.toLowerCase(),
+  };
 }

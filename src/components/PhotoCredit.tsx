@@ -21,7 +21,7 @@ export function PhotoCredit({ img, className = "" }: { img: PlaceImage; classNam
       </span>
     );
   }
-  const label = img.source === "wikipedia" ? "Wikipedia" : img.source === "commons" ? "Wikimedia Commons" : img.source === "openverse" ? "Openverse" : "";
+  const label = img.source === "google" ? "Google" : img.source === "wikipedia" ? "Wikipedia" : img.source === "commons" ? "Wikimedia Commons" : img.source === "openverse" ? "Openverse" : "";
   const text = [img.credit && !img.credit.startsWith("Wikipedia") ? img.credit : null, label].filter(Boolean).join(" · ");
   if (!text) return null;
   return (

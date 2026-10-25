@@ -30,7 +30,7 @@ export interface LegResult {
   transfers?: number;
   /** Transit timed on a nearby same weekday / leaving now (the trip date isn't in the timetables). */
   estimated?: boolean;
-  /** Came from Google: shown live, never written to the offline route cache. */
+  /** Not written to the offline route cache. */
   live?: boolean;
 }
 
@@ -152,7 +152,7 @@ const rides = (r: LegResult | null) => !!r?.steps?.some((st) => st.mode !== "WAL
 
 /**
  * Transit, trying in turn: the real date/time, the same weekday next week, leaving now
- * (all Transitous), then Google's transit directions when a key is set. Like Wanderlog, the
+ * (all Transitous), then Google's transit directions when a key is set (cached like the rest). Like Wanderlog, the
  * point is "how long will this take", so any of these is a fine answer.
  */
 async function transitWithFallback(a: [number, number], b: [number, number], when?: string): Promise<LegResult | null> {
@@ -210,7 +210,6 @@ async function googleTransit(a: [number, number], b: [number, number]): Promise<
     steps,
     transfers: Math.max(0, steps.filter((x) => x.mode !== "WALK").length - 1),
     estimated: true,
-    live: true,
   };
 }
 

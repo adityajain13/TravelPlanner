@@ -56,7 +56,7 @@ export default defineConfig({
         runtimeCaching: [
           {
             // Place photos (Wikipedia / Commons / Openverse thumbnails) stay available offline
-            urlPattern: ({ url }) => url.hostname === "upload.wikimedia.org" || url.hostname === "images.unsplash.com" || (url.hostname === "api.openverse.org" && url.pathname.endsWith("/thumb/")),
+            urlPattern: ({ url }) => url.hostname === "upload.wikimedia.org" || url.hostname === "images.unsplash.com" || (url.hostname === "places.googleapis.com" && url.pathname.endsWith("/media")) || (url.hostname === "api.openverse.org" && url.pathname.endsWith("/thumb/")),
             handler: "CacheFirst",
             options: {
               cacheName: "place-photos",

@@ -259,7 +259,7 @@ function ItemCardView({
               )}
               {/* Google details and the photo credit share a row */}
               <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5 [&>div.space-y-2]:basis-full">
-                {isPlace && <GoogleDetails item={item} onLink={(googlePlaceId) => onChange({ googlePlaceId })} />}
+                {isPlace && <GoogleDetails item={item} onLink={(googlePlaceId) => onChange({ googlePlaceId })} onSnapshot={(d) => onChange({ google: { ...d, fetchedAt: Date.now() } })} />}
                 {item.image && <PhotoCredit img={item.image} className="ml-auto truncate text-[11px] text-muted" />}
               </div>
               {(item.notes || !readOnly) && <NotesInput disabled={readOnly} value={item.notes ?? ""} onCommit={(v) => onChange({ notes: v })} />}

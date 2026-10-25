@@ -9,7 +9,7 @@
 export interface PlaceImage {
   url: string; // large, for headers / viewers
   thumb: string; // ~320px, for cards and pins
-  source: "unsplash" | "wikipedia" | "commons" | "openverse" | "link";
+  source: "unsplash" | "wikipedia" | "commons" | "openverse" | "google" | "link";
   credit?: string; // "Photo: Jane Doe, CC BY-SA 4.0"
   link?: string; // page the image came from
   title?: string;

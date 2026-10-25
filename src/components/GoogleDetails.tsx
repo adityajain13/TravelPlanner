@@ -6,11 +6,13 @@ import { findPlaceId, getDetails, GOOGLE_KEY, photoUrl, PRICE_LABEL, type Google
 interface Props {
   item: Item;
   onLink: (googlePlaceId: string) => void;
+  /** Save what Google returned onto the stop (works offline next time). */
+  onSnapshot?: (d: Details) => void;
 }
 
-/** Live Google data for a place. Only the place ID is ever written back to the trip. */
-export function GoogleDetails({ item, onLink }: Props) {
-  const [details, setDetails] = useState<Details | null>(null);
+/** Google data for a place: the saved snapshot first, refreshed when online and saved back. */
+export function GoogleDetails({ item, onLink, onSnapshot }: Props) {
+  const [details, setDetails] = useState<Details | null>(item.google ?? null);
   const [state, setState] = useState<"idle" | "loading" | "error" | "notfound">("idle");
   const [error, setError] = useState("");
   const [online, setOnline] = useState(navigator.onLine);
@@ -24,9 +26,10 @@ export function GoogleDetails({ item, onLink }: Props) {
     return () => (window.removeEventListener("online", on), window.removeEventListener("offline", off));
   }, []);
 
-  // Already linked → load details automatically when the card is opened
+  // Already linked → refresh when opened (saved copy shows meanwhile / offline); weekly is plenty
   useEffect(() => {
-    if (item.googlePlaceId && online && !details) void load();
+    const stale = !item.google || Date.now() - item.google.fetchedAt > 7 * 86400000;
+    if (item.googlePlaceId && online && stale) void load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [item.googlePlaceId, online]);
 
@@ -39,7 +42,9 @@ export function GoogleDetails({ item, onLink }: Props) {
         if (!id) return setState("notfound");
         onLink(id);
       }
-      setDetails(await getDetails(id));
+      const d = await getDetails(id);
+      setDetails(d);
+      onSnapshot?.(d);
       setState("idle");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Couldn't reach Google");
@@ -125,7 +130,7 @@ export function GoogleDetails({ item, onLink }: Props) {
           </a>
         )}
       </div>
-      <p className="text-[10px] text-muted/70">Live from Google · not saved offline</p>
+      <p className="text-[10px] text-muted/70">From Google{item.google ? ` · saved ${new Date(item.google.fetchedAt).toLocaleDateString()}` : ""}</p>
     </div>
   );
 }

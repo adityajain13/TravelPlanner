@@ -3,8 +3,8 @@
  * the place is then matched to OpenStreetMap so what gets saved is OSM data (see CLAUDE.md).
  */
 import { searchPlaces, type PlaceResult } from "./photon";
-import { distanceKm, reversePlaces, textScore } from "./geocode";
-import { suggestionLocation, type GoogleSuggestion } from "./google";
+import { distanceKm, reversePlaces } from "./geocode";
+import { autocomplete, GOOGLE_KEY, suggestionPlace, type GoogleSuggestion } from "./google";
 import { shareQuery } from "./shareToken";
 
 const LINK = /^https?:\/\/(maps\.app\.goo\.gl|goo\.gl\/maps|g\.co\/kgs|(www\.)?google\.[a-z.]+\/maps|maps\.google\.[a-z.]+)\S*$/i;
@@ -49,6 +49,13 @@ export async function placesFromLink(link: string, signal?: AbortSignal): Promis
   const p = parseMapsUrl(await expand(link.trim(), signal));
   if (!p.name && p.lat == null) throw new Error("No place found in that link");
   const at: [number, number] | undefined = p.lat != null ? [p.lng!, p.lat] : undefined;
+  if (p.name && GOOGLE_KEY) {
+    const [sug] = await autocomplete(p.name, at, signal).catch(() => []);
+    if (sug) {
+      const g = await placeFromSuggestion(sug).catch(() => null);
+      if (g && (!at || distanceKm(at, [g.lng, g.lat]) < 2)) return [{ ...g, fromLink: true }];
+    }
+  }
   if (p.name) {
     const hits = await searchPlaces(p.name, at, signal).catch(() => []);
     const near = at ? hits.filter((h) => distanceKm(at, [h.lng, h.lat]) < 1).sort((a, b) => distanceKm(at, [a.lng, a.lat]) - distanceKm(at, [b.lng, b.lat])) : hits;
@@ -74,42 +81,18 @@ export async function placesFromLink(link: string, signal?: AbortSignal): Promis
   ];
 }
 
-/**
- * A Google autocomplete pick → a place to save. Google only says *where* it is; what's saved
- * comes from OpenStreetMap at that spot (matching name first, else the nearest feature for the
- * position and address), plus the Google place ID so live Google details work.
- */
-export async function placeFromSuggestion(sug: GoogleSuggestion, signal?: AbortSignal): Promise<PlaceResult> {
-  const loc = await suggestionLocation(sug.placeId);
-  if (!loc) throw new Error("Couldn't locate that place");
-  const at: [number, number] = [loc.lng, loc.lat];
-  const [around, named] = await Promise.all([
-    reversePlaces(at, 0.15, signal).catch(() => []),
-    searchPlaces(sug.main, at, signal).catch(() => []),
-  ]);
-  const close = (h: { lat: number; lng: number }, km: number) => distanceKm(at, [h.lng, h.lat]) < km;
-  const match = [...named.filter((h) => close(h, 0.6)), ...around].find((h) => textScore(sug.main, h) >= 0.6);
-  if (match)
-    return {
-      osmId: match.osmId ?? `pin:${match.lat.toFixed(5)},${match.lng.toFixed(5)}`,
-      name: textScore(sug.main, match) >= 0.75 ? match.name : sug.main,
-      address: match.address ?? "",
-      category: match.category ?? "",
-      lat: match.lat,
-      lng: match.lng,
-      countryCode: match.countryCode,
-      googlePlaceId: sug.placeId,
-    };
-  const spot = around.find((h) => close(h, 0.15)) ?? (await reversePlaces(at, 0.6, signal).catch(() => []))[0];
-  const pos = spot ?? { lat: loc.lat, lng: loc.lng };
+/** A Google autocomplete pick → a place to save, using Google's own name, address, pin and type. */
+export async function placeFromSuggestion(sug: GoogleSuggestion): Promise<PlaceResult> {
+  const g = await suggestionPlace(sug.placeId);
+  if (!g) throw new Error("Couldn't locate that place");
   return {
-    osmId: spot?.osmId ? `near:${spot.osmId}` : `pin:${pos.lat.toFixed(5)},${pos.lng.toFixed(5)}`,
-    name: sug.main,
-    address: spot?.address ?? sug.secondary ?? "",
-    category: "",
-    lat: pos.lat,
-    lng: pos.lng,
-    countryCode: spot?.countryCode,
+    osmId: `g:${sug.placeId}`,
+    name: g.name || sug.main,
+    address: g.address ?? sug.secondary ?? "",
+    category: g.type?.toLowerCase() ?? "",
+    lat: g.lat,
+    lng: g.lng,
+    countryCode: g.countryCode,
     googlePlaceId: sug.placeId,
   };
 }

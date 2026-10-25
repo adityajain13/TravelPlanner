@@ -41,7 +41,9 @@ export interface Item extends CostSplit {
   address?: string;
   category?: string;
   osmId?: string; // e.g. "N123456" — stable OSM reference, fine to store forever
-  googlePlaceId?: string; // only the ID; details are fetched live (Phase 2)
+  googlePlaceId?: string;
+  /** Last Google details seen for this place (rating, hours, phone…), kept for offline use. */
+  google?: import("./google").GoogleDetails & { fetchedAt: number };
   /** Entry fee, meal, tickets… counted in the budget. Currency defaults to the trip's. */
   cost?: number;
   costCurrency?: string;
