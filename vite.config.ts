@@ -18,6 +18,16 @@ export default defineConfig({
     chunkSizeWarningLimit: 1500,
   },
   plugins: [
+    // Library workers shipped as ?url assets (MapLibre, pdf.js) end with a sourceMappingURL comment
+    // pointing at a .map file that isn't emitted; strip it so devtools doesn't log a 404.
+    {
+      name: "strip-asset-sourcemap-comments",
+      generateBundle(_, bundle) {
+        for (const f of Object.values(bundle))
+          if (f.type === "asset" && f.fileName.endsWith(".mjs"))
+            f.source = String(f.source).replace(/\n?\/\/# sourceMappingURL=\S+\s*$/, "\n");
+      },
+    },
     react(),
     tailwindcss(),
     VitePWA({
