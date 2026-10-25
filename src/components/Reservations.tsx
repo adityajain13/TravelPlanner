@@ -80,7 +80,7 @@ export function ReservationsPanel({ doc, state, readOnly }: { doc: Y.Doc; state:
         const list = state.reservations.filter((r) => r.type === t);
         if (!list.length) return null;
         return (
-          <section key={t}>
+          <section key={t} id={`res-${t}`} className="scroll-mt-28">
             <h3 className="mb-2 flex items-center gap-2 font-display text-lg">
               <span className="text-muted">{RES_ICON[t]}</span>
               {RES_LABEL[t]}

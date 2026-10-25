@@ -1,0 +1,148 @@
+import { useEffect, useState, type RefObject } from "react";
+import { ChevronDown, ChevronsLeft, ChevronsRight, PiggyBank, X } from "lucide-react";
+import type { Reservation, ReservationType } from "../lib/trips";
+import type { SectionInfo } from "./Section";
+import { RES_ICON, RES_LABEL } from "./Reservations";
+import { parseISODate } from "../lib/dates";
+import { formatMoney } from "../lib/fx";
+
+export type Tab = "plan" | "bookings" | "budget";
+
+const dayLabel = (d: string) =>
+  new Intl.DateTimeFormat(undefined, { weekday: "short", month: "numeric", day: "numeric", timeZone: "UTC" }).format(parseISODate(d));
+
+const RES_ORDER: ReservationType[] = ["flight", "lodging", "car", "train", "restaurant", "other"];
+
+interface Props {
+  sections: SectionInfo[];
+  reservations: Reservation[];
+  tab: Tab;
+  budgetTotal?: { amount: number; currency: string };
+  scrollRef: RefObject<HTMLDivElement | null>;
+  /** Switch tab, then scroll the plan panel to an element id (or the top). */
+  go: (tab: Tab, targetId?: string) => void;
+  /** Desktop: collapse to a thin rail. Drawer: close. */
+  onHide: () => void;
+  variant: "column" | "drawer";
+}
+
+/** Wanderlog-style table of contents: overview (lists + bookings), every day with its stops, budget. */
+export function Contents(p: Props) {
+  const [open, setOpen] = useState({ overview: true, itinerary: true, budget: true });
+  const active = useScrollSpy(p.scrollRef, p.tab);
+  const lists = p.sections.filter((s) => s.kind === "list");
+  const days = p.sections.filter((s) => s.kind === "day");
+  const resTypes = RES_ORDER.filter((t) => p.reservations.some((r) => r.type === t));
+
+  const row = (id: string, tab: Tab, label: React.ReactNode, sub?: string, icon?: React.ReactNode, count?: number) => {
+    const isActive = p.tab === tab && active === id;
+    return (
+      <button
+        key={id}
+        onClick={() => p.go(tab, id)}
+        className={`group flex w-full items-start gap-2 rounded-lg px-2.5 py-1.5 text-left transition-colors ${
+          isActive ? "bg-surface-2 text-fg" : "text-muted hover:bg-surface-2/60 hover:text-fg"
+        }`}
+      >
+        {icon && <span className="mt-0.5 shrink-0 [&>svg]:size-3.5">{icon}</span>}
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-sm">{label}</span>
+          {sub && <span className="block truncate text-[11px] text-muted/80">{sub}</span>}
+        </span>
+        {count != null && <span className="mt-0.5 text-[11px] text-muted tabular-nums">{count}</span>}
+      </button>
+    );
+  };
+
+  const group = (key: keyof typeof open, title: string, children: React.ReactNode) => (
+    <div className="mb-3">
+      <button
+        onClick={() => setOpen((o) => ({ ...o, [key]: !o[key] }))}
+        className="flex w-full items-center gap-1.5 px-1 py-1.5 font-display text-[15px] text-fg"
+      >
+        <ChevronDown className={`size-3.5 text-muted transition-transform ${open[key] ? "" : "-rotate-90"}`} />
+        {title}
+      </button>
+      {open[key] && <div className="space-y-0.5">{children}</div>}
+    </div>
+  );
+
+  return (
+    <nav className="flex h-full flex-col" aria-label="Trip contents">
+      <div className="min-h-0 flex-1 overflow-y-auto px-2.5 pt-4 pb-3 [scrollbar-width:thin]">
+        {group(
+          "overview",
+          "Overview",
+          <>
+            {lists.map((s) => row(`sec-${s.key}`, "plan", s.title, undefined, undefined, s.items.filter((i) => i.kind === "place").length || undefined))}
+            {resTypes.length === 0
+              ? row("res-top", "bookings", "Reservations")
+              : resTypes.map((t) => row(`res-${t}`, "bookings", RES_LABEL[t], undefined, RES_ICON[t], p.reservations.filter((r) => r.type === t).length))}
+          </>,
+        )}
+        {days.length > 0 &&
+          group(
+            "itinerary",
+            "Itinerary",
+            days.map((s) =>
+              row(
+                `sec-${s.key}`,
+                "plan",
+                <>
+                  <span className="mr-1.5 inline-block size-2 rounded-full align-middle" style={{ background: s.color }} />
+                  {dayLabel(s.date!)}
+                </>,
+                s.items
+                  .filter((i) => i.kind === "place")
+                  .map((i) => i.name)
+                  .join(" • ") || undefined,
+              ),
+            ),
+          )}
+        {group(
+          "budget",
+          "Budget",
+          row("budget-top", "budget", p.budgetTotal ? formatMoney(p.budgetTotal.amount, p.budgetTotal.currency) : "View", p.budgetTotal ? "Spent so far" : undefined, <PiggyBank />),
+        )}
+      </div>
+      <button onClick={p.onHide} className="flex items-center gap-2 border-t border-line px-4 py-3 text-sm text-muted hover:text-fg">
+        {p.variant === "drawer" ? <X className="size-4" /> : <ChevronsLeft className="size-4" />}
+        {p.variant === "drawer" ? "Close" : "Hide sidebar"}
+      </button>
+    </nav>
+  );
+}
+
+/** Thin rail shown when the contents column is hidden. */
+export function ContentsRail({ onShow }: { onShow: () => void }) {
+  return (
+    <button onClick={onShow} title="Show contents" className="flex h-full w-9 items-start justify-center border-r border-line pt-4 text-muted hover:bg-surface hover:text-fg">
+      <ChevronsRight className="size-4" />
+    </button>
+  );
+}
+
+/** Id of the last section/booking group whose top has scrolled past the top of the plan panel. */
+function useScrollSpy(ref: RefObject<HTMLDivElement | null>, tab: Tab) {
+  const [active, setActive] = useState<string | null>(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    let raf = 0;
+    const update = () => {
+      raf = 0;
+      const top = el.getBoundingClientRect().top + 140;
+      let cur: string | null = null;
+      for (const t of el.querySelectorAll<HTMLElement>("[id^='sec-'], [id^='res-']")) {
+        if (t.getBoundingClientRect().top <= top) cur = t.id;
+        else break;
+      }
+      setActive(cur ?? (tab === "budget" ? "budget-top" : null));
+    };
+    const onScroll = () => (raf ||= requestAnimationFrame(update));
+    update();
+    el.addEventListener("scroll", onScroll, { passive: true });
+    return () => (el.removeEventListener("scroll", onScroll), cancelAnimationFrame(raf));
+  }, [ref, tab]);
+  return active;
+}
