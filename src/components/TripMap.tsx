@@ -43,6 +43,28 @@ interface Props {
 
 maplibregl.setWorkerUrl(workerUrl);
 
+/**
+ * Bounds that frame most of the trip: the ~75% of pins closest to the trip's median point,
+ * plus any others not much farther out. A home airport 4,000 km away doesn't shrink Iceland
+ * to a speck, but a trip that really is spread out still gets shown whole.
+ */
+function coreBounds(pins: { lat: number; lng: number }[]): maplibregl.LngLatBounds | null {
+  if (!pins.length) return null;
+  const med = (xs: number[]) => {
+    const a = [...xs].sort((x, y) => x - y);
+    return a[Math.floor(a.length / 2)];
+  };
+  const c = [med(pins.map((p) => p.lng)), med(pins.map((p) => p.lat))];
+  const d = (p: { lat: number; lng: number }) => Math.hypot((p.lng - c[0]) * Math.cos((c[1] * Math.PI) / 180), p.lat - c[1]);
+  const sorted = [...pins].sort((a, b) => d(a) - d(b));
+  const k = Math.max(1, Math.ceil(sorted.length * 0.75));
+  const cutoff = d(sorted[k - 1]) * 1.5 + 0.02;
+  const b = new maplibregl.LngLatBounds();
+  sorted.filter((p, i) => i < k || d(p) <= cutoff).forEach((p) => b.extend([p.lng, p.lat]));
+  return b;
+}
+const FIT = { padding: 64, maxZoom: 14 };
+
 const readMode = (): MapMode => {
   try {
     return localStorage.getItem("tp-map-mode") === "satellite" && MAPTILER_KEY ? "satellite" : "map";
@@ -62,15 +84,23 @@ export function TripMap({ pins, routes, selectedId, onSelect, theme, fitKey, fal
   // Create the map once
   useEffect(() => {
     if (!container.current || !PROTOMAPS_KEY) return;
+    const start = coreBounds(latest.current.pins);
     const map = new maplibregl.Map({
       container: container.current,
       style: buildStyle(theme, mode),
-      center: (fallbackCenter ?? [139.69, 35.68]) as LngLatLike,
-      zoom: fallbackCenter ? 10 : 2,
+      ...(start
+        ? { bounds: start, fitBoundsOptions: FIT }
+        : { center: (fallbackCenter ?? [139.69, 35.68]) as LngLatLike, zoom: fallbackCenter ? 6 : 2 }),
       attributionControl: { compact: true },
       fadeDuration: 0,
     });
     map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "bottom-right");
+    // Pins may have arrived (or the panel sized itself) while the map was loading: frame them now
+    map.once("load", () => {
+      map.resize();
+      const b = coreBounds(latest.current.pins);
+      if (b && !latest.current.selectedId) map.fitBounds(b, { ...FIT, duration: 0 });
+    });
     map.on("style.load", () => {
       addOverlay(map);
       pushData(map, latest.current);
@@ -117,9 +147,7 @@ export function TripMap({ pins, routes, selectedId, onSelect, theme, fitKey, fal
       map.easeTo({ center: [pins[0].lng, pins[0].lat], zoom: Math.max(map.getZoom(), 13) });
       return;
     }
-    const b = new maplibregl.LngLatBounds();
-    pins.forEach((p) => b.extend([p.lng, p.lat]));
-    map.fitBounds(b, { padding: 64, maxZoom: 15, duration: 600 });
+    map.fitBounds(coreBounds(pins)!, { ...FIT, duration: 600 });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fitKey, pins.length > 0]);
 
