@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useLiveQuery } from "dexie-react-hooks";
-import { CalendarDays, LogOut, MapPin, Plus, Trash2, Users } from "lucide-react";
+import { CalendarDays, FileUp, LogOut, MapPin, Plus, Trash2, Users } from "lucide-react";
 import { useSession } from "../lib/api";
 import { reconcileTrips } from "../lib/sync";
 import { fetchInbox, type InboxItem } from "../lib/inbox";
@@ -12,6 +12,7 @@ import { deleteTrip } from "../lib/trips";
 import { useTheme } from "../lib/theme";
 import { ThemeToggle } from "../components/ThemeToggle";
 import { NewTripDialog } from "../components/NewTripDialog";
+import { WanderlogImport } from "../components/WanderlogImport";
 
 export function Home() {
   const [theme, toggleTheme] = useTheme();
@@ -30,6 +31,7 @@ export function Home() {
     void loadInbox();
   }, []);
   const [creating, setCreating] = useState(false);
+  const [importing, setImporting] = useState(false);
   const navigate = useNavigate();
   const trips = useLiveQuery(() => db.trips.orderBy("startDate").toArray(), []);
   const today = todayISO();
@@ -56,12 +58,21 @@ export function Home() {
 
       <div className="mb-8 flex items-end justify-between gap-4">
         <h1 className="font-display text-4xl leading-none sm:text-5xl">Your trips</h1>
+        <div className="flex shrink-0 gap-2">
+        <button
+          onClick={() => setImporting(true)}
+          className="flex items-center gap-1.5 rounded-full border border-line px-4 py-2 text-sm text-muted hover:border-accent hover:text-fg"
+          title="Import from Wanderlog"
+        >
+          <FileUp className="size-4" /> <span className="max-sm:hidden">Import</span>
+        </button>
         <button
           onClick={() => setCreating(true)}
           className="flex shrink-0 items-center gap-1.5 rounded-full bg-accent px-4 py-2 text-sm font-semibold text-on-accent"
         >
           <Plus className="size-4" /> New trip
         </button>
+        </div>
       </div>
 
       {trips && trips.length === 0 && (
@@ -75,6 +86,7 @@ export function Home() {
       <TripGroup title="Upcoming" trips={upcoming} />
       <TripGroup title="Past" trips={past} />
 
+      {importing && <WanderlogImport onClose={() => setImporting(false)} />}
       {creating && <NewTripDialog onClose={() => setCreating(false)} onCreated={(id) => navigate(`/trip/${id}`)} />}
     </div>
   );

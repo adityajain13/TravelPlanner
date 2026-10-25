@@ -39,6 +39,7 @@ export interface Meta {
   currency?: string;
   budget?: number;
   travelers?: string[];
+  countryCode?: string;
 }
 
 export interface Section {
@@ -237,6 +238,7 @@ export type Op =
   | { type: "remove"; id: string }
   | { type: "meta"; patch: Partial<Meta> }
   | { type: "addMany"; items: { section: string; item: ItemInput }[] }
+  | { type: "updateMany"; updates: { id: string; patch: Record<string, unknown> }[] }
   | { type: "addRecords"; map: "reservations" | "expenses"; records: Omit<Rec, "id">[] };
 
 /** Apply one op; returns the affected item (or null for meta/remove). */
@@ -247,6 +249,9 @@ export function applyOp(doc: Y.Doc, op: Op): Item | null {
   switch (op.type) {
     case "add":
       id = addItem(doc, resolveSection(snap, op.section), op.item, op.position);
+      break;
+    case "updateMany":
+      for (const u of op.updates) if (doc.getMap("items").has(u.id)) updateItem(doc, u.id, u.patch);
       break;
     case "addRecords": {
       const map = doc.getMap<Y.Map<unknown>>(op.map);

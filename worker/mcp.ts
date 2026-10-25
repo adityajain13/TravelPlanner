@@ -1,4 +1,5 @@
 import { verifyShareToken, type Role } from "./trips";
+import { Budget, countryAt, GENERIC_PLACE, geocode, OUT_OF_BUDGET, search, type Hit } from "./geocode";
 import { EXPENSE_CATEGORIES, render, RES_TYPES, type Item, type ItemInput, type Op, type Rec } from "./tripOps";
 import { json, type Env } from "./util";
 
@@ -191,6 +192,14 @@ const TOOLS = [
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
   },
   {
+    name: "pin_missing",
+    title: "Pin unpinned places",
+    description:
+      "Finds map coordinates for places in the trip that don't have a pin yet, in itinerary order, staying inside the trip's country and near the previous stop. Handles a batch per call; call again while it says places remain. Needs an edit link.",
+    inputSchema: { type: "object", properties: { ...linkProp }, required: ["trip_link"] },
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true },
+  },
+  {
     name: "update_item",
     title: "Edit item",
     description: "Changes fields on an existing item. Pass only what should change; pass an empty string to clear a field. Needs an edit link.",
@@ -290,20 +299,48 @@ async function mutate(env: Env, a: Args, op: Op, verb: string) {
   return `${verb} ${describe(r.item)}`.trim() + ". The app shows the change live.";
 }
 
-async function geocode(q: string, near?: number[]) {
-  const params = new URLSearchParams({ q, limit: "1", lang: "en" });
-  if (near?.length === 2) params.set("lon", String(near[0])), params.set("lat", String(near[1]));
-  try {
-    const res = await fetch(`https://photon.komoot.io/api/?${params}`, { headers: { "User-Agent": "travelplanner (adityajain.ca)" } });
-    if (!res.ok) return null;
-    const f = ((await res.json()) as { features: { geometry: { coordinates: [number, number] }; properties: Record<string, string | number> }[] }).features[0];
-    if (!f) return null;
-    const p = f.properties;
-    const address = [[p.housenumber, p.street].filter(Boolean).join(" "), p.city, p.country].filter(Boolean).join(", ");
-    return { lng: f.geometry.coordinates[0], lat: f.geometry.coordinates[1], osmId: `${p.osm_type}${p.osm_id}`, address: address || undefined };
-  } catch {
-    return null;
+type Room = Awaited<ReturnType<typeof access>>["room"];
+
+/** The trip's country keeps lookups from landing abroad. Derived once from the centre and saved. */
+async function tripCountry(room: Room, meta: { countryCode?: string; center?: number[] }, budget: Budget) {
+  if (meta.countryCode) return meta.countryCode;
+  if (meta.center?.length !== 2) return undefined;
+  const cc = await countryAt(meta.center[0], meta.center[1], budget);
+  if (cc) await room.mutate({ type: "meta", patch: { countryCode: cc } });
+  return cc;
+}
+
+// ~45 outbound requests per call stays inside the Workers free-plan subrequest limit (50)
+const LOOKUPS_PER_CALL = 38;
+
+/** Pin places in order, each biased to the previous pin in its section. */
+async function pinPlaces(
+  places: { key: string; name: string; query: string; section: string }[],
+  o: { countryCode?: string; center?: number[]; budget: Budget; prevBySection?: Map<string, number[]> },
+) {
+  const found = new Map<string, Hit>();
+  const notFound: string[] = [];
+  const deferred: string[] = [];
+  const prev = o.prevBySection ?? new Map<string, number[]>();
+  for (const p of places) {
+    if (GENERIC_PLACE.test(p.name.trim()) || p.name.replace(/[^\p{L}\p{N}]/gu, "").length < 2) {
+      notFound.push(p.name);
+      continue;
+    }
+    const near = prev.get(p.section) ?? o.center;
+    const hit = await geocode(p.query, { countryCode: o.countryCode, near, maxKm: near ? 450 : undefined, budget: o.budget });
+    if (hit === OUT_OF_BUDGET) deferred.push(p.name);
+    else if (hit) found.set(p.key, hit), prev.set(p.section, [hit.lng, hit.lat]);
+    else notFound.push(p.name);
   }
+  return { found, notFound, deferred };
+}
+
+function pinSummary(notFound: string[], deferred: string[]) {
+  return [
+    notFound.length ? `No confident match (left unpinned): ${notFound.join("; ")}. Generic names like parking lots are skipped on purpose; use search_places + update_item for any that matter.` : "",
+    deferred.length ? `${deferred.length} places still need pins (lookup limit per call reached). Call pin_missing with the same trip_link to continue.` : "",
+  ].filter(Boolean);
 }
 
 async function callTool(env: Env, name: string, a: Args): Promise<string> {
@@ -316,23 +353,22 @@ async function callTool(env: Env, name: string, a: Args): Promise<string> {
     }
     case "search_places": {
       const q = str(a, "query", true)!;
-      const params = new URLSearchParams({ q, limit: "6", lang: "en" });
+      const budget = new Budget(LOOKUPS_PER_CALL);
+      let near: number[] | undefined;
+      let countryCode: string | undefined;
       if (a.trip_link) {
         const { room } = await access(env, a, "view");
-        const c = (await room.read()).meta.center;
-        if (c) params.set("lon", String(c[0])), params.set("lat", String(c[1]));
+        const meta = (await room.read()).meta;
+        near = meta.center;
+        countryCode = meta.countryCode;
       }
-      const res = await fetch(`https://photon.komoot.io/api/?${params}`, { headers: { "User-Agent": "travelplanner (adityajain.ca)" } });
-      if (!res.ok) throw new ToolError(`Place search failed (${res.status}).`);
-      const data = (await res.json()) as { features: { geometry: { coordinates: [number, number] }; properties: Record<string, string | number> }[] };
-      if (!data.features.length) return "No places found. Try a different spelling or add the city name.";
-      return data.features
-        .map((f, i) => {
-          const p = f.properties;
-          const addr = [[p.housenumber, p.street].filter(Boolean).join(" "), p.district ?? p.locality, p.city, p.country].filter(Boolean).join(", ");
-          const [lng, lat] = f.geometry.coordinates;
-          return `${i + 1}. ${p.name ?? addr} (${String(p.osm_value ?? "").replace(/_/g, " ")})\n   address: ${addr}\n   lat: ${lat}, lng: ${lng}, osm_id: ${p.osm_type}${p.osm_id}`;
-        })
+      const hits = await search(q, { near, countryCode, budget });
+      if (!hits.length) return "No places found (both Photon and Nominatim). Try a different spelling or add the city name.";
+      return hits
+        .map(
+          (h, i) =>
+            `${i + 1}. ${h.name}${h.category ? ` (${h.category})` : ""}${countryCode && h.countryCode && h.countryCode !== countryCode ? " [OUTSIDE TRIP COUNTRY]" : ""}\n   address: ${h.address ?? "?"}\n   lat: ${h.lat}, lng: ${h.lng}${h.osmId ? `, osm_id: ${h.osmId}` : ""}`,
+        )
         .join("\n");
     }
     case "add_place": {
@@ -389,28 +425,55 @@ async function callTool(env: Env, name: string, a: Args): Promise<string> {
         }
       });
 
-      // Geocode places that came without coordinates (Photon, a few at a time to be polite)
-      const missing = items.filter((x) => x.item.kind === "place" && (x.item.lat == null || x.item.lng == null));
-      const notFound: string[] = [];
-      for (let i = 0; i < missing.length; i += 4) {
-        await Promise.all(
-          missing.slice(i, i + 4).map(async (x) => {
-            const hit = await geocode([x.item.name, x.item.address, x.city].filter(Boolean).join(", "), center);
-            if (hit) Object.assign(x.item, { lat: hit.lat, lng: hit.lng, osmId: hit.osmId, address: x.item.address ?? hit.address });
-            else (x.item.lat = undefined), (x.item.lng = undefined), notFound.push(x.item.name);
-          }),
-        );
+      const budget = new Budget(LOOKUPS_PER_CALL);
+      const snap = await room.read();
+      const countryCode = await tripCountry(room, snap.meta, budget);
+      const missing = items
+        .map((x, i) => ({ x, key: String(i) }))
+        .filter(({ x }) => x.item.kind === "place" && (x.item.lat == null || x.item.lng == null));
+      const { found, notFound, deferred } = await pinPlaces(
+        missing.map(({ x, key }) => ({ key, name: x.item.name, query: [x.item.name, x.item.address, x.city].filter(Boolean).join(", "), section: x.section })),
+        { countryCode, center: center ?? snap.meta.center, budget },
+      );
+      for (const { x, key } of missing) {
+        const hit = found.get(key);
+        if (hit) Object.assign(x.item, { lat: hit.lat, lng: hit.lng, osmId: hit.osmId, address: x.item.address ?? hit.address });
+        else (x.item.lat = undefined), (x.item.lng = undefined);
       }
 
       const r = await room.mutate({ type: "addMany", items: items.map(({ section, item }) => ({ section, item })) });
       if (!r.ok) throw new ToolError(r.error);
       const pinned = items.filter((x) => x.item.lat != null).length;
-      return [
-        `Added ${items.length} items (${pinned} with map pins). The app shows them live.`,
-        notFound.length ? `Couldn't find coordinates for: ${notFound.join("; ")}. Use search_places and update_item, or leave them as unpinned.` : "",
-      ]
-        .filter(Boolean)
-        .join("\n");
+      return [`Added ${items.length} items (${pinned} with map pins). The app shows them live.`, ...pinSummary(notFound, deferred)].join("\n");
+    }
+    case "pin_missing": {
+      const { room } = await access(env, a, "edit");
+      const snap = await room.read();
+      if (!snap.meta.title) throw new ToolError("This trip has no data on the server yet.");
+      const budget = new Budget(LOOKUPS_PER_CALL);
+      const countryCode = await tripCountry(room, snap.meta, budget);
+      const prevBySection = new Map<string, number[]>();
+      const todo: { key: string; name: string; query: string; section: string }[] = [];
+      for (const s of [...snap.sections, { key: "outside", label: "", items: snap.outsideDates }]) {
+        for (const it of s.items) {
+          if (it.kind !== "place") continue;
+          if (it.lat != null && it.lng != null) {
+            if (!todo.some((t) => t.section === s.key)) prevBySection.set(s.key, [it.lng, it.lat]);
+            continue;
+          }
+          todo.push({ key: it.id, name: it.name, query: [it.name, it.address].filter(Boolean).join(", "), section: s.key });
+        }
+      }
+      if (!todo.length) return "Every place already has a map pin.";
+      const { found, notFound, deferred } = await pinPlaces(todo, { countryCode, center: snap.meta.center, budget, prevBySection });
+      if (found.size) {
+        const r = await room.mutate({
+          type: "updateMany",
+          updates: [...found].map(([id, h]) => ({ id, patch: { lat: h.lat, lng: h.lng, osmId: h.osmId, address: h.address } })),
+        });
+        if (!r.ok) throw new ToolError(r.error);
+      }
+      return [`Pinned ${found.size} of ${todo.length} unpinned places${countryCode ? ` (kept inside ${countryCode.toUpperCase()})` : ""}.`, ...pinSummary(notFound, deferred)].join("\n");
     }
     case "add_reservations": {
       const list = a.reservations;
@@ -418,6 +481,8 @@ async function callTool(env: Env, name: string, a: Args): Promise<string> {
       const { room } = await access(env, a, "edit");
       const snap = await room.read();
       if (!snap.meta.title) throw new ToolError("This trip has no data on the server yet. Open it once in the app while online.");
+      const resBudget = new Budget(LOOKUPS_PER_CALL);
+      const resCountry = await tripCountry(room, snap.meta, resBudget);
       const records = [];
       for (const [i, raw] of list.entries()) {
         const x = (raw ?? {}) as Args;
@@ -440,8 +505,8 @@ async function callTool(env: Env, name: string, a: Args): Promise<string> {
             notes: str(x, "notes"),
           };
           if ((type === "lodging" || type === "restaurant") && (rec.address || rec.title)) {
-            const hit = await geocode([rec.title, rec.address].filter(Boolean).join(", "), snap.meta.center);
-            if (hit) Object.assign(rec, { lat: hit.lat, lng: hit.lng, address: rec.address ?? hit.address });
+            const hit = await geocode(String(rec.address ?? rec.title), { countryCode: resCountry, near: snap.meta.center, budget: resBudget });
+            if (hit && hit !== OUT_OF_BUDGET) Object.assign(rec, { lat: hit.lat, lng: hit.lng, address: rec.address ?? hit.address });
           }
           records.push(rec);
         } catch (e) {
