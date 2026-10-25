@@ -34,8 +34,8 @@ export default defineConfig({
       registerType: "autoUpdate",
       includeAssets: ["icon.svg", "apple-touch-icon.png"],
       manifest: {
-        name: "Cairn · trip planner",
-        short_name: "Cairn",
+        name: "Atlas Trips",
+        short_name: "Atlas Trips",
         description: "Offline-first trip planner: itineraries, maps, bookings and budgets",
         start_url: BASE,
         scope: BASE,

@@ -1,8 +1,8 @@
 <p><img src="public/icon.svg" width="64" alt=""></p>
 
-# Cairn
+# Atlas Trips
 
-*A cairn is a stack of stones that marks the trail.* Cairn is my own Wanderlog. It's an offline-first trip planner, dark down to the map, with live sharing, reservations, a split budget, real routing between stops, and a Claude connector. There's no paywall and no ads.
+My own Wanderlog, and a sibling of my [Atlas New Tab](https://addons.mozilla.org/en-CA/firefox/addon/atlas-new-tab/) extension. It's an offline-first trip planner, dark down to the map, with live sharing, reservations, a split budget, real routing between stops, and a Claude connector. There's no paywall and no ads.
 
 **Live:** [adityajain.ca/travelplanner](https://adityajain.ca/travelplanner) · **Roadmap / design notes:** [PLAN.md](PLAN.md)
 
