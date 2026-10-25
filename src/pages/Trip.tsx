@@ -488,9 +488,6 @@ export function TripPage() {
               </div>
             </div>
           </div>
-          <div className="flex flex-wrap items-center gap-2 px-5 pt-3">
-            <OfflineMapButton tripId={id!} state={state} />
-          </div>
         </header>
 
         {/* Tabs + day jump chips stay pinned while the plan scrolls */}
@@ -539,6 +536,10 @@ export function TripPage() {
                 {label}
               </button>
             ))}
+            {/* Sits at the end of the tab row instead of taking its own line */}
+            <div className="ml-auto self-center pb-1.5">
+              <OfflineMapButton tripId={id!} state={state} />
+            </div>
           </nav>
           {tab === "plan" && view.sections.some((s) => s.kind === "day") && (
             <div className="flex gap-1.5 overflow-x-auto pt-1 pb-2.5 [scrollbar-width:none]">
