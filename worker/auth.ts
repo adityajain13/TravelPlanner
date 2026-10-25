@@ -18,7 +18,7 @@ const MAX_ATTEMPTS = 5;
 
 const allowed = (env: Env) =>
   new Set(
-    env.ALLOWED_EMAILS.split(",")
+    (env.ALLOWED_EMAILS ?? "").split(",")
       .map((e) => e.trim().toLowerCase())
       .filter(Boolean),
   );

@@ -26,7 +26,6 @@
   "send_email": [{ "name": "EMAIL" }],
 
   "vars": {
-    "ALLOWED_EMAILS": "",
     "MAIL_FROM": "trips@adityajain.ca"
   }
 }
