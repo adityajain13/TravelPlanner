@@ -24,6 +24,8 @@ interface Props {
   /** Desktop: collapse to a thin rail. Drawer: close. */
   onHide: () => void;
   variant: "column" | "drawer";
+  /** Shown above the contents (undo / redo). */
+  header?: React.ReactNode;
 }
 
 /** Wanderlog-style table of contents: overview (lists + bookings), every day with its stops, budget. */
@@ -40,36 +42,37 @@ export function Contents(p: Props) {
       <button
         key={id}
         onClick={() => p.go(tab, id)}
-        className={`group flex w-full items-start gap-2 rounded-lg px-2.5 py-1.5 text-left transition-colors ${
+        className={`group flex w-full items-start gap-2.5 rounded-xl px-3.5 py-2.5 text-left transition-colors ${
           isActive ? "bg-surface-2 text-fg" : "text-muted hover:bg-surface-2/60 hover:text-fg"
         }`}
       >
-        {icon && <span className="mt-0.5 shrink-0 [&>svg]:size-3.5">{icon}</span>}
+        {icon && <span className="mt-1 shrink-0 [&>svg]:size-4">{icon}</span>}
         <span className="min-w-0 flex-1">
-          <span className="block truncate text-[15px]">{label}</span>
-          {sub && <span className="block truncate text-xs text-muted/80">{sub}</span>}
+          <span className={`block truncate text-[17px] ${isActive ? "font-semibold" : ""}`}>{label}</span>
+          {sub && <span className="mt-0.5 block truncate text-[13px] text-muted/80">{sub}</span>}
         </span>
-        {count != null && <span className="mt-0.5 text-[11px] text-muted tabular-nums">{count}</span>}
+        {count != null && <span className="mt-1 text-[13px] text-muted tabular-nums">{count}</span>}
       </button>
     );
   };
 
   const group = (key: keyof typeof open, title: string, children: React.ReactNode) => (
-    <div className="mb-3">
+    <div className="mb-5">
       <button
         onClick={() => setOpen((o) => ({ ...o, [key]: !o[key] }))}
-        className="flex w-full items-center gap-1.5 px-1 py-1.5 font-display text-lg text-fg"
+        className="flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2.5 font-display text-[20px] text-fg hover:bg-surface-2/50"
       >
-        <ChevronDown className={`size-3.5 text-muted transition-transform ${open[key] ? "" : "-rotate-90"}`} />
+        <ChevronDown className={`size-4 text-muted transition-transform ${open[key] ? "" : "-rotate-90"}`} />
         {title}
       </button>
-      {open[key] && <div className="space-y-0.5">{children}</div>}
+      {open[key] && <div className="mt-1 space-y-1 pl-2">{children}</div>}
     </div>
   );
 
   return (
     <nav className="flex h-full flex-col" aria-label="Trip contents">
-      <div className="min-h-0 flex-1 overflow-y-auto px-2.5 pt-4 pb-3 [scrollbar-width:thin]">
+      {p.header}
+      <div className="min-h-0 flex-1 overflow-y-auto px-3 pt-5 pb-4 [scrollbar-width:thin]">
         {group(
           "overview",
           "Overview",
@@ -105,8 +108,8 @@ export function Contents(p: Props) {
           row("budget-top", "budget", p.budgetTotal ? formatMoney(p.budgetTotal.amount, p.budgetTotal.currency) : "View", p.budgetTotal ? "Spent so far" : undefined, <PiggyBank />),
         )}
       </div>
-      <button onClick={p.onHide} className="flex items-center gap-2 border-t border-line px-4 py-3 text-sm text-muted hover:text-fg">
-        {p.variant === "drawer" ? <X className="size-4" /> : <ChevronsLeft className="size-4" />}
+      <button onClick={p.onHide} className="flex items-center gap-3 border-t border-line px-6 py-4 text-[16px] text-muted hover:text-fg">
+        {p.variant === "drawer" ? <X className="size-5" /> : <ChevronsLeft className="size-5" />}
         {p.variant === "drawer" ? "Close" : "Hide sidebar"}
       </button>
     </nav>
