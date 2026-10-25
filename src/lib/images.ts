@@ -18,13 +18,11 @@ export interface PlaceImage {
   track?: string; // Unsplash download_location, pinged when picked; not stored
 }
 
-// Share-link editors aren't signed in; the Worker accepts their share token instead
-let shareToken: string | undefined;
-export const setPhotoShareToken = (t?: string) => void (shareToken = t);
+import { shareQuery } from "./shareToken";
 
 /** Unsplash results through the Worker, or [] when it isn't configured / offline / over quota. */
 async function unsplash(query: string, signal?: AbortSignal): Promise<PlaceImage[]> {
-  const q = new URLSearchParams({ q: query, ...(shareToken ? { share: shareToken } : {}) });
+  const q = new URLSearchParams({ q: query, ...shareQuery() });
   const res = await fetch(`/travelplanner/api/photos?${q}`, { signal, credentials: "same-origin" });
   if (!res.ok) return [];
   return ((await res.json()) as { photos?: PlaceImage[] }).photos ?? [];
@@ -33,7 +31,7 @@ async function unsplash(query: string, signal?: AbortSignal): Promise<PlaceImage
 /** Unsplash asks apps to report when a photo is actually used. */
 export function trackPick(img: PlaceImage) {
   if (img.source !== "unsplash" || !img.track) return;
-  fetch(`/travelplanner/api/photos/track${shareToken ? `?share=${encodeURIComponent(shareToken)}` : ""}`, {
+  fetch(`/travelplanner/api/photos/track?${new URLSearchParams(shareQuery())}`, {
     method: "POST",
     credentials: "same-origin",
     headers: { "content-type": "application/json" },

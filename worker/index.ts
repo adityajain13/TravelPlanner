@@ -4,6 +4,7 @@ import { handleMcp } from "./mcp";
 import { handleInbox } from "./inbox";
 import { handleEmail } from "./email";
 import { handlePhotos } from "./photos";
+import { handleMapsLink } from "./mapsLink";
 import { API, BASE, error, type Env } from "./util";
 
 export { TripRoom } from "./room";
@@ -26,7 +27,7 @@ export default {
       }
       try {
         if (url.pathname.startsWith(`${API}/auth/`)) return (await handleAuth(request, env, url)) ?? error(404, "Not found");
-        return (await handlePhotos(request, env, url, ctx)) ?? (await handleInbox(request, env, url)) ?? (await handleTrips(request, env, url)) ?? error(404, "Not found");
+        return (await handleMapsLink(request, env, url)) ?? (await handlePhotos(request, env, url, ctx)) ?? (await handleInbox(request, env, url)) ?? (await handleTrips(request, env, url)) ?? error(404, "Not found");
       } catch (e) {
         console.error(e);
         return error(500, "Server error");
