@@ -19,7 +19,7 @@ Every tool needs a trip share link (https://adityajain.ca/travelplanner/s/...). 
 Call get_trip first: it returns days, lists and the item ids the edit tools need.
 Sections are addressed as "day 3", a date like "2026-12-03", or a list name like "Places to visit".
 Use search_places to get real coordinates before add_place when possible, so the place appears on the map.
-Make one change per call and say what you changed.`;
+For single edits, make one change per call and say what you changed. To import a whole itinerary (e.g. a Wanderlog PDF the user attached), add everything with one add_items call, using the trip's day numbers or dates; set the trip dates first with update_trip if they differ.`;
 
 const linkProp = {
   trip_link: { type: "string", description: "The trip's share link (https://adityajain.ca/travelplanner/s/<token>) or just the token." },
@@ -87,6 +87,39 @@ const TOOLS = [
       required: ["trip_link", "section", "text"],
     },
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+  },
+  {
+    name: "add_items",
+    title: "Add many items",
+    description:
+      "Adds many places and notes in one call, e.g. when importing a whole itinerary (a Wanderlog PDF, a list from a website). Items are appended to their sections in the order given. Places without lat/lng are geocoded automatically near the trip's destination; check the result for any that weren't found. Needs an edit link. Prefer this over repeated add_place calls.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        ...linkProp,
+        items: {
+          type: "array",
+          maxItems: 300,
+          items: {
+            type: "object",
+            properties: {
+              ...sectionProp,
+              kind: { type: "string", enum: ["place", "note"], description: "place = map pin (default); note = text only." },
+              name: { type: "string", description: "Place name, or the note text." },
+              address: { type: "string" },
+              city: { type: "string", description: "Helps geocoding when there's no full address." },
+              lat: { type: "number" },
+              lng: { type: "number" },
+              category: { type: "string" },
+              ...itemFields,
+            },
+            required: ["section", "name"],
+          },
+        },
+      },
+      required: ["trip_link", "items"],
+    },
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
   },
   {
     name: "update_item",
@@ -188,6 +221,22 @@ async function mutate(env: Env, a: Args, op: Op, verb: string) {
   return `${verb} ${describe(r.item)}`.trim() + ". The app shows the change live.";
 }
 
+async function geocode(q: string, near?: number[]) {
+  const params = new URLSearchParams({ q, limit: "1", lang: "en" });
+  if (near?.length === 2) params.set("lon", String(near[0])), params.set("lat", String(near[1]));
+  try {
+    const res = await fetch(`https://photon.komoot.io/api/?${params}`, { headers: { "User-Agent": "travelplanner (adityajain.ca)" } });
+    if (!res.ok) return null;
+    const f = ((await res.json()) as { features: { geometry: { coordinates: [number, number] }; properties: Record<string, string | number> }[] }).features[0];
+    if (!f) return null;
+    const p = f.properties;
+    const address = [[p.housenumber, p.street].filter(Boolean).join(" "), p.city, p.country].filter(Boolean).join(", ");
+    return { lng: f.geometry.coordinates[0], lat: f.geometry.coordinates[1], osmId: `${p.osm_type}${p.osm_id}`, address: address || undefined };
+  } catch {
+    return null;
+  }
+}
+
 async function callTool(env: Env, name: string, a: Args): Promise<string> {
   switch (name) {
     case "get_trip": {
@@ -237,6 +286,59 @@ async function callTool(env: Env, name: string, a: Args): Promise<string> {
     }
     case "add_note":
       return mutate(env, a, { type: "add", section: str(a, "section", true)!, item: { kind: "note", name: str(a, "text", true)! }, position: num(a, "position") }, "Added note");
+    case "add_items": {
+      const list = a.items;
+      if (!Array.isArray(list) || list.length === 0) throw new ToolError('"items" must be a non-empty array.');
+      if (list.length > 300) throw new ToolError("At most 300 items per call; split the import.");
+      const { room } = await access(env, a, "edit");
+      const center = (await room.read()).meta.center;
+      const items = list.map((raw, i) => {
+        const x = (raw ?? {}) as Args;
+        try {
+          const kind = str(x, "kind") === "note" ? "note" : "place";
+          return {
+            section: str(x, "section", true)!,
+            city: str(x, "city"),
+            item: {
+              kind,
+              name: str(x, "name", true)!,
+              lat: num(x, "lat"),
+              lng: num(x, "lng"),
+              address: str(x, "address") || undefined,
+              category: str(x, "category") || undefined,
+              notes: str(x, "notes") || undefined,
+              startTime: time(x, "start_time") || undefined,
+              endTime: time(x, "end_time") || undefined,
+            } as ItemInput,
+          };
+        } catch (e) {
+          throw new ToolError(`Item ${i + 1}: ${(e as Error).message}`);
+        }
+      });
+
+      // Geocode places that came without coordinates (Photon, a few at a time to be polite)
+      const missing = items.filter((x) => x.item.kind === "place" && (x.item.lat == null || x.item.lng == null));
+      const notFound: string[] = [];
+      for (let i = 0; i < missing.length; i += 4) {
+        await Promise.all(
+          missing.slice(i, i + 4).map(async (x) => {
+            const hit = await geocode([x.item.name, x.item.address, x.city].filter(Boolean).join(", "), center);
+            if (hit) Object.assign(x.item, { lat: hit.lat, lng: hit.lng, osmId: hit.osmId, address: x.item.address ?? hit.address });
+            else (x.item.lat = undefined), (x.item.lng = undefined), notFound.push(x.item.name);
+          }),
+        );
+      }
+
+      const r = await room.mutate({ type: "addMany", items: items.map(({ section, item }) => ({ section, item })) });
+      if (!r.ok) throw new ToolError(r.error);
+      const pinned = items.filter((x) => x.item.lat != null).length;
+      return [
+        `Added ${items.length} items (${pinned} with map pins). The app shows them live.`,
+        notFound.length ? `Couldn't find coordinates for: ${notFound.join("; ")}. Use search_places and update_item, or leave them as unpinned.` : "",
+      ]
+        .filter(Boolean)
+        .join("\n");
+    }
     case "update_item": {
       const patch: Record<string, unknown> = {
         name: str(a, "name"),
