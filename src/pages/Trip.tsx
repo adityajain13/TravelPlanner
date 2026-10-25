@@ -21,6 +21,7 @@ import { budgetLines, totals } from "../lib/budget";
 import { bestImage, coverFor, setPhotoShareToken } from "../lib/images";
 import { ImagePicker } from "../components/ImagePicker";
 import { Photo } from "../components/Photo";
+import { PhotoCredit } from "../components/PhotoCredit";
 import { RES_ICON, RES_SINGULAR } from "../components/Reservations";
 import { GENERIC_PLACE } from "../lib/geocode";
 import { edit } from "../lib/trips";
@@ -166,7 +167,7 @@ export function TripPage() {
         if (it.kind !== "place") continue;
         n++;
         if (it.lat == null || it.lng == null) continue;
-        if (!focus || s.key === focus) pins.push({ id: it.id, lat: it.lat, lng: it.lng, color: s.color, label: String(n), name: it.name, image: it.image?.thumb });
+        if (!focus || s.key === focus) pins.push({ id: it.id, lat: it.lat, lng: it.lng, color: s.color, label: String(n), name: it.name, image: it.image?.thumb, unsplash: it.image?.source === "unsplash" ? { name: it.image.authorName ?? "Unknown", author: it.image.author } : undefined });
         if (s.kind === "day" && prev) {
           const mode = it.travelMode ?? defaultMode;
           const from: [number, number] = [prev.lng!, prev.lat!];
@@ -374,6 +375,9 @@ export function TripPage() {
                 </span>
               </div>
             </div>
+            {state.meta.cover && (
+              <PhotoCredit img={state.meta.cover} className="absolute right-4 bottom-12 z-10 max-w-[45%] truncate text-right text-[10.5px] text-white/75 [text-shadow:0_1px_4px_rgb(0_0_0/.6)]" />
+            )}
             {!readOnly && (
               <button
                 onClick={() => setPickingCover(true)}

@@ -18,6 +18,7 @@ export interface Pin {
   label: string;
   name?: string;
   image?: string; // thumbnail URL for the popup
+  unsplash?: { name: string; author?: string }; // photographer credit for Unsplash photos
 }
 
 export interface Route {
@@ -143,6 +144,21 @@ export function TripMap({ pins, routes, selectedId, onSelect, theme, fitKey, fal
       const t = document.createElement("p");
       t.textContent = p.name; // textContent: names come from user/OSM data
       el.append(t);
+      if (p.image && p.unsplash) {
+        // Unsplash attribution: "Photo by <name> on Unsplash", both linked (textContent keeps it safe)
+        const c = document.createElement("small");
+        const link = (href: string | undefined, text: string) => {
+          const a = document.createElement("a");
+          a.href = href ?? "https://unsplash.com/";
+          a.target = "_blank";
+          a.rel = "noreferrer";
+          a.textContent = text;
+          return a;
+        };
+        c.append("Photo by ", link(p.unsplash.author, p.unsplash.name), " on ", link("https://unsplash.com/?utm_source=travelplanner&utm_medium=referral", "Unsplash"));
+        c.style.cssText = "display:block;font-size:10px;opacity:.7;margin-top:2px";
+        el.append(c);
+      }
       popup.current = new maplibregl.Popup({ closeButton: false, closeOnClick: false, offset: [0, -38], maxWidth: "220px", className: "tp-popup-wrap" })
         .setLngLat([p.lng, p.lat])
         .setDOMContent(el)

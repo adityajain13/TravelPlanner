@@ -60,6 +60,7 @@ export async function handlePhotos(req: Request, env: Env, url: URL, ctx: Execut
       credit: `Photo: ${p.user.name} on Unsplash`,
       link: `${p.links.html}?${UTM}`,
       author: `${p.user.links.html}?${UTM}`,
+      authorName: p.user.name,
       title: p.alt_description ?? p.description ?? undefined,
       track: p.links.download_location,
     }));

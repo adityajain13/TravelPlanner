@@ -4,6 +4,7 @@ import { CSS } from "@dnd-kit/utilities";
 import { Clock, ExternalLink, GripVertical, ImagePlus, StickyNote, Trash2, Wallet } from "lucide-react";
 import { ImagePicker } from "./ImagePicker";
 import { Photo } from "./Photo";
+import { PhotoCredit } from "./PhotoCredit";
 import { CURRENCIES, formatMoney } from "../lib/fx";
 import type { Item } from "../lib/trips";
 import { googleMapsLink } from "../lib/photon";
@@ -128,6 +129,7 @@ export function ItemCard({ item, number, color, selected, readOnly, currency = "
                 />
               )}
               {isPlace && <GoogleDetails item={item} onLink={(googlePlaceId) => onChange({ googlePlaceId })} />}
+              {item.image && <PhotoCredit img={item.image} className="block truncate text-[11px] text-muted" />}
               {(item.notes || !readOnly) && <NotesInput disabled={readOnly} value={item.notes ?? ""} onCommit={(v) => onChange({ notes: v })} />}
             </div>
           )}
