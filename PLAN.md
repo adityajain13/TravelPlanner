@@ -90,3 +90,4 @@ Hosted at **adityajain.ca/travelplanner** by the `travelplanner` Cloudflare Work
 - Typography: Source Sans 3 everywhere (Wanderlog-style), bold headings; replaced Fraunces/Manrope. Bigger card titles (17px bold), notes 15px, day headings 21px, sidebar 15/18px.
 - Hero: round icon pills (HeroPill.tsx) whose labels slide out on hover/focus; cover credit sits under the Change cover pill.
 - Link-added places: when the name has no OSM match, Photon reverse at the pin supplies category/address (never raw coords); Google place ID auto-linked for link adds. Friendly OSM categories (prettyCategory).
+- HeroPill expand: 500ms ease-out-quint.

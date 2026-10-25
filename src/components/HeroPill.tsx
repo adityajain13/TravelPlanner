@@ -3,9 +3,9 @@ import { Link } from "react-router-dom";
 
 /** Round icon button over the cover photo; its label slides out on hover / keyboard focus. */
 const shell =
-  "group/pill flex h-9 min-w-9 shrink-0 items-center justify-center rounded-full bg-black/35 px-2.5 text-white backdrop-blur transition-colors hover:bg-black/55 focus-visible:bg-black/55 focus-visible:outline-none";
+  "group/pill flex h-9 min-w-9 shrink-0 items-center justify-center rounded-full bg-black/35 px-2.5 text-white backdrop-blur transition-colors duration-300 hover:bg-black/55 focus-visible:bg-black/55 focus-visible:outline-none";
 const labelCls =
-  "max-w-0 overflow-hidden whitespace-nowrap text-[13px] font-semibold opacity-0 transition-[max-width,opacity,margin] duration-200 ease-out group-hover/pill:ml-1.5 group-hover/pill:max-w-48 group-hover/pill:opacity-100 group-focus-visible/pill:ml-1.5 group-focus-visible/pill:max-w-48 group-focus-visible/pill:opacity-100";
+  "max-w-0 overflow-hidden whitespace-nowrap text-[13px] font-semibold opacity-0 transition-[max-width,opacity,margin] duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] group-hover/pill:delay-0 motion-reduce:transition-none group-hover/pill:ml-1.5 group-hover/pill:max-w-48 group-hover/pill:opacity-100 group-focus-visible/pill:ml-1.5 group-focus-visible/pill:max-w-48 group-focus-visible/pill:opacity-100";
 
 interface Props {
   icon: ReactNode;
