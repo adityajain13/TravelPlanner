@@ -26,7 +26,7 @@ import { Photo } from "../components/Photo";
 import { PhotoCredit } from "../components/PhotoCredit";
 import { RES_ICON, RES_SINGULAR } from "../components/Reservations";
 import { GENERIC_PLACE } from "../lib/geocode";
-import { findPlaceId, GOOGLE_KEY } from "../lib/google";
+import { findPlaceId, getDetails, GOOGLE_KEY, photoUrl } from "../lib/google";
 import { edit } from "../lib/trips";
 import { parseISODate } from "../lib/dates";
 import { scrollToId } from "../lib/scroll";
@@ -654,12 +654,24 @@ export function TripPage() {
                 onAddPlace={(p, index) => {
                   const newId = addItem(doc, s.key, { kind: "place", name: p.name, address: p.address || undefined, category: p.category || undefined, lat: p.lat, lng: p.lng, osmId: p.osmId, googlePlaceId: p.googlePlaceId }, undefined, index);
                   setSelectedId(newId);
+                  // Picked from Google: copy its details (rating, hours…) and use its first photo
+                  if (p.googlePlaceId && GOOGLE_KEY)
+                    getDetails(p.googlePlaceId)
+                      .then((d) => {
+                        const ph = d.photos[0];
+                        const image = ph
+                          ? { url: photoUrl(ph.name, 1600), thumb: photoUrl(ph.name, 600), source: "google" as const, credit: ph.attributions.map((a) => a.displayName).join(", ") || "Google", link: ph.attributions[0]?.uri, title: d.name }
+                          : undefined;
+                        const cur = readTrip(doc).items.find((x) => x.id === newId);
+                        updateItem(doc, newId, { google: { ...d, fetchedAt: Date.now() }, ...(image && !cur?.image ? { image } : {}) });
+                      })
+                      .catch(() => undefined);
                   // Give it a photo straight away (Wikipedia match, else Unsplash)
-                  if (navigator.onLine && !GENERIC_PLACE.test(p.name.trim()))
+                  if (navigator.onLine && !p.googlePlaceId && !GENERIC_PLACE.test(p.name.trim()))
                     firstPhoto(p.name, [p.lng, p.lat], state.meta.destination)
                       .then((image) => image && !readTrip(doc).items.find((x) => x.id === newId)?.image && updateItem(doc, newId, { image }))
                       .catch(() => undefined);
-                  // From a Google Maps link: link its Google place ID (the only Google data we keep) so Google details work straight away
+                  // From a Google Maps link without a Google match yet: link its place ID so Google details work straight away
                   if (p.fromLink && !p.googlePlaceId && GOOGLE_KEY)
                     findPlaceId({ name: p.name, lat: p.lat, lng: p.lng })
                       .then((googlePlaceId) => googlePlaceId && updateItem(doc, newId, { googlePlaceId }))
@@ -741,6 +753,7 @@ export function TripPage() {
             targets={targets}
             onMoveTo={(k) => moveItems(doc, [openItem.id], k)}
             onLink={(googlePlaceId) => updateItem(doc, openItem.id, { googlePlaceId })}
+            onSnapshot={(d) => updateItem(doc, openItem.id, { google: { ...d, fetchedAt: Date.now() } })}
             readOnly={readOnly}
             currency={state.meta.currency ?? "CAD"}
             from={prevStop}

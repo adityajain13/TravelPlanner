@@ -27,6 +27,7 @@ interface Props {
   targets: SectionTarget[];
   onMoveTo: (section: string) => void;
   onLink: (googlePlaceId: string) => void;
+  onSnapshot?: (d: import("../lib/google").GoogleDetails) => void;
   readOnly?: boolean;
   currency: string;
   /** Previous stop, for the Directions link. */
@@ -211,7 +212,7 @@ export function PlacePanel(p: Props) {
           <div className="mt-3 flex flex-wrap items-center gap-2 text-[13px] font-semibold">
             {/* The Google details button sits first in the row; once loaded, its panel takes a full row below */}
             <div className="contents [&>div.space-y-2]:order-last [&>div.space-y-2]:basis-full">
-              <GoogleDetails item={item} onLink={p.onLink} />
+              <GoogleDetails item={item} onLink={p.onLink} onSnapshot={p.onSnapshot} />
             </div>
             <a href={googleMapsLink(item)} target="_blank" rel="noreferrer" className="flex items-center gap-1.5 rounded-full border border-line px-3 py-1.5 text-muted hover:border-accent hover:text-fg">
               <ExternalLink className="size-3.5" /> Google Maps

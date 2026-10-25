@@ -13,7 +13,7 @@ export interface PlaceResult {
   countryCode?: string;
   /** Added from a pasted Google Maps link (the app then links its Google place ID). */
   fromLink?: boolean;
-  /** Chosen from a Google suggestion: link this place ID (the only Google data kept). */
+  /** Chosen from Google (search or link): its place ID. */
   googlePlaceId?: string;
 }
 
