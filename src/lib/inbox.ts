@@ -23,7 +23,11 @@ export interface InboxItem {
   subject: string;
   booking: Booking;
   created_at: number;
+  status?: "pending" | "added" | "dismissed";
 }
+
+/** Every forwarded booking, newest first, whatever happened to it. */
+export const fetchInboxHistory = () => api<{ items: InboxItem[] }>("/inbox?all=1").then((r) => r.items);
 
 export const fetchInbox = () => api<{ items: InboxItem[] }>("/inbox").then((r) => r.items);
 
