@@ -34,6 +34,7 @@ import type { Pin, Route } from "../components/TripMap";
 const TripMap = lazy(() => import("../components/TripMap").then((m) => ({ default: m.TripMap })));
 import { Section, type SectionInfo } from "../components/Section";
 import { ThemeToggle } from "../components/ThemeToggle";
+import { OfflineMapButton } from "../components/OfflineMapButton";
 
 const ORPHAN = "orphan";
 
@@ -170,6 +171,9 @@ export function TripPage() {
               onChange={(e) => e.target.value && updateMeta(doc, { endDate: e.target.value })}
               className="rounded-md bg-surface-2 px-2 py-1 outline-none"
             />
+          </div>
+          <div className="mt-3">
+            <OfflineMapButton tripId={id!} state={state} />
           </div>
           {focus && (
             <button

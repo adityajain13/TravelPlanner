@@ -4,6 +4,7 @@ import { CSS } from "@dnd-kit/utilities";
 import { Clock, ExternalLink, GripVertical, StickyNote, Trash2 } from "lucide-react";
 import type { Item } from "../lib/trips";
 import { googleMapsLink } from "../lib/photon";
+import { GoogleDetails } from "./GoogleDetails";
 
 interface Props {
   item: Item;
@@ -90,6 +91,9 @@ export function ItemCard({ item, number, color, selected, onSelect, onChange, on
                 <span>–</span>
                 <TimeInput value={item.endTime} onCommit={(v) => onChange({ endTime: v })} />
               </div>
+            )}
+            {selected && item.kind === "place" && (
+              <GoogleDetails item={item} onLink={(googlePlaceId) => onChange({ googlePlaceId })} />
             )}
             {(selected || item.notes) && (
               <NotesInput value={item.notes ?? ""} onCommit={(v) => onChange({ notes: v })} />

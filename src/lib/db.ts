@@ -13,6 +13,15 @@ export interface TripIndexRow {
   updatedAt: number;
 }
 
+export interface RegionRow {
+  tripId: string;
+  bbox: [number, number, number, number]; // w, s, e, n
+  maxZoom: number;
+  tiles: number;
+  bytes: number;
+  savedAt: number;
+}
+
 export interface SettingRow {
   key: string;
   value: unknown;
@@ -21,12 +30,17 @@ export interface SettingRow {
 export const db = new Dexie("travelplanner") as Dexie & {
   trips: EntityTable<TripIndexRow, "id">;
   settings: EntityTable<SettingRow, "key">;
+  regions: EntityTable<RegionRow, "tripId">;
 };
 
 db.version(1).stores({
   trips: "id, updatedAt, startDate",
   settings: "key",
-  // Reserved for later phases:
-  //   inbox: email-imported bookings awaiting review
-  //   regions: downloaded offline map extracts
+});
+
+db.version(2).stores({
+  trips: "id, updatedAt, startDate",
+  settings: "key",
+  regions: "tripId",
+  // Reserved: inbox (email-imported bookings awaiting review)
 });
