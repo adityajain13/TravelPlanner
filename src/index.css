@@ -1,6 +1,5 @@
 @import "tailwindcss";
-@import "@fontsource-variable/fraunces";
-@import "@fontsource-variable/manrope";
+@import "@fontsource-variable/source-sans-3";
 
 @custom-variant dark (&:where(.dark, .dark *));
 
@@ -40,8 +39,9 @@
   --color-accent: var(--accent);
   --color-on-accent: var(--on-accent);
   --color-danger: var(--danger);
-  --font-display: "Fraunces Variable", Georgia, serif;
-  --font-sans: "Manrope Variable", system-ui, sans-serif;
+  /* Wanderlog-style: one humanist sans throughout, bold for headings */
+  --font-display: "Source Sans 3 Variable", "Source Sans Pro", system-ui, sans-serif;
+  --font-sans: "Source Sans 3 Variable", "Source Sans Pro", system-ui, sans-serif;
 }
 
 html,
@@ -138,5 +138,16 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   label:has(> input[type="checkbox"]),
   label:has(> input[type="file"]) {
     cursor: pointer;
+  }
+}
+
+/* Headings: bold sans (font-weight utilities still override) */
+@layer base {
+  .font-display {
+    font-weight: 700;
+    letter-spacing: -0.01em;
+  }
+  body {
+    font-size: 16px;
   }
 }

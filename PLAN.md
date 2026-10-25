@@ -87,3 +87,4 @@ Hosted at **adityajain.ca/travelplanner** by the `travelplanner` Cloudflare Work
 - Insert between stops: hover "+" in the gap/leg row opens an inline search; addItem takes an index.
 - lib/scroll.ts: rAF scroller that re-targets each frame (content-visibility sections resize mid-scroll and cancel native smooth scroll, esp. upward). Used by contents, day chips, map selection.
 - Google Maps links in "Add a place": Worker /api/maps-link expands short links (Google hosts only, Location headers only); lib/gmaps.ts reads name + !3d/!4d pin, then matches OSM within 1 km (falls back to a bare pin). Shared share-token helper lib/shareToken.ts.
+- Typography: Source Sans 3 everywhere (Wanderlog-style), bold headings; replaced Fraunces/Manrope. Bigger card titles (17px bold), notes 15px, day headings 21px, sidebar 15/18px.

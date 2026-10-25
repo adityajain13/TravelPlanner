@@ -31,7 +31,7 @@ export function LegChip({ mode, state, readOnly, onMode, from, to }: { mode: Tra
   const steps = res?.steps?.filter((s) => s.mode !== "WALK" || s.minutes >= 2);
 
   return (
-    <div className="relative my-0.5 ml-9 flex items-center gap-2 text-xs text-muted" onClick={(e) => e.stopPropagation()}>
+    <div className="relative my-0.5 ml-9 flex items-center gap-2 text-[13px] text-muted" onClick={(e) => e.stopPropagation()}>
       <button
         disabled={readOnly || shownMode === "flight"}
         onClick={() => setOpen((o) => !o)}

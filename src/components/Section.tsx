@@ -76,19 +76,19 @@ export function Section(p: Props) {
         <span className="size-2.5 shrink-0 rounded-full" style={{ background: info.color }} />
         <div className="min-w-0 flex-1">
           {info.kind === "day" ? (
-            <h3 className="truncate font-display text-lg">
-              <span className="text-muted">Day {info.dayNumber} · </span>
+            <h3 className="truncate font-display text-[21px]">
+              <span className="font-semibold text-muted">Day {info.dayNumber} · </span>
               {formatDayHeading(info.date!)}
             </h3>
           ) : info.readonlyTitle || !p.onRename || p.readOnly ? (
-            <h3 className="truncate font-display text-lg">{info.title}</h3>
+            <h3 className="truncate font-display text-[21px]">{info.title}</h3>
           ) : (
             <input
               key={info.title}
               defaultValue={info.title}
               onBlur={(e) => e.target.value.trim() && e.target.value !== info.title && p.onRename!(e.target.value.trim())}
               onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()}
-              className="w-full bg-transparent font-display text-lg outline-none"
+              className="w-full bg-transparent font-display text-[21px] outline-none"
             />
           )}
         </div>

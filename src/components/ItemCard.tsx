@@ -30,7 +30,7 @@ export function PinMarker({ color, label, size = 28 }: { color: string; label?: 
   return (
     <svg width={size} height={size * 1.2} viewBox="0 0 28 34" className="shrink-0 drop-shadow-sm" aria-hidden>
       <path d="M14 33c-1-3.2-3.4-6-6.2-8.8A12.5 12.5 0 1 1 26.5 14c0 3.7-1.6 7-4.3 10.2C19.4 27 17 29.8 14 33z" fill={color} stroke="rgb(0 0 0 / .35)" strokeWidth="1" />
-      <text x="14" y="18.3" textAnchor="middle" fontSize={String(label ?? "").length > 1 ? 10.5 : 12.5} fontWeight="700" fill="#0e1110" fontFamily="Manrope Variable, system-ui">
+      <text x="14" y="18.3" textAnchor="middle" fontSize={String(label ?? "").length > 1 ? 10.5 : 12.5} fontWeight="700" fill="#0e1110" fontFamily="Source Sans 3 Variable, system-ui">
         {label ?? "•"}
       </text>
     </svg>
@@ -70,7 +70,7 @@ export function ItemCard({ item, number, color, selected, readOnly, currency = "
       >
         <div className="min-w-0 flex-1">
           <div className="flex items-start justify-between gap-2">
-            <p className={`leading-snug ${isPlace ? "text-[15px] font-semibold" : "text-sm"}`}>{item.name}</p>
+            <p className={`leading-snug ${isPlace ? "text-[17px] font-bold" : "text-[15px]"}`}>{item.name}</p>
             <div className="-mt-1 -mr-1 flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 max-md:opacity-100">
               {isPlace && (
                 <a
@@ -91,8 +91,8 @@ export function ItemCard({ item, number, color, selected, readOnly, currency = "
               )}
             </div>
           </div>
-          {isPlace && subtitle && <p className="mt-0.5 truncate text-xs text-muted">{subtitle}</p>}
-          {!selected && item.notes && <p className="mt-1.5 line-clamp-2 text-sm whitespace-pre-line text-muted">{item.notes}</p>}
+          {isPlace && subtitle && <p className="mt-0.5 truncate text-sm text-muted">{subtitle}</p>}
+          {!selected && item.notes && <p className="mt-1.5 line-clamp-3 text-[15px] leading-snug whitespace-pre-line text-muted">{item.notes}</p>}
 
           {!selected && (item.startTime || item.cost != null) && (
             <div className="mt-2 flex flex-wrap gap-1.5 text-xs">
