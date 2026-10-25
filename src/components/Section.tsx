@@ -4,6 +4,8 @@ import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable"
 import { ChevronDown, Eye } from "lucide-react";
 import type { Item, Reservation } from "../lib/trips";
 import { RES_ICON } from "./Reservations";
+import { LegChip } from "./LegChip";
+import { formatDistance, formatDuration, type LegState, type TravelMode } from "../lib/routing";
 import type { PlaceResult } from "../lib/photon";
 import { formatDayHeading } from "../lib/dates";
 import { ItemCard } from "./ItemCard";
@@ -27,6 +29,9 @@ interface Props {
   readOnly?: boolean;
   currency?: string;
   chips?: { r: Reservation; label: string }[];
+  /** Incoming leg per item id (days only). */
+  legs?: Map<string, { mode: TravelMode; state?: LegState }>;
+  onLegMode?: (itemId: string, mode: TravelMode) => void;
   onChipClick?: (r: Reservation) => void;
   selectedId: string | null;
   near?: [number, number];
@@ -45,6 +50,13 @@ export function Section(p: Props) {
   const [open, setOpen] = useState(true);
   const { setNodeRef, isOver } = useDroppable({ id: info.key });
   const placeCount = info.items.filter((i) => i.kind === "place").length;
+  // Day total, like Wanderlog: "2 h 41 min · 182 km" (ground legs only)
+  let secs = 0;
+  let metres = 0;
+  for (const l of p.legs?.values() ?? []) {
+    if (typeof l.state === "object" && l.state.mode !== "flight") (secs += l.state.duration ?? 0), (metres += l.state.distance);
+  }
+  const dayTravel = secs > 0 ? `${formatDuration(secs)} · ${formatDistance(metres)}` : null;
   let n = 0;
 
   return (
@@ -75,6 +87,7 @@ export function Section(p: Props) {
             />
           )}
         </div>
+        {dayTravel && <span className="text-xs text-muted tabular-nums max-sm:hidden">{dayTravel}</span>}
         {placeCount > 0 && <span className="text-xs text-muted tabular-nums">{placeCount}</span>}
         <button
           onClick={p.onFocus}
@@ -105,6 +118,15 @@ export function Section(p: Props) {
         <div className="mt-2 space-y-0.5 pl-3">
           <SortableContext items={info.items.map((i) => i.id)} strategy={verticalListSortingStrategy}>
             {info.items.map((it) => (
+              <div key={it.id}>
+              {p.legs?.has(it.id) && (
+                <LegChip
+                  mode={p.legs.get(it.id)!.mode}
+                  state={p.legs.get(it.id)!.state}
+                  readOnly={p.readOnly}
+                  onMode={(m) => p.onLegMode?.(it.id, m)}
+                />
+              )}
               <ItemCard
                 key={it.id}
                 item={it}
@@ -117,6 +139,7 @@ export function Section(p: Props) {
                 onChange={(patch) => p.onChange(it.id, patch)}
                 onDelete={() => p.onDelete(it.id)}
               />
+              </div>
             ))}
           </SortableContext>
           {info.key !== "orphan" && !p.readOnly && (

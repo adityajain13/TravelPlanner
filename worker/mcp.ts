@@ -195,7 +195,7 @@ const TOOLS = [
     name: "pin_missing",
     title: "Pin unpinned places",
     description:
-      "Finds map coordinates for places in the trip that don't have a pin yet, in itinerary order, staying inside the trip's country and near the previous stop. Handles a batch per call; call again while it says places remain. Needs an edit link.",
+      "Finds map coordinates for places in the trip that don't have a pin yet, in itinerary order, preferring places near the previous stop and in countries the trip visits. Handles a batch per call; call again while it says places remain. Needs an edit link.",
     inputSchema: { type: "object", properties: { ...linkProp }, required: ["trip_link"] },
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true },
   },
@@ -318,6 +318,7 @@ async function pinPlaces(
   places: { key: string; name: string; query: string; section: string }[],
   o: { countryCode?: string; center?: number[]; budget: Budget; prevBySection?: Map<string, number[]> },
 ) {
+  const countries = new Set<string>(o.countryCode ? [o.countryCode] : []);
   const found = new Map<string, Hit>();
   const notFound: string[] = [];
   const deferred: string[] = [];
@@ -328,9 +329,9 @@ async function pinPlaces(
       continue;
     }
     const near = prev.get(p.section) ?? o.center;
-    const hit = await geocode(p.query, { countryCode: o.countryCode, near, maxKm: near ? 450 : undefined, budget: o.budget });
+    const hit = await geocode(p.query, { countries: [...countries], near, budget: o.budget });
     if (hit === OUT_OF_BUDGET) deferred.push(p.name);
-    else if (hit) found.set(p.key, hit), prev.set(p.section, [hit.lng, hit.lat]);
+    else if (hit) found.set(p.key, hit), prev.set(p.section, [hit.lng, hit.lat]), hit.countryCode && countries.add(hit.countryCode);
     else notFound.push(p.name);
   }
   return { found, notFound, deferred };
@@ -367,7 +368,7 @@ async function callTool(env: Env, name: string, a: Args): Promise<string> {
       return hits
         .map(
           (h, i) =>
-            `${i + 1}. ${h.name}${h.category ? ` (${h.category})` : ""}${countryCode && h.countryCode && h.countryCode !== countryCode ? " [OUTSIDE TRIP COUNTRY]" : ""}\n   address: ${h.address ?? "?"}\n   lat: ${h.lat}, lng: ${h.lng}${h.osmId ? `, osm_id: ${h.osmId}` : ""}`,
+            `${i + 1}. ${h.name}${h.category ? ` (${h.category})` : ""}${countryCode && h.countryCode && h.countryCode !== countryCode ? " [different country from the trip]" : ""}\n   address: ${h.address ?? "?"}\n   lat: ${h.lat}, lng: ${h.lng}${h.osmId ? `, osm_id: ${h.osmId}` : ""}`,
         )
         .join("\n");
     }
@@ -473,7 +474,7 @@ async function callTool(env: Env, name: string, a: Args): Promise<string> {
         });
         if (!r.ok) throw new ToolError(r.error);
       }
-      return [`Pinned ${found.size} of ${todo.length} unpinned places${countryCode ? ` (kept inside ${countryCode.toUpperCase()})` : ""}.`, ...pinSummary(notFound, deferred)].join("\n");
+      return [`Pinned ${found.size} of ${todo.length} unpinned places.`, ...pinSummary(notFound, deferred)].join("\n");
     }
     case "add_reservations": {
       const list = a.reservations;
@@ -505,7 +506,7 @@ async function callTool(env: Env, name: string, a: Args): Promise<string> {
             notes: str(x, "notes"),
           };
           if ((type === "lodging" || type === "restaurant") && (rec.address || rec.title)) {
-            const hit = await geocode(String(rec.address ?? rec.title), { countryCode: resCountry, near: snap.meta.center, budget: resBudget });
+            const hit = await geocode(String(rec.address ?? rec.title), { countries: resCountry ? [resCountry] : [], near: snap.meta.center, budget: resBudget });
             if (hit && hit !== OUT_OF_BUDGET) Object.assign(rec, { lat: hit.lat, lng: hit.lng, address: rec.address ?? hit.address });
           }
           records.push(rec);

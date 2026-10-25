@@ -1,8 +1,9 @@
 /*
  * Place lookup for the app: Photon first (fast, typo-tolerant), OpenStreetMap Nominatim as the
- * fallback when Photon is down or finds nothing. When a trip country is known, results outside
- * it are rejected, and an optional distance cap from the previous stop stops pins from jumping
- * to a same-named place on another continent.
+ * fallback when Photon is down or finds nothing. Candidates are ranked rather than filtered:
+ * search relevance, closeness to the previous stop, and whether they're in a country the trip
+ * already visits. Multi-country trips and long hops (YYZ → KEF) work; only an absurd match
+ * (unknown country AND >3,000 km from the previous stop) is rejected.
  * Nominatim's usage policy allows ~1 request/second, so those calls are throttled.
  */
 
@@ -17,9 +18,11 @@ export interface GeoHit {
 }
 
 export interface GeoOpts {
+  /** Countries the trip already involves (lowercase ISO); a preference, not a filter. */
+  countries?: string[];
+  /** Only used by searchPlaces for ordering. */
   countryCode?: string;
   near?: [number, number]; // [lng, lat]
-  maxKm?: number;
   limit?: number;
   signal?: AbortSignal;
 }
@@ -97,9 +100,20 @@ async function nominatim(q: string, o: GeoOpts): Promise<GeoHit[]> {
   }));
 }
 
-const acceptable = (h: GeoHit, o: GeoOpts) =>
-  (!o.countryCode || !h.countryCode || h.countryCode === o.countryCode.toLowerCase()) &&
-  (!o.near || !o.maxKm || distanceKm(o.near, [h.lng, h.lat]) <= o.maxKm);
+/** Pick the most plausible candidate (results arrive in relevance order). */
+export function pickBest(cands: GeoHit[], o: GeoOpts): GeoHit | null {
+  const countries = new Set((o.countries ?? []).map((c) => c.toLowerCase()));
+  let best: GeoHit | null = null;
+  let bestScore = -Infinity;
+  cands.forEach((h, i) => {
+    const d = o.near ? distanceKm(o.near, [h.lng, h.lat]) : 0;
+    const known = !countries.size || (h.countryCode ? countries.has(h.countryCode) : true);
+    if (!known && d > 3000) return; // e.g. an Iceland stop matching a shop in Vietnam
+    const score = -i * 0.35 + (countries.size && known ? 1.5 : 0) - Math.log10(1 + d / 10);
+    if (score > bestScore) (best = h), (bestScore = score);
+  });
+  return best;
+}
 
 /** Search results for the "Add a place" box. Photon → Nominatim fallback; trip-country results first. */
 export async function searchPlaces(q: string, o: GeoOpts = {}): Promise<GeoHit[]> {
@@ -125,7 +139,7 @@ export async function searchPlaces(q: string, o: GeoOpts = {}): Promise<GeoHit[]
 export async function geocode(q: string, o: GeoOpts = {}): Promise<GeoHit | null> {
   if (photonFailures < 3) {
     try {
-      const hit = (await photon(q, { ...o, limit: 6 })).find((h) => acceptable(h, o));
+      const hit = pickBest(await photon(q, { ...o, limit: 8 }), o);
       photonFailures = 0;
       if (hit) return hit;
     } catch (e) {
@@ -134,7 +148,7 @@ export async function geocode(q: string, o: GeoOpts = {}): Promise<GeoHit | null
     }
   }
   try {
-    return (await nominatim(q, { ...o, limit: 5 })).find((h) => acceptable(h, o)) ?? null;
+    return pickBest(await nominatim(q, { ...o, countryCode: undefined, limit: 6 }), o);
   } catch (e) {
     if ((e as Error).name === "AbortError") throw e;
     return null;

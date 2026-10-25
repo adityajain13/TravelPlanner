@@ -91,7 +91,7 @@ export function PlaceSearch({ near, countryCode, onPick, onNote }: Props) {
         />
       </div>
       {showMenu && (
-        <ul className="absolute inset-x-0 top-full z-30 mt-1 max-h-80 overflow-y-auto rounded-xl border border-line bg-surface py-1 shadow-2xl">
+        <ul data-popover className="absolute inset-x-0 top-full z-30 mt-1 max-h-80 overflow-y-auto rounded-xl border border-line bg-surface py-1 shadow-2xl">
           {results.map((r, i) => (
             <li key={r.osmId}>
               <button
