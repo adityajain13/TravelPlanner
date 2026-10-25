@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { Clock, ExternalLink, GripVertical, ImagePlus, StickyNote, Trash2, Wallet } from "lucide-react";
+import { Bookmark, CheckSquare, Clock, ExternalLink, GripVertical, ImagePlus, StickyNote, Trash2, Wallet } from "lucide-react";
 import { ImagePicker } from "./ImagePicker";
 import { Photo } from "./Photo";
 import { PhotoCredit } from "./PhotoCredit";
@@ -9,6 +9,7 @@ import { CURRENCIES, formatMoney } from "../lib/fx";
 import type { Item } from "../lib/trips";
 import { googleMapsLink } from "../lib/photon";
 import { GoogleDetails } from "./GoogleDetails";
+import { SectionPicker, type SectionTarget } from "./SectionPicker";
 
 interface Props {
   item: Item;
@@ -23,6 +24,13 @@ interface Props {
   onSelect: () => void;
   onChange: (patch: Partial<Item>) => void;
   onDelete: () => void;
+  /** Multi-select */
+  checked?: boolean;
+  selecting?: boolean;
+  onCheck?: (checked: boolean, shift: boolean) => void;
+  /** Days and lists, for the "Added to ▾" menu */
+  targets?: SectionTarget[];
+  onMoveTo?: (section: string) => void;
 }
 
 /** Wanderlog-style teardrop marker with the stop number, in the day's colour. */
@@ -37,7 +45,7 @@ export function PinMarker({ color, label, size = 28 }: { color: string; label?: 
   );
 }
 
-export function ItemCard({ item, number, color, selected, readOnly, currency = "CAD", searchContext, onSelect, onChange, onDelete }: Props) {
+export function ItemCard({ item, number, color, selected, readOnly, currency = "CAD", searchContext, onSelect, onChange, onDelete, checked, selecting, onCheck, targets, onMoveTo }: Props) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: item.id, disabled: readOnly });
   const style = { transform: CSS.Translate.toString(transform), transition };
   const [picking, setPicking] = useState(false);
@@ -58,8 +66,27 @@ export function ItemCard({ item, number, color, selected, readOnly, currency = "
         </button>
       )}
 
-      <div className="mt-2.5 w-7 shrink-0">
-        {isPlace ? <PinMarker color={color} label={number} /> : <StickyNote className="mx-auto mt-0.5 size-5 text-muted" />}
+      <div className="relative mt-2.5 w-7 shrink-0">
+        {/* Hovering swaps the pin for a checkbox (multi-select); while selecting, every row shows one */}
+        <div className={onCheck && (selecting || checked) ? "invisible" : onCheck ? "md:group-hover:invisible" : ""}>
+          {isPlace ? <PinMarker color={color} label={number} /> : <StickyNote className="mx-auto mt-0.5 size-5 text-muted" />}
+        </div>
+        {onCheck && (
+          <label
+            onClick={(e) => e.stopPropagation()}
+            className={`absolute inset-x-0 top-0.5 flex cursor-pointer justify-center ${selecting || checked ? "" : "invisible md:group-hover:visible"}`}
+            title="Select"
+          >
+            <input
+              type="checkbox"
+              checked={!!checked}
+              onChange={() => undefined}
+              onClick={(e) => onCheck(!checked, (e as React.MouseEvent).shiftKey)}
+              className="size-[18px] cursor-pointer rounded accent-[var(--accent)]"
+              aria-label={`Select ${item.name}`}
+            />
+          </label>
+        )}
       </div>
 
       <div
@@ -112,6 +139,26 @@ export function ItemCard({ item, number, color, selected, readOnly, currency = "
 
           {selected && (
             <div className="mt-3 space-y-2" onClick={(e) => e.stopPropagation()}>
+              {!readOnly && (targets?.length || onCheck) && (
+                <div className="flex flex-wrap items-center gap-2 text-[13px]">
+                  {targets && onMoveTo && (
+                    <SectionPicker
+                      targets={targets}
+                      current={item.section}
+                      onPick={(k) => k !== item.section && onMoveTo(k)}
+                      className="rounded-full border border-line px-2.5 py-1 font-semibold text-muted hover:border-accent hover:text-fg"
+                    >
+                      <Bookmark className="size-3.5" />
+                      {targets.find((t) => t.key === item.section)?.label ?? "Move to"}
+                    </SectionPicker>
+                  )}
+                  {onCheck && !checked && (
+                    <button onClick={() => onCheck(true, false)} className="flex items-center gap-1.5 rounded-full px-2 py-1 font-semibold text-muted hover:text-fg md:hidden">
+                      <CheckSquare className="size-3.5" /> Select
+                    </button>
+                  )}
+                </div>
+              )}
               {isPlace && (
                 <div className="flex items-center gap-1.5 text-xs text-muted">
                   <Clock className="size-3.5" />

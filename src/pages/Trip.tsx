@@ -14,7 +14,7 @@ import {
   type DragStartEvent,
 } from "@dnd-kit/core";
 import { sortableKeyboardCoordinates } from "@dnd-kit/sortable";
-import { ArrowLeft, Camera, Cloud, CloudOff, Moon, Sun, Eye, ImagePlus, List, Loader2, Map as MapIcon, PanelLeft, Plus, Share2 } from "lucide-react";
+import { ArrowLeft, Camera, Copy, FolderInput, Trash2, X, Cloud, CloudOff, Moon, Sun, Eye, ImagePlus, List, Loader2, Map as MapIcon, PanelLeft, Plus, Share2 } from "lucide-react";
 import { Contents, ContentsRail, type Tab } from "../components/Contents";
 import { useConverter } from "../lib/fx";
 import { budgetLines, totals } from "../lib/budget";
@@ -40,7 +40,10 @@ import {
   addItem,
   addList,
   moveItem,
+  moveItems,
+  copyItems,
   removeItem,
+  removeItems,
   setReadOnly,
   renameList,
   sectionsFor,
@@ -55,6 +58,8 @@ const TripMap = lazy(() => import("../components/TripMap").then((m) => ({ defaul
 import { Section, type SectionInfo } from "../components/Section";
 import { OfflineMapButton } from "../components/OfflineMapButton";
 import { HeroPill } from "../components/HeroPill";
+import { PlacePanel, type PanelMode } from "../components/PlacePanel";
+import { SectionPicker, type SectionTarget } from "../components/SectionPicker";
 import { ShareDialog } from "../components/ShareDialog";
 import { InboxPanel } from "../components/InboxPanel";
 import { fetchInbox, type InboxItem } from "../lib/inbox";
@@ -74,6 +79,25 @@ export function TripPage() {
   const { doc, state, ready } = useTrip(id);
   const [theme, toggleTheme] = useTheme();
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  // Multi-select (checkboxes) — separate from the single "open" card
+  const [checked, setChecked] = useState<Set<string>>(new Set());
+  const lastChecked = useRef<string | null>(null);
+  const [panelMode, setPanelModeState] = useState<PanelMode>(() => {
+    try {
+      return localStorage.getItem("tp-place-panel") === "compact" ? "compact" : "full";
+    } catch {
+      return "full";
+    }
+  });
+  const setPanelMode = (m: PanelMode) => {
+    setPanelModeState(m);
+    try {
+      localStorage.setItem("tp-place-panel", m);
+    } catch {
+      /* private mode */
+    }
+  };
+  const [panelInset, setPanelInset] = useState<{ top: number; bottom: number } | null>(null);
   const [focus, setFocus] = useState<string | null>(null); // section shown alone on the map
   const [mobileView, setMobileView] = useState<"plan" | "map">("plan");
   const [dragging, setDragging] = useState<Item | null>(null);
@@ -295,6 +319,41 @@ export function TripPage() {
 
   const syncIcon = syncStatus === "online" ? <Cloud /> : syncStatus === "offline" ? <CloudOff /> : <Loader2 className="animate-spin" />;
   const syncLabel = syncStatus === "online" ? "Synced" : syncStatus === "offline" ? "Offline · saved on device" : "Connecting";
+  const targets: SectionTarget[] = view.sections
+    .filter((s) => s.key !== ORPHAN)
+    .map((s) => ({ key: s.key, color: s.color, label: s.kind === "day" ? formatChip(s.date!) : (s.title ?? "List") }));
+  const flatIds = view.sections.flatMap((s) => s.items.map((i) => i.id));
+  const onCheck = (itemId: string, on: boolean, shift: boolean) => {
+    // Shift-click selects the whole run since the last box ticked (computed now, not in the updater)
+    const a = lastChecked.current ? flatIds.indexOf(lastChecked.current) : -1;
+    const b = flatIds.indexOf(itemId);
+    const range = shift && a >= 0 && b >= 0 ? flatIds.slice(Math.min(a, b), Math.max(a, b) + 1) : [itemId];
+    setChecked((prev) => {
+      const next = new Set(prev);
+      for (const x of range) on ? next.add(x) : next.delete(x);
+      return next;
+    });
+    lastChecked.current = itemId;
+  };
+  const clearChecked = () => (setChecked(new Set()), (lastChecked.current = null));
+  const checkedIds = flatIds.filter((x) => checked.has(x));
+
+  // Place panel over the map for the open card
+  const openSection = selectedId ? view.sections.find((s) => s.items.some((i) => i.id === selectedId)) : undefined;
+  const openItem = openSection?.items.find((i) => i.id === selectedId && i.kind === "place");
+  const openPlaces = openSection?.items.filter((i) => i.kind === "place") ?? [];
+  const openIdx = openItem ? openPlaces.findIndex((i) => i.id === openItem.id) : -1;
+  const goTo = (itemId: string) => {
+    setSelectedId(itemId);
+    requestAnimationFrame(() => scrollToId(scrollRef.current, `item-${itemId}`, "center"));
+  };
+  const prevStop = (() => {
+    if (!openItem || !openSection || openSection.kind !== "day") return undefined;
+    const before = openSection.items.slice(0, openSection.items.indexOf(openItem)).filter((i) => i.lat != null && i.lng != null);
+    const b = before.at(-1);
+    return b ? { lat: b.lat!, lng: b.lng! } : undefined;
+  })();
+
   const hideContents = (hidden: boolean) => {
     setContentsHidden(hidden);
     try {
@@ -419,6 +478,31 @@ export function TripPage() {
 
         {/* Tabs + day jump chips stay pinned while the plan scrolls */}
         <div className="sticky top-0 z-30 border-b border-line bg-bg/95 px-5 backdrop-blur">
+          {checked.size > 0 && (
+            <div className="absolute inset-0 z-10 flex items-center gap-1 bg-bg px-4 text-[14px] font-semibold">
+              <button onClick={clearChecked} className="grid size-8 place-items-center rounded-full text-muted hover:bg-surface-2 hover:text-fg" aria-label="Clear selection">
+                <X className="size-4" />
+              </button>
+              <span className="mr-auto tabular-nums">{checked.size} selected</span>
+              <SectionPicker targets={targets} onPick={(k) => (copyItems(doc, checkedIds, k), clearChecked())} align="right" className="rounded-full px-2.5 py-1.5 text-muted hover:bg-surface-2 hover:text-fg">
+                <Copy className="size-4" /> Copy to
+              </SectionPicker>
+              <SectionPicker targets={targets} onPick={(k) => (moveItems(doc, checkedIds, k), clearChecked())} align="right" className="rounded-full px-2.5 py-1.5 text-muted hover:bg-surface-2 hover:text-fg">
+                <FolderInput className="size-4" /> Move to
+              </SectionPicker>
+              <button
+                onClick={() => {
+                  if (!confirm(`Delete ${checked.size} item${checked.size > 1 ? "s" : ""}?`)) return;
+                  removeItems(doc, checkedIds);
+                  if (selectedId && checked.has(selectedId)) setSelectedId(null);
+                  clearChecked();
+                }}
+                className="flex items-center gap-1.5 rounded-full px-2.5 py-1.5 text-muted hover:bg-surface-2 hover:text-danger"
+              >
+                <Trash2 className="size-4" /> Delete
+              </button>
+            </div>
+          )}
           <nav className="flex items-end gap-5 pt-3 text-[15px] font-semibold">
             <button onClick={() => setContentsDrawer(true)} className="-ml-1 pb-2.5 text-muted hover:text-fg lg:hidden" title="Contents" aria-label="Contents">
               <PanelLeft className="size-4" />
@@ -557,6 +641,10 @@ export function TripPage() {
                 onAddNote={(text, index) => addItem(doc, s.key, { kind: "note", name: text }, undefined, index)}
                 onChange={(itemId, patch) => updateItem(doc, itemId, patch)}
                 onDelete={(itemId) => removeItem(doc, itemId)}
+                checked={readOnly ? undefined : checked}
+                onCheck={readOnly ? undefined : onCheck}
+                targets={readOnly ? undefined : targets}
+                onMoveTo={readOnly ? undefined : (itemId, k) => moveItems(doc, [itemId], k)}
               />
             ))}
             <DragOverlay>
@@ -596,8 +684,31 @@ export function TripPage() {
           theme={theme}
           fitKey={`${id}:${focus ?? "all"}`}
           fallbackCenter={near}
+          inset={openItem ? (panelInset ?? { top: 0, bottom: 0 }) : null}
         />
         </Suspense>
+        {openItem && (
+          <PlacePanel
+            key={panelMode}
+            item={openItem}
+            number={openIdx >= 0 ? openIdx + 1 : undefined}
+            color={openSection!.color}
+            index={Math.max(0, openIdx)}
+            total={Math.max(1, openPlaces.length)}
+            onPrev={openIdx > 0 ? () => goTo(openPlaces[openIdx - 1].id) : undefined}
+            onNext={openIdx >= 0 && openIdx < openPlaces.length - 1 ? () => goTo(openPlaces[openIdx + 1].id) : undefined}
+            onClose={() => setSelectedId(null)}
+            mode={panelMode}
+            onMode={setPanelMode}
+            targets={targets}
+            onMoveTo={(k) => moveItems(doc, [openItem.id], k)}
+            onLink={(googlePlaceId) => updateItem(doc, openItem.id, { googlePlaceId })}
+            readOnly={readOnly}
+            currency={state.meta.currency ?? "CAD"}
+            from={prevStop}
+            onInset={setPanelInset}
+          />
+        )}
       </main>
 
       {pickingCover && (

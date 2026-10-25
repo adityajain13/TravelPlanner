@@ -205,3 +205,31 @@ export async function coverFor(destination: string, signal?: AbortSignal): Promi
   }
   return null;
 }
+
+
+/** A few sentences about the place from its own Wikipedia article (live, cached for the session). */
+const summaries = new Map<string, Promise<{ text: string; url?: string; title: string } | null>>();
+export function placeSummary(name: string, coords?: [number, number]) {
+  const key = `${name}|${coords?.join(",") ?? ""}`;
+  if (!summaries.has(key)) {
+    summaries.set(
+      key,
+      (async () => {
+        const wiki = await wikipedia(name, coords).catch(() => []);
+        const hit = wiki.find((w) => (w.near ? w.score >= 0.75 : norm(w.img.title ?? "") === norm(name)));
+        const title = hit?.img.title;
+        if (!title) return null;
+        const q = new URLSearchParams({ action: "query", format: "json", formatversion: "2", origin: "*", prop: "extracts|info", exintro: "1", explaintext: "1", exsentences: "4", inprop: "url", titles: title, redirects: "1" });
+        const res = await fetch(`${WIKI}?${q}`);
+        if (!res.ok) return null;
+        const page = ((await res.json()) as { query?: { pages?: { extract?: string; fullurl?: string; title: string }[] } }).query?.pages?.[0];
+        const text = page?.extract?.replace(/\s*\([^()]*(?:\([^()]*\)[^()]*)*\)/, "").trim(); // drop the "(Icelandic: …; pronounced …)" aside
+        return text ? { text, url: page!.fullurl, title: page!.title } : null;
+      })().catch(() => {
+        summaries.delete(key);
+        return null;
+      }),
+    );
+  }
+  return summaries.get(key)!;
+}

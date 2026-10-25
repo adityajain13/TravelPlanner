@@ -37,6 +37,8 @@ interface Props {
   /** Change this to re-frame the map around the current pins (trip opened, day filter changed). */
   fitKey: string;
   fallbackCenter?: [number, number];
+  /** Space taken by the place panel over the map; the selected pin is framed in what's left. */
+  inset?: { top: number; bottom: number } | null;
 }
 
 maplibregl.setWorkerUrl(workerUrl);
@@ -49,7 +51,7 @@ const readMode = (): MapMode => {
   }
 };
 
-export function TripMap({ pins, routes, selectedId, onSelect, theme, fitKey, fallbackCenter }: Props) {
+export function TripMap({ pins, routes, selectedId, onSelect, theme, fitKey, fallbackCenter, inset }: Props) {
   const container = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const [mode, setMode] = useState<MapMode>(readMode);
@@ -128,9 +130,12 @@ export function TripMap({ pins, routes, selectedId, onSelect, theme, fitKey, fal
     const p = pins.find((x) => x.id === selectedId);
     popup.current?.remove();
     popup.current = null;
+    if (map && !p && !inset) map.setPadding({ top: 0, bottom: 0, left: 0, right: 0 });
     if (!map || !p) return;
-    map.easeTo({ center: [p.lng, p.lat], zoom: Math.max(map.getZoom(), 14), duration: 500 });
-    if (p.name) {
+    const pad = { top: (inset?.top ?? 0) + 40, bottom: (inset?.bottom ?? 0) + 40, left: 40, right: 40 };
+    map.easeTo({ center: [p.lng, p.lat], zoom: Math.max(map.getZoom(), 14), duration: 500, padding: pad });
+    // The place panel replaces the little photo popup
+    if (p.name && !inset) {
       const el = document.createElement("div");
       el.className = "tp-popup";
       if (p.image) {
@@ -165,7 +170,7 @@ export function TripMap({ pins, routes, selectedId, onSelect, theme, fitKey, fal
         .addTo(map);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedId, pins.find((x) => x.id === selectedId)?.image]);
+  }, [selectedId, pins.find((x) => x.id === selectedId)?.image, inset ? Math.round(inset.top / 80) * 80 + Math.round(inset.bottom / 80) * 80 * 1000 : -1]);
 
   if (!PROTOMAPS_KEY) {
     return (
