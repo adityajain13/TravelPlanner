@@ -29,9 +29,11 @@
   "send_email": [{ "name": "EMAIL" }],
 
   "vars": {
-    "MAIL_FROM": "trips@adityajain.ca"
+    "MAIL_FROM": "trips@adityajain.ca",
+    "EXTRACT_MODEL": "claude-haiku-5-5"
   }
   // Secrets (set in the Cloudflare dashboard → Workers → travelplanner → Settings → Variables and Secrets):
   //   ALLOWED_EMAILS  comma-separated emails allowed to log in
   //   SHARE_SECRET    any long random string (signs share links)
+  //   ANTHROPIC_API_KEY  Claude API key for reading forwarded booking emails
 }

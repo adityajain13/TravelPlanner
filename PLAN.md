@@ -41,10 +41,12 @@ Hosted at **adityajain.ca/travelplanner** by the `travelplanner` Cloudflare Work
   - Auth: every tool takes `trip_link`; the HMAC share token is the credential. View link → reads only; edit link → writes. Resetting links in the app revokes Claude's access too.
   - Writes run inside the trip's Durable Object (`TripRoom.mutate`, origin `"claude"`) and reach open app clients live. Errors are phrased for the model (bad section lists valid ones, view link asks for the edit link).
   - Tested locally: initialize, tools/list, add/move/update, view-link write refused, invalid link refused, live delivery to an open client, get_trip rendering.
-- [ ] **5. Email import** — Cloudflare Email Routing rule `trips@adityajain.ca` → this Worker's `email()` handler.
-  - `postal-mime` parse → Claude API (Haiku, structured output: flight / hotel / train / car / reservation, times + tz, confirmation #, address).
-  - Match to a trip by dates/destination; store in D1 `inbox`; app shows a review inbox, approve → items.
-  - Unparseable mail is forwarded on to Gmail. Needs `ANTHROPIC_API_KEY` secret.
+- [x] **5. Email import** — `worker/email.ts`, `worker/inbox.ts`, `src/components/InboxPanel.tsx`, `UnmatchedInbox.tsx`
+  - Email Routing rule `trips@adityajain.ca` → Worker `email()` handler. Rejects senders not in `ALLOWED_EMAILS`.
+  - `postal-mime` parse (HTML → text fallback) → Claude API (`EXTRACT_MODEL`, default `claude-haiku-5-5`) with a forced `record_bookings` tool for structured output: per-leg bookings (type, title, confirmation, local dates/times, venue, from/to, notes) plus the matching trip id from the owner's trip list (validated server-side).
+  - Results stored in D1 `inbox` (migration 0002). A receipt email goes back ("Got it: 2 bookings…", "No booking found", or an error).
+  - App: matched bookings show at the top of the trip ("From your email") with "Add to <day>" (or the first list when outside the trip dates) and Dismiss. Hotels, restaurants and activities get geocoded with Photon so they get a pin. Unmatched bookings show on Home with a trip picker.
+  - Tested locally: allowed sender processed, stranger rejected, inbox add/dismiss/assign flows in the browser. Claude extraction itself is untested here (no API access from the sandbox).
 - [ ] **6. Polish** — edit history with per-origin undo, trip cover image, budget/expenses, packing list, ICS export, travel-time estimates between stops (OSRM), Wanderlog import if an export path exists.
 
 ## Notes for the next session

@@ -42,6 +42,10 @@ Every push to `main` deploys through GitHub Actions (`.github/workflows/deploy.y
 
 Then open adityajain.ca/travelplanner and sign in.
 
+## Email import
+
+Forward any booking confirmation (flights, hotels, trains, restaurants…) to **trips@adityajain.ca** from your allow-listed address. Claude reads it, matches it to a trip by dates and destination, and replies with a receipt. Open the trip, and the bookings wait at the top under "From your email", ready to add or dismiss. Bookings with no matching trip appear on the home screen with a trip picker.
+
 ## Claude connector
 
 1. In Claude: Settings → Connectors → add a custom connector with the URL `https://adityajain.ca/travelplanner/mcp`. It needs no login.

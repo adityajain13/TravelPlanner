@@ -42,6 +42,8 @@ import { ThemeToggle } from "../components/ThemeToggle";
 import { OfflineMapButton } from "../components/OfflineMapButton";
 import { SyncBadge } from "../components/SyncBadge";
 import { ShareDialog } from "../components/ShareDialog";
+import { InboxPanel } from "../components/InboxPanel";
+import { fetchInbox, type InboxItem } from "../lib/inbox";
 
 const ORPHAN = "orphan";
 const LOADING = "loading" as const;
@@ -69,6 +71,15 @@ export function TripPage() {
   useEffect(() => {
     if (doc) setReadOnly(doc, readOnly);
   }, [doc, readOnly]);
+
+  // Bookings forwarded to trips@ that matched this trip
+  const [inbox, setInbox] = useState<InboxItem[]>([]);
+  useEffect(() => {
+    if (!isOwner || !id || !navigator.onLine) return;
+    fetchInbox()
+      .then((items) => setInbox(items.filter((i) => i.trip_id === id)))
+      .catch(() => undefined);
+  }, [isOwner, id]);
   useEffect(() => {
     setWaited(false);
     const t = setTimeout(() => setWaited(true), 8000);
@@ -237,6 +248,7 @@ export function TripPage() {
         </header>
 
         <div className="min-h-0 flex-1 overflow-y-auto px-3 pb-28 md:pb-10">
+          {isOwner && <InboxPanel items={inbox} doc={doc} state={state} onDone={(itemId) => setInbox((xs) => xs.filter((x) => x.id !== itemId))} />}
           <DndContext sensors={readOnly ? [] : sensors} collisionDetection={closestCorners} onDragStart={onDragStart} onDragEnd={onDragEnd}>
             {view.sections.map((s) => (
               <Section

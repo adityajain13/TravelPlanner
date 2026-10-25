@@ -1,11 +1,11 @@
 import { handleAuth } from "./auth";
 import { handleTrips } from "./trips";
 import { handleMcp } from "./mcp";
+import { handleInbox } from "./inbox";
+import { handleEmail } from "./email";
 import { API, BASE, error, type Env } from "./util";
 
 export { TripRoom } from "./room";
-
-// Phase 5 adds an email() handler for trips@adityajain.ca.
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
@@ -25,7 +25,7 @@ export default {
       }
       try {
         if (url.pathname.startsWith(`${API}/auth/`)) return (await handleAuth(request, env, url)) ?? error(404, "Not found");
-        return (await handleTrips(request, env, url)) ?? error(404, "Not found");
+        return (await handleInbox(request, env, url)) ?? (await handleTrips(request, env, url)) ?? error(404, "Not found");
       } catch (e) {
         console.error(e);
         return error(500, "Server error");
@@ -39,5 +39,10 @@ export default {
       return env.ASSETS.fetch(new Request(new URL(`${BASE}/`, url), request));
     }
     return res;
+  },
+
+  // Email Routing: trips@adityajain.ca → this Worker
+  async email(message, env) {
+    await handleEmail(message, env);
   },
 } satisfies ExportedHandler<Env>;
