@@ -1,5 +1,5 @@
-/** Atlas Trips: the Atlas New Tab globe, in the app's green instead of gold. */
-export const APP_NAME = "Atlas Trips";
+/** Atlas Journeys: the Atlas New Tab globe, in the app's green instead of gold. */
+export const APP_NAME = "Atlas Journeys";
 
 export function LogoMark({ size = 28, className = "" }: { size?: number; className?: string }) {
   // Same geometry as public/icon.svg; lines a touch heavier so it holds up at 24–32px
@@ -22,7 +22,7 @@ export function Logo({ size = 28, className = "" }: { size?: number; className?:
     <span className={`inline-flex items-center gap-2.5 ${className}`}>
       <LogoMark size={size} />
       <span className="font-display leading-none font-bold tracking-tight text-fg" style={{ fontSize: size * 0.8 }}>
-        Atlas <span className="font-semibold text-muted">Trips</span>
+        Atlas <span className="font-semibold text-muted">Journeys</span>
       </span>
     </span>
   );

@@ -87,7 +87,7 @@ export async function sendMail(env: Env, m: { to: string; subject: string; text:
   const domain = env.MAIL_FROM.split("@")[1];
   const boundary = `tp-${randomToken(12)}`;
   const head = [
-    `From: ${encodeHeader("Atlas Trips")} <${env.MAIL_FROM}>`,
+    `From: ${encodeHeader("Atlas Journeys")} <${env.MAIL_FROM}>`,
     `To: <${m.to}>`,
     `Subject: ${encodeHeader(m.subject)}`,
     `Message-ID: <${randomToken(16)}@${domain}>`,

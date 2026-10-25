@@ -88,7 +88,7 @@ export async function handleAuth(req: Request, env: Env, url: URL): Promise<Resp
     try {
       await sendMail(env, {
         to: email,
-        subject: `${code} is your Atlas Trips sign-in code`,
+        subject: `${code} is your Atlas Journeys sign-in code`,
         text: `Your login code is ${code}\n\nOr sign in on this device with one tap:\n${link}\n\nThe code expires in 15 minutes. If you didn't ask for this, ignore it.`,
         html: `<div style="font-family:system-ui,sans-serif;max-width:420px">
 <p>Your login code:</p>
