@@ -1,21 +1,43 @@
 import { useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import { DateField } from "./DatePicker";
 import type * as Y from "yjs";
-import { ArrowRight, Pencil, Plus, Trash2, Users, X } from "lucide-react";
-import { removeExpense, saveExpense, updateMeta, type Expense, type ExpenseCategory, type TripState } from "../lib/trips";
+import { ArrowLeft, ArrowRight, BedDouble, Car, ChevronDown, ChevronRight, Fuel, Landmark, Pencil, Plane, Plus, Receipt, ShoppingBag, ShoppingCart, Ticket, TrainFront, Trash2, Users, Utensils, Wine, X } from "lucide-react";
+import { removeExpense, saveExpense, saveReservation, updateItem, updateMeta, type CostSplit, type Expense, type ExpenseCategory, type TripState } from "../lib/trips";
 import { CURRENCIES, formatMoney, useConverter } from "../lib/fx";
-import { budgetLines, CATEGORY_LABEL, settleUp, totals, travelersOf } from "../lib/budget";
+import { budgetLines, CATEGORIES, CATEGORY_LABEL, settleUp, totals, travelersOf, type Line } from "../lib/budget";
 import { formatShort, todayISO } from "../lib/dates";
-import { inputCls } from "./NewTripDialog";
 
-const CAT_COLOR: Record<ExpenseCategory, string> = {
+export const CAT_COLOR: Record<ExpenseCategory, string> = {
   flights: "#6aa8ff",
   lodging: "#c58cff",
-  transport: "#46c7c7",
+  car: "#46c7c7",
+  transit: "#3fb5e0",
+  transport: "#3fb5e0",
   food: "#f2a65a",
-  activities: "#5fd68b",
+  drinks: "#e07a9f",
+  sightseeing: "#5fd68b",
+  activities: "#9ad65f",
   shopping: "#f06b8b",
+  gas: "#d6c25f",
+  groceries: "#7fc8a9",
   other: "#9aa59f",
+};
+
+export const CAT_ICON: Record<ExpenseCategory, React.ReactNode> = {
+  flights: <Plane />,
+  lodging: <BedDouble />,
+  car: <Car />,
+  transit: <TrainFront />,
+  transport: <TrainFront />,
+  food: <Utensils />,
+  drinks: <Wine />,
+  sightseeing: <Landmark />,
+  activities: <Ticket />,
+  shopping: <ShoppingBag />,
+  gas: <Fuel />,
+  groceries: <ShoppingCart />,
+  other: <Receipt />,
 };
 
 export function BudgetPanel({ doc, state, readOnly }: { doc: Y.Doc; state: TripState; readOnly: boolean }) {
@@ -26,6 +48,7 @@ export function BudgetPanel({ doc, state, readOnly }: { doc: Y.Doc; state: TripS
   const { total, byCategory, unconverted } = totals(lines);
   const settle = useMemo(() => settleUp(lines, travelers), [lines, travelers]);
   const [editing, setEditing] = useState<Partial<Expense> | null>(null);
+  const [linked, setLinked] = useState<Line | null>(null);
   const [newTraveler, setNewTraveler] = useState("");
   const budget = state.meta.budget;
   const pct = budget ? Math.min(100, (total / budget) * 100) : 0;
@@ -159,7 +182,9 @@ export function BudgetPanel({ doc, state, readOnly }: { doc: Y.Doc; state: TripS
           <ul className="divide-y divide-line overflow-hidden rounded-xl border border-line bg-surface">
             {lines.map((l) => (
               <li key={l.id} className="group flex items-center gap-3 px-3 py-2.5">
-                <span className="size-2.5 shrink-0 rounded-full" style={{ background: CAT_COLOR[l.category] }} />
+                <span className="grid size-8 shrink-0 place-items-center rounded-full [&>svg]:size-4" style={{ background: `${CAT_COLOR[l.category]}26`, color: CAT_COLOR[l.category] }}>
+                  {CAT_ICON[l.category]}
+                </span>
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-medium">{l.title}</p>
                   <p className="text-xs text-muted">
@@ -172,7 +197,13 @@ export function BudgetPanel({ doc, state, readOnly }: { doc: Y.Doc; state: TripS
                   <p className="text-sm tabular-nums">{l.converted != null ? formatMoney(l.converted, currency) : "—"}</p>
                   {l.currency !== currency && <p className="text-xs text-muted tabular-nums">{formatMoney(l.amount, l.currency)}</p>}
                 </div>
-                {!readOnly && !l.expense && <div className="w-[60px] shrink-0" />}
+                {!readOnly && !l.expense && (
+                  <div className="flex w-[60px] shrink-0 justify-end opacity-0 transition-opacity group-hover:opacity-100 max-md:opacity-100">
+                    <button onClick={() => setLinked(l)} className="grid size-7 place-items-center rounded-md text-muted hover:text-fg" title="Category and split">
+                      <Pencil className="size-3.5" />
+                    </button>
+                  </div>
+                )}
                 {!readOnly && l.expense && (
                   <div className="flex w-[60px] shrink-0 justify-end gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 max-md:opacity-100">
                     <button onClick={() => setEditing(l.expense!)} className="grid size-7 place-items-center rounded-md text-muted hover:text-fg" title="Edit">
@@ -191,97 +222,218 @@ export function BudgetPanel({ doc, state, readOnly }: { doc: Y.Doc; state: TripS
       </section>
 
       {editing && <ExpenseForm doc={doc} travelers={travelers} initial={editing} onClose={() => setEditing(null)} />}
+      {linked && (
+        <ExpenseForm
+          doc={doc}
+          travelers={travelers}
+          linked={linked}
+          initial={{ title: linked.title, amount: linked.amount, currency: linked.currency, category: linked.category, paidBy: linked.paidBy, splitWith: linked.splitWith, date: linked.date }}
+          onClose={() => setLinked(null)}
+        />
+      )}
     </div>
   );
 }
 
-function ExpenseForm({ doc, travelers, initial, onClose }: { doc: Y.Doc; travelers: string[]; initial: Partial<Expense>; onClose: () => void }) {
+/**
+ * Wanderlog-style expense editor: amount + currency, category grid, description, paid by,
+ * split (everyone or chosen people, with the per-person share), date. People can be added
+ * right here. For a cost that lives on a stop or reservation (`linked`), the amount is edited
+ * there; this sets its category and split.
+ */
+function ExpenseForm({ doc, travelers, initial, linked, onClose }: { doc: Y.Doc; travelers: string[]; initial: Partial<Expense>; linked?: Line; onClose: () => void }) {
   const [e, setE] = useState<Partial<Expense>>({ splitWith: travelers, ...initial });
+  const [view, setView] = useState<"form" | "category">("form");
+  const [people, setPeople] = useState(travelers);
+  const [newPerson, setNewPerson] = useState("");
   const set = (p: Partial<Expense>) => setE((x) => ({ ...x, ...p }));
-  const split = e.splitWith?.length ? e.splitWith : travelers;
+  const split = (e.splitWith?.length ? e.splitWith : people).filter((t) => people.includes(t));
+  const everyone = split.length === people.length;
+  const cat = (e.category ?? "other") as ExpenseCategory;
+  const per = e.amount && split.length ? e.amount / split.length : 0;
 
-  return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-4 backdrop-blur-sm" onClick={onClose}>
-      <form
-        onClick={(ev) => ev.stopPropagation()}
-        onSubmit={(ev) => {
-          ev.preventDefault();
-          if (!e.title?.trim() || !e.amount) return;
-          saveExpense(doc, {
-            ...(e as Expense),
-            title: e.title.trim(),
-            splitWith: split.length === travelers.length ? undefined : split,
-          });
-          onClose();
-        }}
-        className="w-full max-w-md space-y-3 rounded-2xl border border-line bg-surface p-6 shadow-2xl"
-      >
-        <div className="flex items-center justify-between">
-          <h2 className="font-display text-2xl">{initial.id ? "Edit" : "Add"} expense</h2>
-          <button type="button" onClick={onClose} className="text-muted hover:text-fg" aria-label="Close">
-            <X className="size-5" />
-          </button>
-        </div>
-        <input autoFocus required placeholder="What was it?" value={e.title ?? ""} onChange={(ev) => set({ title: ev.target.value })} className={inputCls} />
-        <div className="flex gap-2">
-          <input
-            required
-            type="number"
-            step="any"
-            min="0"
-            placeholder="Amount"
-            value={e.amount ?? ""}
-            onChange={(ev) => set({ amount: ev.target.value === "" ? undefined : Number(ev.target.value) })}
-            className={inputCls}
-          />
-          <select value={e.currency} onChange={(ev) => set({ currency: ev.target.value })} className={`${inputCls} w-28`}>
-            {CURRENCIES.map((c) => (
-              <option key={c}>{c}</option>
-            ))}
-          </select>
-        </div>
-        <div className="flex gap-2">
-          <select value={e.category} onChange={(ev) => set({ category: ev.target.value as ExpenseCategory })} className={inputCls}>
-            {(Object.keys(CATEGORY_LABEL) as ExpenseCategory[]).map((c) => (
-              <option key={c} value={c}>
-                {CATEGORY_LABEL[c]}
-              </option>
-            ))}
-          </select>
-          <DateField value={e.date} onChange={(v) => set({ date: v })} clearable placeholder="Date" className={inputCls} />
-        </div>
-        {travelers.length > 1 && (
+  const addPerson = () => {
+    const n = newPerson.trim();
+    if (!n || people.includes(n)) return setNewPerson("");
+    const next = [...people, n];
+    setPeople(next);
+    updateMeta(doc, { travelers: next });
+    set({ splitWith: [...split, n] });
+    setNewPerson("");
+  };
+
+  const save = () => {
+    const splitWith = everyone ? undefined : split;
+    if (linked) {
+      const patch: CostSplit = { costCategory: cat, costPaidBy: e.paidBy, costSplit: splitWith };
+      if (linked.item) updateItem(doc, linked.item.id, patch);
+      else if (linked.fromReservation) saveReservation(doc, { ...linked.fromReservation, ...patch });
+      return onClose();
+    }
+    if (!e.title?.trim() || !e.amount) return;
+    saveExpense(doc, { ...(e as Expense), category: cat, title: e.title.trim(), splitWith });
+    onClose();
+  };
+
+  const box = "rounded-2xl border border-line bg-bg";
+  return createPortal(
+    <div className="fixed inset-0 z-[100] grid place-items-center bg-black/60 p-4 backdrop-blur-sm" onClick={onClose}>
+      <div onClick={(ev) => ev.stopPropagation()} className="relative max-h-[90vh] w-full max-w-md overflow-y-auto rounded-3xl border border-line bg-surface p-6 shadow-2xl">
+        <button type="button" onClick={onClose} className="absolute top-4 right-4 grid size-9 place-items-center rounded-full border border-line text-muted hover:text-fg" aria-label="Close">
+          <X className="size-4" />
+        </button>
+
+        {view === "category" ? (
           <>
-            <label className="block space-y-1">
-              <span className="text-xs text-muted">Paid by</span>
-              <select value={e.paidBy} onChange={(ev) => set({ paidBy: ev.target.value })} className={inputCls}>
-                {travelers.map((t) => (
-                  <option key={t}>{t}</option>
-                ))}
-              </select>
-            </label>
-            <div className="space-y-1">
-              <span className="text-xs text-muted">Split between</span>
-              <div className="flex flex-wrap gap-2">
-                {travelers.map((t) => {
-                  const on = split.includes(t);
-                  return (
-                    <button
-                      type="button"
-                      key={t}
-                      onClick={() => set({ splitWith: on ? split.filter((x) => x !== t) : [...split, t] })}
-                      className={`rounded-full px-3 py-1 text-sm ${on ? "bg-accent text-on-accent" : "bg-surface-2 text-muted"}`}
-                    >
-                      {t}
-                    </button>
-                  );
-                })}
-              </div>
+            <div className="mb-5 flex items-center gap-3 pr-10">
+              <button onClick={() => setView("form")} className="grid size-8 place-items-center rounded-full text-muted hover:bg-surface-2 hover:text-fg" aria-label="Back">
+                <ArrowLeft className="size-4" />
+              </button>
+              <h2 className="font-display text-[24px]">Select category</h2>
+            </div>
+            <div className="grid grid-cols-3 gap-2.5 sm:grid-cols-4">
+              {CATEGORIES.map((c) => (
+                <button
+                  key={c}
+                  onClick={() => (set({ category: c }), setView("form"))}
+                  className={`flex flex-col items-center gap-2 rounded-2xl border px-2 py-3.5 text-[13px] font-semibold transition-colors [&>svg]:size-5 ${
+                    c === cat ? "border-accent bg-accent/10 text-fg" : "border-line bg-bg text-muted hover:border-line hover:text-fg"
+                  }`}
+                >
+                  <span style={{ color: CAT_COLOR[c] }}>{CAT_ICON[c]}</span>
+                  {CATEGORY_LABEL[c]}
+                </button>
+              ))}
             </div>
           </>
+        ) : (
+          <form onSubmit={(ev) => (ev.preventDefault(), save())} className="space-y-3">
+            <h2 className="pr-10 text-center font-display text-[24px]">{linked ? "Cost details" : initial.id ? "Edit expense" : "Add expense"}</h2>
+
+            <div className={`${box} flex items-center gap-2 px-3 py-2.5`}>
+              <select
+                disabled={!!linked}
+                value={e.currency}
+                onChange={(ev) => set({ currency: ev.target.value })}
+                className="rounded-lg bg-surface-2 px-2 py-1.5 text-[14px] font-bold outline-none disabled:opacity-70"
+              >
+                {CURRENCIES.map((c) => (
+                  <option key={c}>{c}</option>
+                ))}
+              </select>
+              <input
+                required={!linked}
+                disabled={!!linked}
+                type="number"
+                inputMode="decimal"
+                step="any"
+                min="0"
+                autoFocus={!linked && !initial.id}
+                placeholder="0.00"
+                value={e.amount ?? ""}
+                onChange={(ev) => set({ amount: ev.target.value === "" ? undefined : Number(ev.target.value) })}
+                className="min-w-0 flex-1 bg-transparent text-[22px] font-bold outline-none placeholder:text-muted/50 disabled:opacity-80"
+              />
+            </div>
+            {linked && <p className="-mt-1 px-1 text-[12px] text-muted">Change the amount on the {linked.item ? "stop" : "reservation"} itself.</p>}
+
+            <button type="button" onClick={() => setView("category")} className={`${box} flex w-full items-center gap-3 px-4 py-3 text-left text-[15px] hover:border-accent/50`}>
+              <span className="[&>svg]:size-5" style={{ color: CAT_COLOR[cat] }}>
+                {CAT_ICON[cat]}
+              </span>
+              <span className="flex-1">{CATEGORY_LABEL[cat]}</span>
+              <ChevronRight className="size-4 text-muted" />
+            </button>
+
+            <label className={`${box} block px-4 py-2.5`}>
+              <span className="text-[12px] font-bold text-muted">Description</span>
+              <textarea
+                required={!linked}
+                disabled={!!linked}
+                rows={1}
+                value={e.title ?? ""}
+                onChange={(ev) => set({ title: ev.target.value })}
+                placeholder="What was it?"
+                className="block w-full resize-none bg-transparent text-[15px] outline-none placeholder:text-muted/50 disabled:opacity-80 [field-sizing:content]"
+              />
+            </label>
+
+            <div className={`${box} flex items-center justify-between gap-3 px-4 py-3`}>
+              <span className="text-[15px] font-bold">Paid by</span>
+              <div className="relative">
+                <select value={e.paidBy ?? people[0]} onChange={(ev) => set({ paidBy: ev.target.value })} className="appearance-none bg-transparent pr-6 text-right text-[15px] outline-none">
+                  {people.map((t) => (
+                    <option key={t}>{t}</option>
+                  ))}
+                </select>
+                <ChevronDown className="pointer-events-none absolute top-1/2 right-0 size-4 -translate-y-1/2 text-muted" />
+              </div>
+            </div>
+
+            <div className={box}>
+              <div className="flex items-center justify-between px-4 pt-3">
+                <span className="text-[15px] font-bold">Split</span>
+                <button type="button" onClick={() => set({ splitWith: everyone ? [e.paidBy ?? people[0]] : people })} className="text-[14px] font-semibold text-muted hover:text-fg">
+                  {everyone ? "Everyone" : `${split.length} of ${people.length}`} <ChevronDown className="inline size-4" />
+                </button>
+              </div>
+              <ul className="space-y-1 px-4 py-2.5">
+                {people.map((t) => {
+                  const on = split.includes(t);
+                  return (
+                    <li key={t}>
+                      <label className="flex cursor-pointer items-center gap-3 py-1 text-[15px]">
+                        <input type="checkbox" checked={on} onChange={() => set({ splitWith: on ? split.filter((x) => x !== t) : [...split, t] })} className="size-[18px] accent-[var(--accent)]" />
+                        <span className="grid size-7 place-items-center rounded-full bg-surface-2 text-[12px] font-bold">{t.slice(0, 1).toUpperCase()}</span>
+                        <span className="flex-1">{t}</span>
+                        {on && per > 0 && <span className="text-[13px] text-muted tabular-nums">{formatMoney(per, e.currency ?? "CAD")}</span>}
+                      </label>
+                    </li>
+                  );
+                })}
+                <li className="flex items-center gap-2 pt-1">
+                  <Plus className="size-4 text-muted" />
+                  <input
+                    value={newPerson}
+                    onChange={(ev) => setNewPerson(ev.target.value)}
+                    onKeyDown={(ev) => ev.key === "Enter" && (ev.preventDefault(), addPerson())}
+                    onBlur={addPerson}
+                    placeholder="Add person"
+                    className="min-w-0 flex-1 bg-transparent py-1 text-[15px] outline-none placeholder:text-muted/60"
+                  />
+                </li>
+              </ul>
+              <div className="flex items-center justify-between border-t border-line px-4 py-2.5 text-[13px]">
+                <span className="font-bold">{per > 0 ? `${formatMoney(per, e.currency ?? "CAD")}/person` : "—"}</span>
+                <span className="text-muted">
+                  {split.length} {split.length === 1 ? "person" : "people"}
+                </span>
+              </div>
+            </div>
+
+            {!linked && (
+              <div className="flex items-center gap-2 px-1 text-[14px]">
+                <span className="font-bold text-muted">Date:</span>
+                <DateField value={e.date} onChange={(v) => set({ date: v })} clearable placeholder="No date" className="rounded-full px-2.5 py-1 font-semibold hover:bg-surface-2" />
+              </div>
+            )}
+
+            <div className="flex justify-center gap-2 pt-2">
+              {initial.id && !linked && (
+                <button
+                  type="button"
+                  onClick={() => confirm("Delete this expense?") && (removeExpense(doc, initial.id!), onClose())}
+                  className="flex items-center gap-2 rounded-full border border-line px-5 py-2.5 text-[15px] font-bold text-muted hover:text-danger"
+                >
+                  <Trash2 className="size-4" /> Delete
+                </button>
+              )}
+              <button className="rounded-full bg-accent px-8 py-2.5 text-[15px] font-bold text-on-accent">Save</button>
+            </div>
+          </form>
         )}
-        <button className="w-full rounded-xl bg-accent py-2.5 font-semibold text-on-accent">Save</button>
-      </form>
-    </div>
+      </div>
+    </div>,
+    document.body,
   );
 }

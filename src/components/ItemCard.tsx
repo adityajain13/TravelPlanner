@@ -1,12 +1,13 @@
 import { useEffect, useState } from "react";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { Bookmark, CheckSquare, Clock, ExternalLink, GripVertical, ImagePlus, StickyNote, Trash2, Wallet } from "lucide-react";
+import { Bookmark, CheckSquare, Clock, ListChecks, Plus, X, ExternalLink, GripVertical, ImagePlus, StickyNote, Trash2, Wallet } from "lucide-react";
 import { ImagePicker } from "./ImagePicker";
 import { Photo } from "./Photo";
 import { PhotoCredit } from "./PhotoCredit";
 import { CURRENCIES, formatMoney } from "../lib/fx";
-import type { Item } from "../lib/trips";
+import type { CheckItem, Item } from "../lib/trips";
+import { fmtTime, TimeField } from "./TimeField";
 import { googleMapsLink } from "../lib/photon";
 import { GoogleDetails } from "./GoogleDetails";
 import { SectionPicker, type SectionTarget } from "./SectionPicker";
@@ -82,7 +83,7 @@ function ItemCardView({
   const style = sortable ? { transform: CSS.Translate.toString(transform ?? null), transition } : undefined;
   const [picking, setPicking] = useState(false);
   const isPlace = item.kind === "place";
-  const subtitle = [item.category, item.address?.split(",").slice(0, 2).join(",")].filter(Boolean).join(" · ");
+  const subtitle = [item.category && capitalize(item.category), item.address?.split(",").slice(0, 2).join(",")].filter(Boolean).join(" · ");
 
   return (
     <div
@@ -106,7 +107,13 @@ function ItemCardView({
       <div className="relative mt-2.5 w-7 shrink-0">
         {/* Hovering swaps the pin for a checkbox (multi-select); while selecting, every row shows one */}
         <div className={onCheck && (selecting || checked) ? "invisible" : onCheck ? "md:group-hover:invisible" : ""}>
-          {isPlace ? <PinMarker color={color} label={number} /> : <StickyNote className="mx-auto mt-0.5 size-5 text-muted" />}
+          {isPlace ? (
+            <PinMarker color={color} label={number} />
+          ) : item.kind === "checklist" ? (
+            <ListChecks className="mx-auto mt-0.5 size-5 text-muted" />
+          ) : (
+            <StickyNote className="mx-auto mt-0.5 size-5 text-muted" />
+          )}
         </div>
         {onCheck && (
           <label
@@ -127,14 +134,26 @@ function ItemCardView({
       </div>
 
       <div
-        onClick={onSelect}
-        className={`flex min-w-0 flex-1 cursor-pointer gap-3 rounded-xl border p-3 transition-colors ${
-          selected ? "border-accent/60 bg-surface-2" : isPlace ? "border-line/70 bg-surface hover:border-line hover:bg-surface-2/60" : "border-transparent hover:bg-surface-2/50"
+        onClick={isPlace ? onSelect : undefined}
+        className={`flex min-w-0 flex-1 gap-3 rounded-xl border p-3 transition-colors ${isPlace ? "cursor-pointer" : ""} ${
+          selected && isPlace
+            ? "border-accent/60 bg-surface-2"
+            : isPlace
+              ? "border-line/70 bg-surface hover:border-line hover:bg-surface-2/60"
+              : item.kind === "checklist"
+                ? "border-line/70 bg-surface"
+                : "border-transparent bg-surface-2/40 hover:bg-surface-2/70"
         }`}
       >
         <div className="min-w-0 flex-1">
           <div className="flex items-start justify-between gap-2">
-            <p className={`leading-snug ${isPlace ? "text-[17px] font-bold" : "text-[15px]"}`}>{item.name}</p>
+            {isPlace ? (
+              <p className="text-[17px] leading-snug font-bold">{item.name}</p>
+            ) : item.kind === "checklist" ? (
+              <ChecklistBody item={item} readOnly={readOnly} onChange={onChange} onDelete={onDelete} />
+            ) : (
+              <NoteBody text={item.name} readOnly={readOnly} onCommit={(name) => (name.trim() ? name !== item.name && onChange({ name }) : onDelete())} />
+            )}
             <div className="-mt-1 -mr-1 flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 max-md:opacity-100">
               {isPlace && (
                 <a
@@ -156,25 +175,25 @@ function ItemCardView({
             </div>
           </div>
           {isPlace && subtitle && <p className="mt-0.5 truncate text-sm text-muted">{subtitle}</p>}
-          {!selected && item.notes && <p className="mt-1.5 line-clamp-3 text-[15px] leading-snug whitespace-pre-line text-muted">{item.notes}</p>}
+          {isPlace && !selected && item.notes && <p className="mt-1.5 line-clamp-3 text-[15px] leading-snug whitespace-pre-line text-muted">{item.notes}</p>}
 
-          {!selected && (item.startTime || item.cost != null) && (
-            <div className="mt-2 flex flex-wrap gap-1.5 text-xs">
+          {isPlace && !selected && (item.startTime || item.cost != null) && (
+            <div className="mt-2.5 flex flex-wrap gap-1.5 text-[13px] font-semibold">
               {item.startTime && (
-                <span className="flex items-center gap-1 rounded-full bg-surface-2 px-2 py-0.5 text-muted">
-                  <Clock className="size-3" /> {item.startTime}
-                  {item.endTime ? `–${item.endTime}` : ""}
+                <span className="flex items-center gap-1.5 rounded-full bg-accent/12 px-2.5 py-1 text-fg ring-1 ring-accent/25">
+                  <Clock className="size-3.5 text-accent" /> {fmtTime(item.startTime)}
+                  {item.endTime ? ` – ${fmtTime(item.endTime)}` : ""}
                 </span>
               )}
               {item.cost != null && (
-                <span className="flex items-center gap-1 rounded-full bg-surface-2 px-2 py-0.5 text-muted">
-                  <Wallet className="size-3" /> {formatMoney(item.cost, item.costCurrency ?? currency)}
+                <span className="flex items-center gap-1.5 rounded-full bg-accent/12 px-2.5 py-1 text-fg ring-1 ring-accent/25">
+                  <Wallet className="size-3.5 text-accent" /> {formatMoney(item.cost, item.costCurrency ?? currency)}
                 </span>
               )}
             </div>
           )}
 
-          {selected && (
+          {selected && isPlace && (
             <div className="mt-3 space-y-2" onClick={(e) => e.stopPropagation()}>
               {!readOnly && (targets?.length || onCheck) && (
                 <div className="flex flex-wrap items-center gap-2 text-[13px]">
@@ -197,11 +216,23 @@ function ItemCardView({
                 </div>
               )}
               {isPlace && (
-                <div className="flex items-center gap-1.5 text-xs text-muted">
-                  <Clock className="size-3.5" />
-                  <TimeInput disabled={readOnly} value={item.startTime} onCommit={(v) => onChange({ startTime: v })} />
-                  <span>–</span>
-                  <TimeInput disabled={readOnly} value={item.endTime} onCommit={(v) => onChange({ endTime: v })} />
+                <div className="flex items-center gap-1 text-[14px]">
+                  <TimeField
+                    disabled={readOnly}
+                    value={item.startTime}
+                    onChange={(v) => onChange({ startTime: v })}
+                    placeholder="Start time"
+                    className="rounded-full px-2.5 py-1 hover:bg-surface"
+                  />
+                  <span className="text-muted">–</span>
+                  <TimeField
+                    disabled={readOnly}
+                    value={item.endTime}
+                    near={item.startTime}
+                    onChange={(v) => onChange({ endTime: v })}
+                    placeholder="End time"
+                    className="rounded-full px-2.5 py-1 hover:bg-surface"
+                  />
                 </div>
               )}
               {(item.cost != null || !readOnly) && (
@@ -287,18 +318,6 @@ function CostInput({ amount, currency, disabled, onCommit }: { amount?: number; 
   );
 }
 
-function TimeInput({ value, onCommit, disabled }: { value?: string; onCommit: (v: string) => void; disabled?: boolean }) {
-  return (
-    <input
-      type="time"
-      disabled={disabled}
-      defaultValue={value ?? ""}
-      key={value}
-      onBlur={(e) => e.target.value !== (value ?? "") && onCommit(e.target.value)}
-      className="rounded-md bg-transparent px-1 py-0.5 text-fg outline-none focus:bg-surface"
-    />
-  );
-}
 
 /** Local draft while typing; writes to the doc on blur so remote edits don't fight the cursor. */
 function NotesInput({ value, onCommit, disabled }: { value: string; onCommit: (v: string) => void; disabled?: boolean }) {
@@ -321,5 +340,117 @@ function NotesInput({ value, onCommit, disabled }: { value: string; onCommit: (v
       placeholder="Add notes, links, reservation numbers…"
       className="w-full resize-none rounded-lg bg-surface px-2.5 py-1.5 text-sm text-fg outline-none placeholder:text-muted/60 focus:ring-1 focus:ring-accent/50"
     />
+  );
+}
+
+export const capitalize = (s: string) => (s ? s[0].toUpperCase() + s.slice(1) : s);
+
+const newId = () => Math.random().toString(36).slice(2, 10);
+
+/** A note: edits in place; empty notes remove themselves. */
+function NoteBody({ text, readOnly, onCommit }: { text: string; readOnly?: boolean; onCommit: (t: string) => void }) {
+  const [draft, setDraft] = useState(text);
+  const [focused, setFocused] = useState(false);
+  useEffect(() => {
+    if (!focused) setDraft(text);
+  }, [text, focused]);
+  if (readOnly) return <p className="min-w-0 flex-1 text-[15px] leading-relaxed whitespace-pre-line">{text}</p>;
+  return (
+    <textarea
+      value={draft}
+      autoFocus={!text}
+      onChange={(e) => setDraft(e.target.value)}
+      onFocus={() => setFocused(true)}
+      onBlur={() => (setFocused(false), onCommit(draft))}
+      onKeyDown={(e) => e.key === "Escape" && (e.target as HTMLTextAreaElement).blur()}
+      rows={Math.max(1, draft.split("\n").length)}
+      placeholder="Write a note…"
+      className="min-w-0 flex-1 resize-none bg-transparent text-[15px] leading-relaxed outline-none placeholder:text-muted/60 [field-sizing:content]"
+    />
+  );
+}
+
+/** A checklist: optional title, tick boxes, Enter adds a row, Backspace on an empty row removes it. */
+function ChecklistBody({ item, readOnly, onChange, onDelete }: { item: Item; readOnly?: boolean; onChange: (p: Partial<Item>) => void; onDelete: () => void }) {
+  const checks = item.checks ?? [];
+  const [focusId, setFocusId] = useState<string | null>(checks.length === 1 && !checks[0].text ? checks[0].id : null);
+  const save = (next: CheckItem[]) => onChange({ checks: next });
+  const done = checks.filter((c) => c.done).length;
+  return (
+    <div className="min-w-0 flex-1" onClick={(e) => e.stopPropagation()}>
+      <div className="flex items-center gap-2">
+        <input
+          disabled={readOnly}
+          defaultValue={item.name}
+          key={item.name}
+          placeholder="Checklist"
+          onBlur={(e) => e.target.value !== item.name && onChange({ name: e.target.value })}
+          onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()}
+          className="min-w-0 flex-1 bg-transparent text-[16px] font-bold outline-none placeholder:text-muted/70"
+        />
+        {checks.length > 0 && <span className="text-[12px] text-muted tabular-nums">{done}/{checks.length}</span>}
+      </div>
+      <ul className="mt-1.5 space-y-0.5">
+        {checks.map((c, i) => (
+          <li key={c.id} className="group/row flex items-center gap-2.5">
+            <input
+              type="checkbox"
+              disabled={readOnly}
+              checked={!!c.done}
+              onChange={() => save(checks.map((x) => (x.id === c.id ? { ...x, done: !x.done } : x)))}
+              className="size-[17px] shrink-0 cursor-pointer accent-[var(--accent)]"
+              aria-label={c.text || "Item"}
+            />
+            <input
+              disabled={readOnly}
+              defaultValue={c.text}
+              key={`${c.id}:${c.text}`}
+              autoFocus={focusId === c.id}
+              placeholder="List item"
+              onFocus={() => setFocusId(null)}
+              onBlur={(e) => e.target.value !== c.text && save(checks.map((x) => (x.id === c.id ? { ...x, text: e.target.value } : x)))}
+              onKeyDown={(e) => {
+                const el = e.target as HTMLInputElement;
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  const id = newId();
+                  const next = checks.map((x) => (x.id === c.id ? { ...x, text: el.value } : x));
+                  next.splice(i + 1, 0, { id, text: "" });
+                  setFocusId(id);
+                  save(next);
+                } else if (e.key === "Backspace" && !el.value && checks.length > 1) {
+                  e.preventDefault();
+                  setFocusId(checks[i - 1]?.id ?? checks[i + 1]?.id ?? null);
+                  save(checks.filter((x) => x.id !== c.id));
+                }
+              }}
+              className={`min-w-0 flex-1 bg-transparent py-0.5 text-[15px] outline-none placeholder:text-muted/50 ${c.done ? "text-muted line-through" : ""}`}
+            />
+            {!readOnly && (
+              <button onClick={() => save(checks.filter((x) => x.id !== c.id))} className="text-muted opacity-0 group-hover/row:opacity-100 hover:text-danger" aria-label="Remove item">
+                <X className="size-3.5" />
+              </button>
+            )}
+          </li>
+        ))}
+      </ul>
+      {!readOnly && (
+        <button
+          onClick={() => {
+            const id = newId();
+            setFocusId(id);
+            save([...checks, { id, text: "" }]);
+          }}
+          className="mt-1 flex items-center gap-1.5 py-0.5 text-[13px] font-semibold text-muted hover:text-fg"
+        >
+          <Plus className="size-3.5" /> Add item
+        </button>
+      )}
+      {!readOnly && !item.name && checks.every((c) => !c.text) && checks.length > 0 && focusId === null && (
+        <button onClick={onDelete} className="ml-3 text-[12px] text-muted hover:text-danger">
+          Discard empty checklist
+        </button>
+      )}
+    </div>
   );
 }

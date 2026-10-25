@@ -11,8 +11,9 @@ My own Wanderlog, and a sibling of my [Atlas New Tab](https://addons.mozilla.org
 ## Features
 
 **Plan**
-- Days generated from the trip dates, plus lists like "Places to visit". Drag and drop stops within and between days.
-- Place search on OpenStreetMap (Photon, with Nominatim as a fallback). Each stop takes a time, notes and a cost. An optional live **Google details** button shows photos, hours and ratings; only the place ID is stored.
+- Days generated from the trip dates, plus sections like "Places to visit", Notes or Restaurants. Drag and drop stops within and between days.
+- **Notes and checklists** anywhere: the **+** between stops adds a place, note or checklist; buttons sit beside every "Add a place" box.
+- Place search on OpenStreetMap (Photon nearby and worldwide, ranked by name match; Nominatim fallback), plus Google suggestions for places OSM doesn't know. Picks are matched back to OpenStreetMap; only the Google place ID is kept. Each stop takes a time, notes and a cost. An optional live **Google details** button shows photos, hours and ratings; only the place ID is stored.
 - **Routing between stops:** each leg shows "🚗 21 min · 8.7 km". Tap it to switch to walk, bike or transit. The map draws the real road, path or transit line, and each day header shows that day's total travel.
 - **Photos** for every place: pick from Unsplash, the place's Wikipedia article, or large landscape shots from Wikimedia Commons and Openverse (or paste a link). **Auto-fill photos** adds confident Wikipedia matches for the whole trip, and every trip gets a cover photo.
 - **Place panel over the map** when you open a stop: Wikipedia summary, photo, address, time, cost, notes, live Google details, links, and "6 of 12" stepping. Shrink it to a compact card; your choice sticks between stops.
@@ -21,7 +22,7 @@ My own Wanderlog, and a sibling of my [Atlas New Tab](https://addons.mozilla.org
 
 **Book and budget**
 - **Reservations tab:** flights, lodging, rental cars, trains and buses, restaurants. Each has confirmation numbers, times and cost, and shows as chips on its days ("Check-in", "Departs 13:10").
-- **Budget tab:** a trip budget and currency, with spending by category. Costs from reservations and stops are counted automatically. Add who paid and who it's split between, and **settle up** shows the fewest transfers. Multi-currency uses ECB rates, cached for offline use.
+- **Budget tab:** a trip budget and currency, with spending by category. Costs from reservations and stops are counted automatically. Twelve categories (with icons), who paid, and who it's split between (add people on the spot); costs on stops and bookings can be re-categorised and split too. **Settle up** shows the fewest transfers. Multi-currency uses ECB rates, cached for offline use.
 
 **Offline-first**
 - An installable PWA. Trips live on the device, so the app opens instantly and works with no signal.

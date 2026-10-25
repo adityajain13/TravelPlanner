@@ -1,7 +1,7 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useDroppable } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
-import { ChevronDown, Eye, Plus } from "lucide-react";
+import { ChevronDown, Eye, ListChecks, MapPin, Plus, StickyNote } from "lucide-react";
 import type { Item, Reservation } from "../lib/trips";
 import { RES_ICON } from "./Reservations";
 import { LegChip } from "./LegChip";
@@ -44,6 +44,7 @@ interface Props {
   /** index: insert before the item at that position (from the "+" between stops); omitted = append. */
   onAddPlace: (p: PlaceResult, index?: number) => void;
   onAddNote: (text: string, index?: number) => void;
+  onAddChecklist?: (index?: number) => void;
   onChange: (id: string, patch: Partial<Item>) => void;
   onDelete: (id: string) => void;
   checked?: Set<string>;
@@ -56,6 +57,7 @@ export function Section(p: Props) {
   const { info } = p;
   const [open, setOpen] = useState(true);
   const [insertAt, setInsertAt] = useState<number | null>(null);
+  const [menuAt, setMenuAt] = useState<number | null>(null);
   const canInsert = !p.readOnly && info.key !== "orphan";
   const { setNodeRef, isOver } = useDroppable({ id: info.key });
   const placeCount = info.items.filter((i) => i.kind === "place").length;
@@ -145,13 +147,21 @@ export function Section(p: Props) {
                 canInsert && (
                   <div className="group/gap relative">
                     <button
-                      onClick={() => setInsertAt(idx)}
-                      className="absolute top-1/2 left-0 z-10 grid size-7 -translate-y-1/2 place-items-center rounded-full text-muted opacity-0 transition-opacity group-hover/gap:opacity-100 hover:bg-surface-2 hover:text-accent focus-visible:opacity-100 max-md:opacity-50"
-                      title="Add a place or note here"
-                      aria-label="Add a place or note here"
+                      onClick={() => setMenuAt((m) => (m === idx ? null : idx))}
+                      className={`absolute top-1/2 left-0 z-10 grid size-7 -translate-y-1/2 place-items-center rounded-full text-muted transition-opacity group-hover/gap:opacity-100 hover:bg-surface-2 hover:text-accent focus-visible:opacity-100 max-md:opacity-50 ${menuAt === idx ? "bg-surface-2 text-accent opacity-100" : "opacity-0"}`}
+                      title="Add something here"
+                      aria-label="Add something here"
                     >
                       <Plus className="size-4" />
                     </button>
+                    {menuAt === idx && (
+                      <InsertMenu
+                        onClose={() => setMenuAt(null)}
+                        onPlace={() => (setMenuAt(null), setInsertAt(idx))}
+                        onNote={() => (setMenuAt(null), p.onAddNote("", idx))}
+                        onChecklist={p.onAddChecklist ? () => (setMenuAt(null), p.onAddChecklist!(idx)) : undefined}
+                      />
+                    )}
                     {!p.legs?.has(it.id) && <div className="h-3.5" />}
                     {p.legs?.has(it.id) && (
                       <LegChip
@@ -198,12 +208,50 @@ export function Section(p: Props) {
             ))}
           </SortableContext>
           {info.key !== "orphan" && !p.readOnly && (
-            <div className="pt-1.5 pr-1 pl-6">
+            <div className="flex items-center gap-2 pt-1.5 pr-1 pl-6">
               <PlaceSearch near={p.near} countryCode={p.countryCode} onPick={p.onAddPlace} onNote={p.onAddNote} />
+              <button onClick={() => p.onAddNote("")} className={roundBtn} title="Add a note" aria-label="Add a note">
+                <StickyNote className="size-[18px]" />
+              </button>
+              {p.onAddChecklist && (
+                <button onClick={() => p.onAddChecklist!()} className={roundBtn} title="Add a checklist" aria-label="Add a checklist">
+                  <ListChecks className="size-[18px]" />
+                </button>
+              )}
             </div>
           )}
         </div>
       )}
     </section>
+  );
+}
+
+const roundBtn = "grid size-10 shrink-0 place-items-center rounded-full border border-line text-muted transition-colors hover:border-accent hover:text-fg";
+
+/** Wanderlog's "+" between stops: add a place, a note or a checklist right here. */
+function InsertMenu({ onClose, onPlace, onNote, onChecklist }: { onClose: () => void; onPlace: () => void; onNote: () => void; onChecklist?: () => void }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const down = (e: MouseEvent) => !ref.current?.contains(e.target as Node) && onClose();
+    const esc = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    setTimeout(() => document.addEventListener("mousedown", down));
+    document.addEventListener("keydown", esc);
+    return () => (document.removeEventListener("mousedown", down), document.removeEventListener("keydown", esc));
+  }, [onClose]);
+  const row = "flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-[15px] hover:bg-surface-2";
+  return (
+    <div ref={ref} data-popover className="absolute top-full left-0 z-40 mt-0.5 w-52 rounded-xl border border-line bg-surface p-1.5 shadow-2xl">
+      <button onClick={onPlace} className={row}>
+        <MapPin className="size-4 text-accent" /> Add a place
+      </button>
+      <button onClick={onNote} className={row}>
+        <StickyNote className="size-4 text-muted" /> Add a note
+      </button>
+      {onChecklist && (
+        <button onClick={onChecklist} className={row}>
+          <ListChecks className="size-4 text-muted" /> Add a checklist
+        </button>
+      )}
+    </div>
   );
 }

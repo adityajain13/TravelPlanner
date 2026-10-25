@@ -12,7 +12,7 @@ import { nanoid } from "nanoid";
 
 export interface Item {
   id: string;
-  kind: "place" | "note";
+  kind: "place" | "note" | "checklist";
   section: string;
   order: string;
   name: string;
@@ -27,6 +27,7 @@ export interface Item {
   googlePlaceId?: string;
   cost?: number;
   costCurrency?: string;
+  checks?: { id: string; text: string; done?: boolean }[];
   createdAt: number;
 }
 
@@ -60,7 +61,7 @@ export interface Snapshot {
 export type Rec = { id: string; [k: string]: string | number | boolean | string[] | number[] | undefined };
 
 export const RES_TYPES = ["flight", "lodging", "car", "train", "restaurant", "other"] as const;
-export const EXPENSE_CATEGORIES = ["flights", "lodging", "transport", "food", "activities", "shopping", "other"] as const;
+export const EXPENSE_CATEGORIES = ["flights", "lodging", "car", "transit", "food", "drinks", "sightseeing", "activities", "shopping", "gas", "groceries", "other"] as const;
 
 const recs = (doc: Y.Doc, name: string): Rec[] =>
   [...doc.getMap<Y.Map<unknown>>(name).entries()].map(([id, m]) => ({ ...(m.toJSON() as Omit<Rec, "id">), id }));
@@ -193,7 +194,11 @@ export function render(snap: Snapshot, role: string): string {
   ];
   const fmt = (it: Item, n: number) => {
     const bits = [
-      it.kind === "note" ? `${n}. [note] ${it.name}` : `${n}. ${it.name}`,
+      it.kind === "note"
+        ? `${n}. [note] ${it.name}`
+        : it.kind === "checklist"
+          ? `${n}. [checklist] ${it.name || "Checklist"}: ${(it.checks ?? []).map((c) => `${c.done ? "☑" : "☐"} ${c.text}`).join("; ")}`
+          : `${n}. ${it.name}`,
       it.startTime ? `@ ${it.startTime}${it.endTime ? `–${it.endTime}` : ""}` : "",
       it.category ? `(${it.category})` : "",
     ].filter(Boolean);

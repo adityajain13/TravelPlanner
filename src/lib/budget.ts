@@ -1,20 +1,30 @@
-import type { Expense, ExpenseCategory, Reservation, ReservationType, TripState } from "./trips";
+import type { CostSplit, Expense, ExpenseCategory, Item, Reservation, ReservationType, TripState } from "./trips";
+
+export const CATEGORIES: ExpenseCategory[] = ["flights", "lodging", "car", "transit", "food", "drinks", "sightseeing", "activities", "shopping", "gas", "groceries", "other"];
 
 export const CATEGORY_LABEL: Record<ExpenseCategory, string> = {
   flights: "Flights",
   lodging: "Lodging",
-  transport: "Transport",
-  food: "Food & drink",
+  car: "Car rental",
+  transit: "Transit",
+  transport: "Transit",
+  food: "Food",
+  drinks: "Drinks",
+  sightseeing: "Sightseeing",
   activities: "Activities",
   shopping: "Shopping",
+  gas: "Gas",
+  groceries: "Groceries",
   other: "Other",
 };
+
+export const normCategory = (c?: ExpenseCategory): ExpenseCategory => (c === "transport" ? "transit" : c && c in CATEGORY_LABEL ? c : "other");
 
 const RES_CATEGORY: Record<ReservationType, ExpenseCategory> = {
   flight: "flights",
   lodging: "lodging",
-  car: "transport",
-  train: "transport",
+  car: "car",
+  train: "transit",
   restaurant: "food",
   other: "other",
 };
@@ -31,8 +41,14 @@ export interface Line {
   splitWith: string[];
   fromReservation?: Reservation;
   fromItem?: boolean;
+  item?: Item;
   expense?: Expense;
 }
+
+const people = (c: CostSplit, travelers: string[]) => {
+  const split = c.costSplit?.filter((t) => travelers.includes(t));
+  return { paidBy: c.costPaidBy && travelers.includes(c.costPaidBy) ? c.costPaidBy : travelers[0], splitWith: split?.length ? split : travelers };
+};
 
 /** Expenses plus reservation costs, normalised into one list in the trip currency. */
 export function budgetLines(state: TripState, convert: (a: number, c: string) => number | null): Line[] {
@@ -41,7 +57,7 @@ export function budgetLines(state: TripState, convert: (a: number, c: string) =>
   const lines: Line[] = state.expenses.map((e) => ({
     id: e.id,
     title: e.title,
-    category: e.category,
+    category: normCategory(e.category),
     amount: e.amount,
     currency: e.currency,
     converted: convert(e.amount, e.currency),
@@ -56,13 +72,12 @@ export function budgetLines(state: TripState, convert: (a: number, c: string) =>
     lines.push({
       id: `res:${r.id}`,
       title: r.title,
-      category: RES_CATEGORY[r.type],
+      category: normCategory(r.costCategory ?? RES_CATEGORY[r.type]),
       amount: r.cost,
       currency: cur,
       converted: convert(r.cost, cur),
       date: r.startDate,
-      paidBy: travelers[0],
-      splitWith: travelers,
+      ...people(r, travelers),
       fromReservation: r,
     });
   }
@@ -72,28 +87,35 @@ export function budgetLines(state: TripState, convert: (a: number, c: string) =>
     lines.push({
       id: `item:${it.id}`,
       title: it.name,
-      category: itemCategory(it.category),
+      category: normCategory(it.costCategory ?? itemCategory(it.category)),
       amount: it.cost,
       currency: cur,
       converted: convert(it.cost, cur),
       date: it.section.startsWith("day:") ? it.section.slice(4) : undefined,
-      paidBy: travelers[0],
-      splitWith: travelers,
+      ...people(it, travelers),
       fromItem: true,
+      item: it,
     });
   }
   return lines.sort((a, b) => (b.date ?? "").localeCompare(a.date ?? ""));
 }
 
-const FOOD = /restaurant|cafe|café|bar|pub|food|bakery|ramen|sushi|izakaya|meal|lunch|dinner|breakfast/i;
-const SHOP = /shop|market|mall|store|boutique|department/i;
-const TRANSPORT = /station|airport|ferry|bus|train|taxi|parking/i;
+// OSM / Google-ish place types → budget categories, for costs typed on itinerary stops
+const RULES: [RegExp, ExpenseCategory][] = [
+  [/bar|pub|wine|brewery|beer|cocktail|izakaya|night ?club|sake/i, "drinks"],
+  [/restaurant|cafe|café|food|bakery|ramen|sushi|meal|lunch|dinner|breakfast|dessert|ice cream|cheesecake|confection/i, "food"],
+  [/supermarket|grocery|convenience|greengrocer/i, "groceries"],
+  [/fuel|gas station|petrol|charging/i, "gas"],
+  [/car rental|car$|rental/i, "car"],
+  [/hotel|guest ?house|hostel|motel|apartment|lodg|ryokan|camp/i, "lodging"],
+  [/airport|aerodrome|terminal/i, "flights"],
+  [/station|ferry|bus|train|tram|subway|metro|taxi|parking/i, "transit"],
+  [/shop|market|mall|store|boutique|department|gift/i, "shopping"],
+  [/museum|castle|temple|shrine|monument|memorial|attraction|viewpoint|gallery|historic|church|cathedral|palace|tower|garden|park|waterfall|mountain|beach|national/i, "sightseeing"],
+];
 function itemCategory(category?: string): ExpenseCategory {
   if (!category) return "activities";
-  if (FOOD.test(category)) return "food";
-  if (SHOP.test(category)) return "shopping";
-  if (TRANSPORT.test(category)) return "transport";
-  return "activities";
+  return RULES.find(([re]) => re.test(category))?.[1] ?? "activities";
 }
 
 export const travelersOf = (state: TripState) => (state.meta.travelers?.length ? state.meta.travelers : ["Me"]);

@@ -21,10 +21,10 @@ export function LegChip({ mode, state, readOnly, onMode, from, to }: { mode: Tra
 
   let text: string;
   if (state === "loading" || state === undefined) text = "Finding route…";
-  else if (state === "failed") text = navigator.onLine ? "No route found" : "Route unavailable offline";
+  else if (state === "failed") text = !navigator.onLine ? "Route unavailable offline" : mode === "transit" ? "No transit data here" : "No route found";
   else if (res!.mode === "flight") text = `${formatDistance(res!.distance)} · too far to route`;
   else
-    text = [formatDuration(res!.duration ?? 0), formatDistance(res!.distance), res!.mode === "transit" && res!.transfers ? `${res!.transfers} transfer${res!.transfers > 1 ? "s" : ""}` : ""]
+    text = [(res!.estimated ? "≈ " : "") + formatDuration(res!.duration ?? 0), formatDistance(res!.distance), res!.mode === "transit" && res!.transfers ? `${res!.transfers} transfer${res!.transfers > 1 ? "s" : ""}` : ""]
       .filter(Boolean)
       .join(" · ");
 
@@ -36,7 +36,7 @@ export function LegChip({ mode, state, readOnly, onMode, from, to }: { mode: Tra
         disabled={readOnly || shownMode === "flight"}
         onClick={() => setOpen((o) => !o)}
         className="flex items-center gap-1.5 rounded-full px-2 py-0.5 hover:bg-surface-2 hover:text-fg disabled:hover:bg-transparent"
-        title={readOnly ? undefined : "Change how you get here"}
+        title={res?.estimated ? "Timed on the same weekday next week: timetables for your dates aren't published yet" : readOnly ? undefined : "Change how you get here"}
       >
         {state === "loading" ? <Loader2 className="size-3.5 animate-spin" /> : MODE_ICON[shownMode]}
         {text}

@@ -1,4 +1,4 @@
-import { Suspense, lazy, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, Suspense, lazy, useEffect, useMemo, useRef, useState } from "react";
 import { DateRangeField } from "../components/DatePicker";
 import { Link, Navigate, useParams } from "react-router-dom";
 import { useLiveQuery } from "dexie-react-hooks";
@@ -15,11 +15,11 @@ import {
   type DragStartEvent,
 } from "@dnd-kit/core";
 import { sortableKeyboardCoordinates } from "@dnd-kit/sortable";
-import { ArrowLeft, Camera, Redo2, Undo2, Copy, FolderInput, Trash2, X, Cloud, CloudOff, Moon, Sun, Eye, ImagePlus, List, Loader2, Map as MapIcon, PanelLeft, Plus, Share2 } from "lucide-react";
+import { ArrowLeft, Camera, Redo2, Undo2, Copy, FolderInput, Trash2, X, Cloud, CloudOff, Moon, Sun, Eye, ImagePlus, List, Loader2, Map as MapIcon, PanelLeft, Share2 } from "lucide-react";
 import { Contents, ContentsRail, type Tab } from "../components/Contents";
 import { useConverter } from "../lib/fx";
 import { budgetLines, totals } from "../lib/budget";
-import { bestImage, coverFor } from "../lib/images";
+import { bestImage, coverFor, firstPhoto } from "../lib/images";
 import { setShareToken } from "../lib/shareToken";
 import { ImagePicker } from "../components/ImagePicker";
 import { Photo } from "../components/Photo";
@@ -61,6 +61,7 @@ import { Section, type SectionInfo } from "../components/Section";
 import { ItemCardDragPreview } from "../components/ItemCard";
 import { OfflineMapButton } from "../components/OfflineMapButton";
 import { HeroPill } from "../components/HeroPill";
+import { AddSection } from "../components/AddSection";
 import { LogoMark } from "../components/Logo";
 import { PlacePanel, type PanelMode } from "../components/PlacePanel";
 import { SectionPicker, type SectionTarget } from "../components/SectionPicker";
@@ -510,8 +511,8 @@ export function TripPage() {
               </button>
             </div>
           )}
-          <nav className="flex items-end gap-5 pt-3 text-[15px] font-semibold">
-            <button onClick={() => setContentsDrawer(true)} className="-ml-1 pb-2.5 text-muted hover:text-fg lg:hidden" title="Contents" aria-label="Contents">
+          <nav className="flex items-stretch gap-5 pt-2.5 text-[15px] font-semibold">
+            <button onClick={() => setContentsDrawer(true)} className="-ml-1 flex items-center pb-2 text-muted hover:text-fg lg:hidden" title="Contents" aria-label="Contents">
               <PanelLeft className="size-4" />
             </button>
             {(
@@ -524,18 +525,18 @@ export function TripPage() {
               <button
                 key={k}
                 onClick={() => setTab(k)}
-                className={`border-b-2 pb-2.5 transition-colors ${tab === k ? "border-accent text-fg" : "border-transparent text-muted hover:text-fg"}`}
+                className={`border-b-2 pb-1.5 transition-colors ${tab === k ? "border-accent text-fg" : "border-transparent text-muted hover:text-fg"}`}
               >
                 {label}
               </button>
             ))}
             {/* Sits at the end of the tab row instead of taking its own line */}
-            <div className="ml-auto self-center pb-1.5">
+            <div className="ml-auto flex items-center pb-2">
               <OfflineMapButton tripId={id!} state={state} />
             </div>
           </nav>
           {tab === "plan" && view.sections.some((s) => s.kind === "day") && (
-            <div className="flex gap-1.5 overflow-x-auto pt-1 pb-2.5 [scrollbar-width:none]">
+            <div className="flex gap-1.5 overflow-x-auto pt-2 pb-2.5 [scrollbar-width:none]">
               {view.sections
                 .filter((s) => s.kind === "day")
                 .map((s) => (
@@ -594,36 +595,45 @@ export function TripPage() {
               </div>
             </div>
           )}
-          <div className="mx-2 mt-3 flex flex-wrap items-center gap-1.5 text-xs text-muted">
+          <div className="mx-2 mt-3 flex items-center gap-2">
+            {/* Default way of getting between stops (each leg can override it) */}
+            <div className="flex min-w-0 rounded-full border border-line bg-surface p-1" role="radiogroup" aria-label="Getting around">
+              {MODES.map((m) => {
+                const on = (state.meta.travelMode ?? "drive") === m;
+                return (
+                  <button
+                    key={m}
+                    role="radio"
+                    aria-checked={on}
+                    disabled={readOnly}
+                    onClick={() => updateMeta(doc, { travelMode: m })}
+                    className={`flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[13px] font-semibold transition-colors max-[380px]:px-2 ${on ? "bg-accent text-on-accent" : "text-muted hover:text-fg"}`}
+                    title="Default for every leg; tap a leg to change just that one"
+                  >
+                    {MODE_ICON[m]} <span className="max-[380px]:hidden">{MODE_LABEL[m]}</span>
+                  </button>
+                );
+              })}
+            </div>
             {!readOnly && (
               <button
                 onClick={autofillPhotos}
                 disabled={!!photoFill || !navigator.onLine}
-                className="mr-1 flex items-center gap-1.5 rounded-full border border-line px-2.5 py-1 hover:border-accent hover:text-fg disabled:opacity-60"
-                title="Find a photo for every place without one (Wikipedia matches only)"
+                className="ml-auto flex shrink-0 items-center gap-1.5 rounded-full border border-line px-3 py-2 text-[13px] font-semibold text-muted hover:border-accent hover:text-fg disabled:opacity-60"
+                title="Find a photo for every place without one"
               >
-                {photoFill ? <Loader2 className="size-3.5 animate-spin" /> : <Camera className="size-3.5" />}
-                {photoFill ? `Photos ${photoFill.done}/${photoFill.total} · ${photoFill.added} added` : "Auto-fill photos"}
+                {photoFill ? <Loader2 className="size-4 animate-spin" /> : <Camera className="size-4" />}
+                <span className="max-sm:hidden">{photoFill ? `${photoFill.done}/${photoFill.total} · ${photoFill.added} added` : "Auto-fill photos"}</span>
+                {photoFill && <span className="sm:hidden tabular-nums">{photoFill.done}/{photoFill.total}</span>}
               </button>
             )}
-            <span>Getting around</span>
-            {MODES.map((m) => (
-              <button
-                key={m}
-                disabled={readOnly}
-                onClick={() => updateMeta(doc, { travelMode: m })}
-                className={`flex items-center gap-1 rounded-full px-2.5 py-1 ${(state.meta.travelMode ?? "drive") === m ? "bg-surface-2 text-fg" : "hover:text-fg"}`}
-                title={`Default for every leg; tap a leg to change just that one`}
-              >
-                {MODE_ICON[m]} {MODE_LABEL[m]}
-              </button>
-            ))}
           </div>
           {isOwner && <InboxPanel items={inbox} doc={doc} state={state} onDone={(itemId) => setInbox((xs) => xs.filter((x) => x.id !== itemId))} />}
           <DndContext sensors={readOnly ? [] : sensors} collisionDetection={closestCorners} onDragStart={onDragStart} onDragEnd={onDragEnd}>
-            {view.sections.map((s) => (
+            {view.sections.map((s, si) => (
+              <Fragment key={s.key}>
+              {si === 0 && s.kind !== "list" && !readOnly && <AddSection onAdd={(t) => addList(doc, t)} />}
               <Section
-                key={s.key}
                 info={s}
                 focused={focus === s.key}
                 selectedId={selectedId}
@@ -640,16 +650,22 @@ export function TripPage() {
                 onSelect={(itemId) => setSelectedId((cur) => (cur === itemId ? null : itemId))}
                 onRename={s.listId ? (t) => renameList(doc, s.listId!, t) : undefined}
                 onAddPlace={(p, index) => {
-                  const newId = addItem(doc, s.key, { kind: "place", name: p.name, address: p.address || undefined, category: p.category || undefined, lat: p.lat, lng: p.lng, osmId: p.osmId }, undefined, index);
+                  const newId = addItem(doc, s.key, { kind: "place", name: p.name, address: p.address || undefined, category: p.category || undefined, lat: p.lat, lng: p.lng, osmId: p.osmId, googlePlaceId: p.googlePlaceId }, undefined, index);
                   setSelectedId(newId);
+                  // Give it a photo straight away (Wikipedia match, else Unsplash)
+                  if (navigator.onLine && !GENERIC_PLACE.test(p.name.trim()))
+                    firstPhoto(p.name, [p.lng, p.lat], state.meta.destination)
+                      .then((image) => image && !readTrip(doc).items.find((x) => x.id === newId)?.image && updateItem(doc, newId, { image }))
+                      .catch(() => undefined);
                   // From a Google Maps link: link its Google place ID (the only Google data we keep) so Google details work straight away
-                  if (p.fromLink && GOOGLE_KEY)
+                  if (p.fromLink && !p.googlePlaceId && GOOGLE_KEY)
                     findPlaceId({ name: p.name, lat: p.lat, lng: p.lng })
                       .then((googlePlaceId) => googlePlaceId && updateItem(doc, newId, { googlePlaceId }))
                       .catch(() => undefined);
                   if (!near) updateMeta(doc, { center: [p.lng, p.lat] });
                 }}
                 onAddNote={(text, index) => addItem(doc, s.key, { kind: "note", name: text }, undefined, index)}
+                onAddChecklist={(index) => addItem(doc, s.key, { kind: "checklist", name: "", checks: [{ id: Math.random().toString(36).slice(2, 10), text: "" }] }, undefined, index)}
                 onChange={(itemId, patch) => updateItem(doc, itemId, patch)}
                 onDelete={(itemId) => removeItem(doc, itemId)}
                 checked={readOnly ? undefined : checked}
@@ -657,6 +673,8 @@ export function TripPage() {
                 targets={readOnly ? undefined : targets}
                 onMoveTo={readOnly ? undefined : (itemId, k) => moveItems(doc, [itemId], k)}
               />
+              {s.kind === "list" && view.sections[si + 1]?.kind !== "list" && !readOnly && <AddSection onAdd={(t) => addList(doc, t)} />}
+              </Fragment>
             ))}
             <DragOverlay>
               {dragging && (
@@ -674,15 +692,7 @@ export function TripPage() {
             </DragOverlay>
           </DndContext>
 
-          {!readOnly && <button
-            onClick={() => {
-              const t = prompt("List name", "Food to try");
-              if (t?.trim()) addList(doc, t.trim());
-            }}
-            className="mt-2 ml-2 flex items-center gap-1.5 text-sm text-muted hover:text-fg"
-          >
-            <Plus className="size-4" /> Add a list
-          </button>}
+          
           <p className="mt-6 px-2 text-[10px] text-muted/70">
             Routes: © OpenStreetMap contributors via FOSSGIS OSRM · Transit: <a className="underline" href="https://transitous.org/sources/" target="_blank" rel="noreferrer">Transitous</a>
           </p>
