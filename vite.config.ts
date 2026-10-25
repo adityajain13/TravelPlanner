@@ -34,8 +34,8 @@ export default defineConfig({
       registerType: "autoUpdate",
       includeAssets: ["icon.svg", "apple-touch-icon.png"],
       manifest: {
-        name: "Atlas Trips",
-        short_name: "Atlas Trips",
+        name: "Atlas Journeys",
+        short_name: "Atlas Journeys",
         description: "Offline-first trip planner: itineraries, maps, bookings and budgets",
         start_url: BASE,
         scope: BASE,
