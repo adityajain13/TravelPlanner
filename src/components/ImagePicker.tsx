@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { Photo } from "./Photo";
 import { ImageOff, Link2, Loader2, Search, Trash2, X } from "lucide-react";
-import { searchImages, type PlaceImage } from "../lib/images";
+import { searchImages, type PlaceImage, trackPick, forStorage } from "../lib/images";
 import { inputCls } from "./NewTripDialog";
 
 /** Pick a photo for a place (or the trip cover) from Wikipedia, Commons and Openverse, or paste a link. */
@@ -38,7 +38,8 @@ export function ImagePicker({
   }, [term, initialQuery, name, coords]);
 
   const pick = (img: PlaceImage | undefined) => {
-    onPick(img);
+    if (img) trackPick(img);
+    onPick(img && forStorage(img));
     onClose();
   };
 
@@ -95,7 +96,7 @@ export function ImagePicker({
                     onFail={() => setBroken((b) => new Set(b).add(img.thumb))}
                   />
                   <span className="absolute inset-x-0 bottom-0 truncate bg-gradient-to-t from-black/80 px-1.5 pt-4 pb-1 text-left text-[10px] text-white/90 opacity-0 transition-opacity group-hover:opacity-100">
-                    {img.source === "wikipedia" ? "Wikipedia" : img.source === "commons" ? "Commons" : "Openverse"} · {img.credit}
+                    {img.source === "unsplash" ? img.credit : `${img.source === "wikipedia" ? "Wikipedia" : img.source === "commons" ? "Commons" : "Openverse"} · ${img.credit ?? ""}`}
                   </span>
                 </button>
               ))}
@@ -120,7 +121,7 @@ export function ImagePicker({
             </button>
           )}
         </div>
-        <p className="-mt-2 text-[10px] text-muted/70">Photos from Wikipedia, Wikimedia Commons and Openverse, with credits kept. Check each image's license before reusing it elsewhere.</p>
+        <p className="-mt-2 text-[10px] text-muted/70">Photos from Unsplash, Wikipedia, Wikimedia Commons and Openverse, with credits kept. Check each image's license before reusing it elsewhere.</p>
       </div>
     </div>,
     document.body,
