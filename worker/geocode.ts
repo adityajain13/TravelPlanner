@@ -1,7 +1,8 @@
 /*
  * Geocoding for the connector, mirroring src/lib/geocode.ts:
  *  - Photon first; OpenStreetMap Nominatim when Photon errors (e.g. its 521 outages) or finds nothing
- *  - results outside the trip's country are rejected; optional distance cap from the previous stop
+ *  - candidates ranked by relevance, closeness to the previous stop, and countries the trip already
+ *    visits; only an unknown-country match >3,000 km from the previous stop is rejected
  *  - a per-request lookup budget, because a Worker invocation can only make a limited number of
  *    outbound requests. Whatever doesn't fit is reported back so `pin_missing` can finish it.
  */
@@ -83,34 +84,45 @@ async function nominatim(q: string, countryCode: string | undefined, near: numbe
 }
 
 export interface Opts {
-  countryCode?: string;
+  countries?: string[];
+  countryCode?: string; // search ordering only
   near?: number[];
-  maxKm?: number;
   budget: Budget;
 }
 
-const ok = (h: Hit, o: Opts) =>
-  (!o.countryCode || !h.countryCode || h.countryCode === o.countryCode.toLowerCase()) && (!o.near || !o.maxKm || distanceKm(o.near, [h.lng, h.lat]) <= o.maxKm);
+function pickBest(cands: Hit[], o: Opts): Hit | null {
+  const countries = new Set((o.countries ?? []).map((c) => c.toLowerCase()));
+  let best: Hit | null = null;
+  let bestScore = -Infinity;
+  cands.forEach((h, i) => {
+    const d = o.near ? distanceKm(o.near, [h.lng, h.lat]) : 0;
+    const known = !countries.size || (h.countryCode ? countries.has(h.countryCode) : true);
+    if (!known && d > 3000) return;
+    const score = -i * 0.35 + (countries.size && known ? 1.5 : 0) - Math.log10(1 + d / 10);
+    if (score > bestScore) (best = h), (bestScore = score);
+  });
+  return best;
+}
 
 /** One best match, null when nothing plausible, OUT_OF_BUDGET when this request can't look up more. */
 export async function geocode(q: string, o: Opts): Promise<Hit | null | typeof OUT_OF_BUDGET> {
   if (!o.budget.take()) return OUT_OF_BUDGET;
   try {
-    const hit = (await photon(q, o.near, 6)).find((h) => ok(h, o));
+    const hit = pickBest(await photon(q, o.near, 8), o);
     if (hit) return hit;
   } catch {
     /* Photon down: fall through */
   }
   if (!o.budget.take()) return OUT_OF_BUDGET;
   try {
-    return (await nominatim(q, o.countryCode, o.near, 5)).find((h) => ok(h, o)) ?? null;
+    return pickBest(await nominatim(q, undefined, o.near, 6), o);
   } catch {
     return null;
   }
 }
 
 /** Result list for search_places: Photon, else Nominatim; trip-country results first. */
-export async function search(q: string, o: Omit<Opts, "maxKm">): Promise<Hit[]> {
+export async function search(q: string, o: Opts): Promise<Hit[]> {
   let hits: Hit[] = [];
   if (o.budget.take())
     try {

@@ -25,6 +25,12 @@ export interface RegionRow {
   savedAt: number;
 }
 
+export interface RouteRow {
+  key: string;
+  result: import("./routing").LegResult;
+  fetchedAt: number;
+}
+
 export interface SettingRow {
   key: string;
   value: unknown;
@@ -34,6 +40,7 @@ export const db = new Dexie("travelplanner") as Dexie & {
   trips: EntityTable<TripIndexRow, "id">;
   settings: EntityTable<SettingRow, "key">;
   regions: EntityTable<RegionRow, "tripId">;
+  routes: EntityTable<RouteRow, "key">;
 };
 
 db.version(1).stores({
@@ -46,4 +53,11 @@ db.version(2).stores({
   settings: "key",
   regions: "tripId",
   // Reserved: inbox (email-imported bookings awaiting review)
+});
+
+db.version(3).stores({
+  trips: "id, updatedAt, startDate",
+  settings: "key",
+  regions: "tripId",
+  routes: "key", // cached leg geometries (derived data, safe to clear)
 });

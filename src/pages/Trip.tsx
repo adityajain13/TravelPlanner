@@ -46,6 +46,8 @@ import { InboxPanel } from "../components/InboxPanel";
 import { fetchInbox, type InboxItem } from "../lib/inbox";
 import { ReservationForm, ReservationsPanel, dayChips } from "../components/Reservations";
 import { BudgetPanel } from "../components/Budget";
+import { departureTime, legKey, MODES, useLegs, type LegRequest, type TravelMode } from "../lib/routing";
+import { MODE_ICON, MODE_LABEL } from "../components/LegChip";
 import type { Reservation } from "../lib/trips";
 
 const ORPHAN = "orphan";
@@ -127,27 +129,59 @@ export function TripPage() {
       sections.push({ key: ORPHAN, kind: "list", title: "Outside trip dates", color: LIST_COLOR, items: orphans, readonlyTitle: true });
 
     const pins: Pin[] = [];
-    const routes: Route[] = [];
+    // Legs between consecutive pinned stops of each day; routed in useLegs below
+    const legs: { section: string; toId: string; color: string; req: LegRequest }[] = [];
+    const defaultMode: TravelMode = state.meta.travelMode ?? "drive";
     for (const s of sections) {
-      if (focus && s.key !== focus) continue;
       let n = 0;
-      const coords: [number, number][] = [];
+      let prev: Item | null = null;
       for (const it of s.items) {
         if (it.kind !== "place") continue;
         n++;
         if (it.lat == null || it.lng == null) continue;
-        pins.push({ id: it.id, lat: it.lat, lng: it.lng, color: s.color, label: String(n) });
-        coords.push([it.lng, it.lat]);
+        if (!focus || s.key === focus) pins.push({ id: it.id, lat: it.lat, lng: it.lng, color: s.color, label: String(n) });
+        if (s.kind === "day" && prev) {
+          const mode = it.travelMode ?? defaultMode;
+          const from: [number, number] = [prev.lng!, prev.lat!];
+          const to: [number, number] = [it.lng, it.lat];
+          const when = mode === "transit" ? departureTime(s.date!, prev.endTime ?? prev.startTime ?? it.startTime, it.lng) : undefined;
+          legs.push({ section: s.key, toId: it.id, color: s.color, req: { key: legKey(mode, from, to, when), mode, from, to, when } });
+        }
+        prev = it;
       }
-      if (s.kind === "day") routes.push({ color: s.color, coords });
     }
     // Lodging and restaurant bookings with a location get their own pins
     if (!focus)
       for (const r of state.reservations)
         if (r.lat != null && r.lng != null && (r.type === "lodging" || r.type === "restaurant" || r.type === "other"))
           pins.push({ id: `res:${r.id}`, lat: r.lat, lng: r.lng, color: "#e8ece9", label: r.type === "lodging" ? "H" : r.type === "restaurant" ? "R" : "•" });
-    return { sections, pins, routes };
+    return { sections, pins, legs };
   }, [state, focus]);
+
+  // Route every leg (cached per device); draw road/path/transit geometry, straight dashes until known
+  const legResults = useLegs(view?.legs.map((l) => l.req) ?? []);
+  const routes: Route[] = useMemo(
+    () =>
+      (view?.legs ?? [])
+        .filter((l) => !focus || l.section === focus)
+        .map((l) => {
+          const r = legResults.get(l.req.key);
+          if (typeof r === "object") {
+            const style: Route["style"] = r.mode === "flight" ? "dashed" : r.mode === "walk" ? "dotted" : "solid";
+            return { color: l.color, coords: r.coords, style };
+          }
+          return { color: l.color, coords: [l.req.from, l.req.to], style: "dashed" as const };
+        }),
+    [view, legResults, focus],
+  );
+  const legsBySection = useMemo(() => {
+    const m = new Map<string, Map<string, { mode: TravelMode; state?: ReturnType<typeof legResults.get> }>>();
+    for (const l of view?.legs ?? []) {
+      if (!m.has(l.section)) m.set(l.section, new Map());
+      m.get(l.section)!.set(l.toId, { mode: l.req.mode, state: legResults.get(l.req.key) });
+    }
+    return m;
+  }, [view, legResults]);
 
   if (row !== LOADING && !shareToken && auth === "out") return <Navigate to="/login" replace />;
   if (!ready || row === LOADING) return <div className="grid h-full place-items-center text-muted">Loading…</div>;
@@ -309,6 +343,20 @@ export function TripPage() {
               <p className="mt-1 text-xs text-muted">{unpinned.join(" · ")}</p>
             </div>
           )}
+          <div className="mx-2 mt-3 flex items-center gap-1.5 text-xs text-muted">
+            <span>Getting around</span>
+            {MODES.map((m) => (
+              <button
+                key={m}
+                disabled={readOnly}
+                onClick={() => updateMeta(doc, { travelMode: m })}
+                className={`flex items-center gap-1 rounded-full px-2.5 py-1 ${(state.meta.travelMode ?? "drive") === m ? "bg-surface-2 text-fg" : "hover:text-fg"}`}
+                title={`Default for every leg; tap a leg to change just that one`}
+              >
+                {MODE_ICON[m]} {MODE_LABEL[m]}
+              </button>
+            ))}
+          </div>
           {isOwner && <InboxPanel items={inbox} doc={doc} state={state} onDone={(itemId) => setInbox((xs) => xs.filter((x) => x.id !== itemId))} />}
           <DndContext sensors={readOnly ? [] : sensors} collisionDetection={closestCorners} onDragStart={onDragStart} onDragEnd={onDragEnd}>
             {view.sections.map((s) => (
@@ -322,6 +370,8 @@ export function TripPage() {
                 currency={state.meta.currency ?? "CAD"}
                 countryCode={state.meta.countryCode}
                 chips={s.kind === "day" ? dayChips(state.reservations, s.date!) : []}
+                legs={legsBySection.get(s.key)}
+                onLegMode={(itemId, m) => updateItem(doc, itemId, { travelMode: m === (state.meta.travelMode ?? "drive") ? undefined : m })}
                 onChipClick={(r) => !readOnly && setEditingRes(r)}
                 onFocus={() => setFocus((f) => (f === s.key ? null : s.key))}
                 onSelect={(itemId) => setSelectedId((cur) => (cur === itemId ? null : itemId))}
@@ -354,6 +404,9 @@ export function TripPage() {
           >
             <Plus className="size-4" /> Add a list
           </button>}
+          <p className="mt-6 px-2 text-[10px] text-muted/70">
+            Routes: © OpenStreetMap contributors via FOSSGIS OSRM · Transit: <a className="underline" href="https://transitous.org/sources/" target="_blank" rel="noreferrer">Transitous</a>
+          </p>
           </>)}
         </div>
       </aside>
@@ -363,7 +416,7 @@ export function TripPage() {
         <Suspense fallback={<div className="h-full w-full bg-surface-2" />}>
         <TripMap
           pins={view.pins}
-          routes={view.routes}
+          routes={routes}
           selectedId={selectedId}
           onSelect={selectFromMap}
           theme={theme}

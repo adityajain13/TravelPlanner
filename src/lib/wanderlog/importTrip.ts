@@ -64,7 +64,8 @@ async function pinAll(
   onProgress: (p: Progress) => void,
   signal: AbortSignal,
 ) {
-  const countryCode = dest?.countryCode;
+  // Countries this trip involves: the destination's, plus each country we pin in (multi-country trips)
+  const countries = new Set<string>(dest?.countryCode ? [dest.countryCode] : []);
   const unpinned: string[] = [];
   const total = places.length + t.reservations.filter((r) => r.address).length;
   let done = 0;
@@ -72,7 +73,11 @@ async function pinAll(
   const cache = new Map<string, Awaited<ReturnType<typeof geocode>>>();
   const lookup = async (q: string, near?: [number, number]) => {
     const key = `${q}|${near?.map((n) => n.toFixed(1)).join(",")}`;
-    if (!cache.has(key)) cache.set(key, await geocode(q, { countryCode, near, maxKm: near ? 450 : undefined, signal }));
+    if (!cache.has(key)) {
+      const hit = await geocode(q, { countries: [...countries], near, signal });
+      if (hit?.countryCode) countries.add(hit.countryCode);
+      cache.set(key, hit);
+    }
     return cache.get(key) ?? null;
   };
 

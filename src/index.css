@@ -64,6 +64,15 @@ body {
   contain-intrinsic-size: auto 240px;
 }
 
+/* …but content-visibility also clips overflow, so a section with an open search dropdown
+   (or a leg-mode menu) opts out and sits above the sections below it. */
+.section-lazy:has(input:focus),
+.section-lazy:has([data-popover]) {
+  content-visibility: visible;
+  position: relative;
+  z-index: 20;
+}
+
 /* Quiet scrollbars */
 * {
   scrollbar-width: thin;

@@ -58,6 +58,12 @@ Hosted at **adityajain.ca/travelplanner** by the `travelplanner` Cloudflare Work
   - Flights (+1 arrivals), lodging, cars → reservations with confirmation + cost; budget expenses de-duplicated against reservation costs; expenses named like a stop become that stop's cost. Verified on a real Iceland export: 7 days, 83 places, 7 bookings, budget total matches Wanderlog to the cent.
   - Pinning: destination → country; each stop geocoded near the previous one (≤450 km), in-country only; generic names (parking lot, rest stop…) left unpinned on purpose; unpinned list shown on the trip after import.
 - [x] **Geocoding hardening** — `src/lib/geocode.ts` + `worker/geocode.ts`: Photon → Nominatim fallback (throttled ~1/s), trip-country filter (`meta.countryCode`, derived from the destination or reverse-geocoded from the centre), distance cap. Connector: per-call lookup budget (free-plan subrequest limit) with `pin_missing` to continue; `search_places` flags results outside the trip country.
+- [x] **Routing + travel modes** — `src/lib/routing.ts`, `LegChip.tsx`
+  - Each leg between consecutive pinned stops of a day gets a chip ("🚗 21 min · 8.7 km") and a mode: drive / walk / bike (FOSSGIS OSRM, routing.openstreetmap.de, ≤1 req/s) or transit (Transitous / MOTIS v6 `/api/v6/plan`, polyline-decoded legs, steps + transfers). Trip default `meta.travelMode`; per-leg override `item.travelMode`.
+  - Map draws real geometry: solid = road/transit, dotted = walking, dashed = not yet routed or >800 km "flight" hop (not routed). Day header shows total ground travel.
+  - Leg results cached in Dexie `routes` (60 days; transit 3 days, keyed by departure hour) → routes draw offline. Transit departure = previous stop's end/start time or 09:00 with a longitude-based UTC offset (approximate).
+- [x] **Geocoding ranking instead of hard limits** — candidates scored by relevance, distance from the previous stop (log scale) and whether they're in a country the trip already visits (learned as pins land). Only "unknown country AND >3,000 km" is rejected, so multi-country trips and YYZ → KEF work.
+- [x] Fix: search dropdowns / leg menus were clipped by `content-visibility` on sections (`:has()` opt-out).
 - [ ] **6. Polish** — edit history with per-origin undo, trip cover image, budget/expenses, packing list, ICS export, travel-time estimates between stops (OSRM), Wanderlog import if an export path exists.
 
 ## Notes for the next session

@@ -159,7 +159,7 @@ export function WanderlogImport({ onClose }: { onClose: () => void }) {
               <div className="h-full rounded-full bg-accent transition-all" style={{ width: `${progress.total ? (progress.done / progress.total) * 100 : 5}%` }} />
             </div>
             <p className="flex items-center gap-1.5 text-xs text-muted">
-              <MapPin className="size-3.5" /> Lookups stay inside the trip's country and near the previous stop.
+              <MapPin className="size-3.5" /> Each place is matched near the previous stop, preferring countries the trip visits.
             </p>
             <button onClick={() => ctrl.current?.abort()} className="text-xs text-muted hover:text-fg">
               Skip the rest. You can pin them later.
