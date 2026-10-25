@@ -3,6 +3,7 @@ import { API, error, json, type Env } from "./util";
 
 /*
  *   GET   /api/inbox          pending bookings imported from email
+ *   GET   /api/inbox?all=1    every forwarded booking (any status), for the "imported emails" list
  *   PATCH /api/inbox/:id      {status?: "added" | "dismissed" | "pending", trip_id?: string | null}
  */
 export async function handleInbox(req: Request, env: Env, url: URL): Promise<Response | null> {
@@ -12,11 +13,12 @@ export async function handleInbox(req: Request, env: Env, url: URL): Promise<Res
   const id = url.pathname.slice(`${API}/inbox/`.length);
 
   if (!id && req.method === "GET") {
+    const all = url.searchParams.get("all") === "1";
     const { results } = await env.DB.prepare(
-      "SELECT id, trip_id, subject, booking, created_at FROM inbox WHERE owner = ? AND status = 'pending' ORDER BY created_at DESC LIMIT 200",
+      `SELECT id, trip_id, subject, booking, created_at, status FROM inbox WHERE owner = ? ${all ? "" : "AND status = 'pending'"} ORDER BY created_at DESC LIMIT 200`,
     )
       .bind(session.email)
-      .all<{ id: string; trip_id: string | null; subject: string; booking: string; created_at: number }>();
+      .all<{ id: string; trip_id: string | null; subject: string; booking: string; created_at: number; status: string }>();
     return json({ items: results.map((r) => ({ ...r, booking: JSON.parse(r.booking) })) });
   }
 

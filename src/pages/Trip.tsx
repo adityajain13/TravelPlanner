@@ -546,7 +546,7 @@ export function TripPage() {
           )}
         </div>
         <div className="px-3">
-          {tab === "bookings" && <ReservationsPanel doc={doc} state={state} readOnly={readOnly} />}
+          {tab === "bookings" && <ReservationsPanel doc={doc} state={state} readOnly={readOnly} tripId={id} canForward={isOwner} />}
           {tab === "budget" && <BudgetPanel doc={doc} state={state} readOnly={readOnly} />}
           {tab === "plan" && (<>
           {unpinned.length > 0 && (

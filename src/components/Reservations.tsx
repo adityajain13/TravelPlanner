@@ -1,9 +1,13 @@
 import { useState } from "react";
 import type * as Y from "yjs";
-import { BedDouble, Car, Loader2, MapPin, Pencil, Plane, Plus, Ticket, TrainFront, Trash2, Utensils, X } from "lucide-react";
+import { BedDouble, Car, ChevronDown, Inbox, Loader2, Mail, PenLine, Pencil, Plane, Plus, Ticket, TrainFront, Trash2, Utensils, X } from "lucide-react";
+import { PlaceSearch } from "./PlaceSearch";
+import { ForwardDialog } from "./ForwardDialog";
+import { useLiveQuery } from "dexie-react-hooks";
+import { db } from "../lib/db";
+import type { PlaceResult } from "../lib/photon";
 import { removeReservation, saveReservation, type Reservation, type ReservationType, type TripState } from "../lib/trips";
 import { searchPlaces } from "../lib/photon";
-import { formatShort } from "../lib/dates";
 import { CURRENCIES, formatMoney } from "../lib/fx";
 import { inputCls } from "./NewTripDialog";
 
@@ -46,104 +50,205 @@ const FIELDS: Record<ReservationType, Partial<Record<"title" | "from" | "to" | "
 
 const GEOCODE: ReservationType[] = ["lodging", "restaurant", "other"];
 
-const when = (d?: string, t?: string) => [d && formatShort(d), t].filter(Boolean).join(" ");
 
-export function ReservationsPanel({ doc, state, readOnly }: { doc: Y.Doc; state: TripState; readOnly: boolean }) {
+const ADD_LABEL: Record<ReservationType, string> = {
+  flight: "flight",
+  lodging: "lodging",
+  car: "rental car",
+  train: "train or bus",
+  restaurant: "restaurant",
+  other: "reservation",
+};
+const SECTION_TITLE: Record<ReservationType, string> = { ...RES_LABEL, lodging: "Hotels and lodging", train: "Trains and buses", other: "Other reservations" };
+/** Types where "search for a place" makes sense (a venue with an address). */
+const SEARCHABLE: ReservationType[] = ["lodging", "car", "restaurant", "other"];
+
+// "Fri, 2nd Dec"
+const ordinal = (n: number) => `${n}${n % 10 === 1 && n !== 11 ? "st" : n % 10 === 2 && n !== 12 ? "nd" : n % 10 === 3 && n !== 13 ? "rd" : "th"}`;
+function niceDate(d?: string) {
+  if (!d) return "";
+  const dt = new Date(`${d}T00:00:00Z`);
+  const wd = new Intl.DateTimeFormat("en", { weekday: "short", timeZone: "UTC" }).format(dt);
+  const mo = new Intl.DateTimeFormat("en", { month: "short", timeZone: "UTC" }).format(dt);
+  return `${wd}, ${ordinal(dt.getUTCDate())} ${mo}`;
+}
+const niceTime = (t?: string) => {
+  if (!t) return "";
+  const [h, m] = t.split(":").map(Number);
+  return new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit", timeZone: "UTC" }).format(Date.UTC(2000, 0, 1, h, m));
+};
+const at = (d?: string, t?: string) => [niceDate(d), niceTime(t)].filter(Boolean).join(" • ");
+
+export function ReservationsPanel({ doc, state, readOnly, tripId, canForward }: { doc: Y.Doc; state: TripState; readOnly: boolean; tripId?: string; canForward?: boolean }) {
   const [editing, setEditing] = useState<Partial<Reservation> | null>(null);
+  const [forward, setForward] = useState<"forward" | "history" | null>(null);
+  const [collapsed, setCollapsed] = useState<Set<ReservationType>>(new Set());
   const types = Object.keys(RES_LABEL) as ReservationType[];
+  const currency = state.meta.currency ?? "CAD";
+  const tripTitles = useLiveQuery(async () => Object.fromEntries((await db.trips.toArray()).map((t) => [t.id, t.title])), []);
 
   return (
-    <div className="space-y-6 px-2 py-4">
-      {!readOnly && (
-        <div className="flex flex-wrap gap-2">
-          {types.map((t) => (
-            <button
-              key={t}
-              onClick={() => setEditing({ type: t, startDate: state.meta.startDate })}
-              className="flex items-center gap-1.5 rounded-full border border-line px-3 py-1.5 text-xs text-muted hover:border-accent hover:text-fg"
-            >
-              <Plus className="size-3.5" />
-              {RES_ICON[t]}
-              {RES_SINGULAR[t]}
-            </button>
-          ))}
+    <div className="px-2 pt-6 pb-4">
+      {canForward && !readOnly && (
+        <div className="mb-2 flex flex-wrap gap-2">
+          <button onClick={() => setForward("forward")} className="flex items-center gap-2 rounded-full border border-line px-4 py-2 text-[15px] font-semibold text-muted hover:border-accent hover:text-fg">
+            <Mail className="size-4" /> Forward a confirmation
+          </button>
+          <button onClick={() => setForward("history")} className="flex items-center gap-2 rounded-full px-4 py-2 text-[15px] font-semibold text-muted hover:bg-surface-2 hover:text-fg">
+            <Inbox className="size-4" /> Imported emails
+          </button>
         </div>
-      )}
-
-      {state.reservations.length === 0 && (
-        <p className="rounded-xl border border-dashed border-line p-6 text-center text-sm text-muted">
-          No reservations yet. Add one above, or forward a confirmation email to trips@adityajain.ca.
-        </p>
       )}
 
       {types.map((t) => {
         const list = state.reservations.filter((r) => r.type === t);
-        if (!list.length) return null;
+        if (readOnly && !list.length) return null;
+        const open = !collapsed.has(t);
         return (
-          <section key={t} id={`res-${t}`} className="scroll-mt-28">
-            <h3 className="mb-2 flex items-center gap-2 font-display text-lg">
-              <span className="text-muted">{RES_ICON[t]}</span>
-              {RES_LABEL[t]}
-            </h3>
-            <ul className="space-y-2">
-              {list.map((r) => (
-                <li key={r.id} className="group rounded-xl border border-line bg-surface p-3">
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0">
-                      <p className="font-semibold">{r.title}</p>
-                      {(r.from || r.to) && <p className="text-sm text-muted">{[r.from, r.to].filter(Boolean).join(" → ")}</p>}
-                      {r.address && (
-                        <p className="flex items-center gap-1 text-sm text-muted">
-                          <MapPin className="size-3.5 shrink-0" /> <span className="truncate">{r.address}</span>
-                        </p>
-                      )}
-                    </div>
-                    {!readOnly && (
-                      <div className="flex shrink-0 gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 max-md:opacity-100">
-                        <button onClick={() => setEditing(r)} className="grid size-7 place-items-center rounded-md text-muted hover:bg-surface-2 hover:text-fg" title="Edit">
-                          <Pencil className="size-3.5" />
-                        </button>
-                        <button
-                          onClick={() => confirm(`Delete "${r.title}"?`) && removeReservation(doc, r.id)}
-                          className="grid size-7 place-items-center rounded-md text-muted hover:bg-surface-2 hover:text-danger"
-                          title="Delete"
-                        >
-                          <Trash2 className="size-3.5" />
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                  <div className="mt-2 grid grid-cols-2 gap-2 text-xs">
-                    {r.startDate && (
-                      <div>
-                        <p className="text-muted">{FIELDS[r.type].start}</p>
-                        <p>{when(r.startDate, r.startTime)}</p>
-                      </div>
-                    )}
-                    {r.endDate && FIELDS[r.type].end && (
-                      <div>
-                        <p className="text-muted">{FIELDS[r.type].end}</p>
-                        <p>{when(r.endDate, r.endTime)}</p>
-                      </div>
-                    )}
-                  </div>
-                  <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted">
-                    {r.confirmation && (
-                      <span>
-                        Confirmation <span className="font-mono text-fg">{r.confirmation}</span>
-                      </span>
-                    )}
-                    {r.cost != null && <span className="text-fg">{formatMoney(r.cost, r.costCurrency ?? state.meta.currency ?? "CAD")}</span>}
-                  </div>
-                  {r.notes && <p className="mt-2 text-sm whitespace-pre-wrap text-muted">{r.notes}</p>}
-                </li>
-              ))}
-            </ul>
+          <section key={t} id={`res-${t}`} className="scroll-mt-28 border-b border-line/70 py-7 last:border-b-0">
+            <button
+              onClick={() => setCollapsed((c) => (c.has(t) ? new Set([...c].filter((x) => x !== t)) : new Set(c).add(t)))}
+              className="flex w-full items-center gap-2.5 text-left"
+            >
+              <ChevronDown className={`size-5 text-muted transition-transform ${open ? "" : "-rotate-90"}`} />
+              <h3 className="font-display text-[26px] leading-tight">{SECTION_TITLE[t]}</h3>
+              {list.length > 0 && <span className="text-[15px] text-muted tabular-nums">{list.length}</span>}
+            </button>
+
+            {open && (
+              <>
+                <ul className="mt-5 space-y-4">
+                  {list.map((r) => (
+                    <ReservationCard key={r.id} r={r} currency={currency} readOnly={readOnly} onEdit={() => setEditing(r)} onDelete={() => confirm(`Delete "${r.title}"?`) && removeReservation(doc, r.id)} />
+                  ))}
+                </ul>
+                {!readOnly && (
+                  <AddRow
+                    type={t}
+                    hasAny={list.length > 0}
+                    near={state.meta.center}
+                    onManual={() => setEditing({ type: t, startDate: state.meta.startDate })}
+                    onPlace={(p) => setEditing({ type: t, startDate: state.meta.startDate, title: p.name, address: p.address, lat: p.lat, lng: p.lng })}
+                    onForward={canForward ? () => setForward("forward") : undefined}
+                  />
+                )}
+              </>
+            )}
           </section>
         );
       })}
 
       {editing && <ReservationForm doc={doc} state={state} initial={editing} onClose={() => setEditing(null)} />}
+      {forward && <ForwardDialog tripId={tripId} tripTitles={tripTitles} initialView={forward} onClose={() => setForward(null)} />}
+    </div>
+  );
+}
+
+/** Wanderlog-style booking card: details on the left, confirmation # and cost on the right. */
+function ReservationCard({ r, currency, readOnly, onEdit, onDelete }: { r: Reservation; currency: string; readOnly: boolean; onEdit: () => void; onDelete: () => void }) {
+  const f = FIELDS[r.type];
+  const route = r.from || r.to ? [r.from, r.to].filter(Boolean).join(" → ") : null;
+  const twoStep = r.type === "car" || r.type === "flight" || r.type === "train";
+  return (
+    <li
+      onClick={readOnly ? undefined : onEdit}
+      className={`group relative flex gap-5 rounded-2xl border border-line/70 bg-surface p-5 transition-colors max-sm:flex-col max-sm:gap-3 ${readOnly ? "" : "cursor-pointer hover:border-line hover:bg-surface-2/60"}`}
+    >
+      <div className="min-w-0 flex-1">
+        <p className="text-[18px] leading-snug font-bold">{r.title}</p>
+        {route && <p className="mt-0.5 text-[15px] text-muted">{route}</p>}
+        {!twoStep && r.address && <p className="mt-0.5 truncate text-[14px] text-muted">{r.address}</p>}
+        {twoStep ? (
+          <div className="mt-3 space-y-2.5 text-[16px]">
+            {r.startDate && (
+              <div>
+                <p>
+                  <span className="text-muted">{f.start}: </span>
+                  {at(r.startDate, r.startTime)}
+                </p>
+                {r.type === "car" && r.from && <p className="text-[13px] text-muted">{r.from}</p>}
+              </div>
+            )}
+            {r.endDate && f.end && (
+              <div>
+                <p>
+                  <span className="text-muted">{f.end}: </span>
+                  {at(r.endDate, r.endTime)}
+                </p>
+                {r.type === "car" && r.to && <p className="text-[13px] text-muted">{r.to}</p>}
+              </div>
+            )}
+          </div>
+        ) : (
+          (r.startDate || r.endDate) && (
+            <p className="mt-3 text-[16px]">
+              {at(r.startDate, r.startTime)}
+              {r.endDate && f.end && r.endDate !== r.startDate ? ` — ${at(r.endDate, r.endTime)}` : ""}
+            </p>
+          )
+        )}
+        {r.notes && <p className="mt-3 text-[15px] whitespace-pre-wrap text-muted">{r.notes}</p>}
+      </div>
+      {(r.confirmation || r.cost != null) && (
+        <div className="w-44 shrink-0 border-l border-line pl-5 max-sm:w-auto max-sm:border-t max-sm:border-l-0 max-sm:pt-3 max-sm:pl-0">
+          {r.confirmation && (
+            <>
+              <p className="text-[11px] font-bold tracking-wider text-muted uppercase">Confirmation #</p>
+              <p className="mt-1 font-mono text-[17px] break-all">{r.confirmation}</p>
+            </>
+          )}
+          {r.cost != null && (
+            <span className="mt-3 inline-block rounded-full border border-line px-2.5 py-0.5 text-[13px] font-semibold text-muted">{formatMoney(r.cost, r.costCurrency ?? currency)}</span>
+          )}
+        </div>
+      )}
+      {!readOnly && (
+        <div className="absolute top-3 right-3 flex gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 max-md:opacity-100" onClick={(e) => e.stopPropagation()}>
+          <button onClick={onEdit} className="grid size-8 place-items-center rounded-full bg-surface text-muted hover:text-fg" title="Edit">
+            <Pencil className="size-4" />
+          </button>
+          <button onClick={onDelete} className="grid size-8 place-items-center rounded-full bg-surface text-muted hover:text-danger" title="Delete">
+            <Trash2 className="size-4" />
+          </button>
+        </div>
+      )}
+    </li>
+  );
+}
+
+/** "+ Add another lodging" → search for the place, type it in, or forward the confirmation email. */
+function AddRow({ type, hasAny, near, onManual, onPlace, onForward }: { type: ReservationType; hasAny: boolean; near?: [number, number]; onManual: () => void; onPlace: (p: PlaceResult) => void; onForward?: () => void }) {
+  const [searching, setSearching] = useState(false);
+  const btn = "flex items-center gap-2 rounded-full px-3 py-2 text-[15px] font-bold text-muted hover:bg-surface-2 hover:text-fg";
+  if (searching)
+    return (
+      <div className="mt-4" data-popover>
+        <PlaceSearch autoFocus near={near} onPick={(p) => (setSearching(false), onPlace(p))} onNote={() => (setSearching(false), onManual())} onCancel={() => setSearching(false)} />
+      </div>
+    );
+  return (
+    <div className={`${hasAny ? "mt-4" : "mt-3"} -ml-3 flex flex-wrap items-center gap-1`}>
+      {SEARCHABLE.includes(type) ? (
+        <button onClick={() => setSearching(true)} className={btn}>
+          <Plus className="size-4" /> Add {hasAny ? "another " : ""}
+          {ADD_LABEL[type]}
+        </button>
+      ) : (
+        <button onClick={onManual} className={btn}>
+          <Plus className="size-4" /> Add {hasAny ? "another " : ""}
+          {ADD_LABEL[type]}
+        </button>
+      )}
+      {SEARCHABLE.includes(type) && (
+        <button onClick={onManual} className={btn}>
+          <PenLine className="size-4" /> Enter details
+        </button>
+      )}
+      {onForward && (
+        <button onClick={onForward} className={btn}>
+          <Mail className="size-4" /> Forward email
+        </button>
+      )}
     </div>
   );
 }
