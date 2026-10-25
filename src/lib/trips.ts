@@ -40,6 +40,8 @@ export interface Item {
   /** Entry fee, meal, tickets… counted in the budget. Currency defaults to the trip's. */
   cost?: number;
   costCurrency?: string;
+  /** Photo shown on the card and the pin popup (URL + credit only). */
+  image?: import("./images").PlaceImage;
   /** How you get here from the previous stop of the day; falls back to the trip default. */
   travelMode?: import("./routing").TravelMode;
   createdAt: number;
@@ -53,6 +55,8 @@ export interface TripMeta {
   center?: [number, number];
   /** ISO country of the destination (lowercase); keeps place lookups in-country. */
   countryCode?: string;
+  /** Cover photo for the trip header. */
+  cover?: import("./images").PlaceImage;
   /** Default way of getting between stops (Wanderlog defaults to driving). */
   travelMode?: import("./routing").TravelMode;
   /** Budget: everything is totalled in this currency (ISO code, e.g. "CAD"). */

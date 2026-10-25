@@ -12,7 +12,8 @@ My own Wanderlog. It's an offline-first trip planner, dark down to the map, with
 - Days generated from the trip dates, plus lists like "Places to visit". Drag and drop stops within and between days.
 - Place search on OpenStreetMap (Photon, with Nominatim as a fallback). Each stop takes a time, notes and a cost. An optional live **Google details** button shows photos, hours and ratings; only the place ID is stored.
 - **Routing between stops:** each leg shows "🚗 21 min · 8.7 km". Tap it to switch to walk, bike or transit. The map draws the real road, path or transit line, and each day header shows that day's total travel.
-- Dark vector map with numbered, colour-coded pins per day, plus a **satellite** toggle. Focus the map on one day with the eye icon.
+- **Photos** for every place: pick from Wikipedia, Wikimedia Commons or Openverse by the place's name (or paste a link). **Auto-fill photos** adds confident Wikipedia matches for the whole trip, and every trip gets a cover photo.
+- Dark vector map with Wanderlog-style numbered pins per day, photo popups, and a **satellite** toggle. Jump between days with the date chips, and focus the map on one day with the eye icon.
 
 **Book and budget**
 - **Reservations tab:** flights, lodging, rental cars, trains and buses, restaurants. Each has confirmation numbers, times and cost, and shows as chips on its days ("Check-in", "Departs 13:10").

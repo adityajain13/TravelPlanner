@@ -30,7 +30,8 @@ interface Props {
   currency?: string;
   chips?: { r: Reservation; label: string }[];
   /** Incoming leg per item id (days only). */
-  legs?: Map<string, { mode: TravelMode; state?: LegState }>;
+  legs?: Map<string, { mode: TravelMode; state?: LegState; from: [number, number]; to: [number, number] }>;
+  searchContext?: string;
   onLegMode?: (itemId: string, mode: TravelMode) => void;
   onChipClick?: (r: Reservation) => void;
   selectedId: string | null;
@@ -62,7 +63,8 @@ export function Section(p: Props) {
   return (
     <section
       ref={setNodeRef}
-      className={`section-lazy border-b border-line/70 py-4 transition-colors last:border-b-0 ${isOver ? "bg-accent/5" : ""}`}
+      id={`sec-${info.key}`}
+      className={`section-lazy scroll-mt-28 border-b border-line/70 py-4 transition-colors last:border-b-0 ${isOver ? "bg-accent/5" : ""}`}
     >
       <div className="flex items-center gap-2 px-2">
         <button onClick={() => setOpen((o) => !o)} className="text-muted hover:text-fg" aria-label={open ? "Collapse" : "Expand"}>
@@ -125,6 +127,8 @@ export function Section(p: Props) {
                   state={p.legs.get(it.id)!.state}
                   readOnly={p.readOnly}
                   onMode={(m) => p.onLegMode?.(it.id, m)}
+                  from={p.legs.get(it.id)!.from}
+                  to={p.legs.get(it.id)!.to}
                 />
               )}
               <ItemCard
@@ -135,6 +139,7 @@ export function Section(p: Props) {
                 selected={p.selectedId === it.id}
                 readOnly={p.readOnly}
                 currency={p.currency}
+                searchContext={p.searchContext}
                 onSelect={() => p.onSelect(it.id)}
                 onChange={(patch) => p.onChange(it.id, patch)}
                 onDelete={() => p.onDelete(it.id)}

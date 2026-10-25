@@ -64,6 +64,11 @@ Hosted at **adityajain.ca/travelplanner** by the `travelplanner` Cloudflare Work
   - Leg results cached in Dexie `routes` (60 days; transit 3 days, keyed by departure hour) → routes draw offline. Transit departure = previous stop's end/start time or 09:00 with a longitude-based UTC offset (approximate).
 - [x] **Geocoding ranking instead of hard limits** — candidates scored by relevance, distance from the previous stop (log scale) and whether they're in a country the trip already visits (learned as pins land). Only "unknown country AND >3,000 km" is rejected, so multi-country trips and YYZ → KEF work.
 - [x] Fix: search dropdowns / leg menus were clipped by `content-visibility` on sections (`:has()` opt-out).
+- [x] **Wanderlog-style UI + photos** — `ImagePicker.tsx`, `src/lib/images.ts`
+  - Trip panel scrolls as one page: cover-photo hero (title + dates over it, Cover button), sticky tabs with day jump chips, reservations quick-add card, auto-fill photos + "Getting around" row.
+  - Place cards: teardrop numbered marker in the day colour, name / category·address / notes preview / time + cost chips, photo thumbnail on the right; leg rows get a Google Maps "Directions" link.
+  - Map: SDF teardrop pins tinted per day (selected pin larger), photo popup for the selected stop.
+  - Photos: picker searches Wikipedia (geosearch near the pin + title match), Wikimedia Commons and Openverse, or takes a pasted URL; stores `{url, thumb, credit, link, source}` on the item (`item.image`) / trip (`meta.cover`). Auto-fill uses confident Wikipedia matches only (≥0.75 name similarity) and skips generic stops; country/region lead images that are flags, maps or coats of arms are filtered. Photos cached by the service worker (`place-photos`).
 - [ ] **6. Polish** — edit history with per-origin undo, trip cover image, budget/expenses, packing list, ICS export, travel-time estimates between stops (OSRM), Wanderlog import if an export path exists.
 
 ## Notes for the next session
