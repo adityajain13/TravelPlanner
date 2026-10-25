@@ -16,7 +16,7 @@
       "binding": "DB",
       "database_name": "travelplanner",
       // `npx wrangler d1 create travelplanner`, then paste the id here
-      "database_id": "00000000-0000-0000-0000-000000000000",
+      "database_id": "e08b728f-206f-4032-91b3-96e852f1c41e",
       "migrations_dir": "migrations"
     }
   ],
