@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useDroppable } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
-import { ChevronDown, Eye, ListChecks, MapPin, Pencil, Plus, StickyNote } from "lucide-react";
+import { ChevronDown, Eye, Heading2, ListChecks, MapPin, Pencil, Plus, StickyNote } from "lucide-react";
 import type { Item, Reservation } from "../lib/trips";
 import { RES_ICON } from "./Reservations";
 import { LegChip } from "./LegChip";
@@ -61,6 +61,7 @@ export function Section(p: Props) {
   const [open, setOpen] = useState(true);
   const [insertAt, setInsertAt] = useState<number | null>(null);
   const [menuAt, setMenuAt] = useState<number | null>(null);
+  const [subEditing, setSubEditing] = useState(false);
   const canInsert = !p.readOnly && info.key !== "orphan";
   const { setNodeRef, isOver } = useDroppable({ id: info.key });
   const placeCount = info.items.filter((i) => i.kind === "place").length;
@@ -79,11 +80,12 @@ export function Section(p: Props) {
       id={`sec-${info.key}`}
       className={`group/section section-lazy scroll-mt-28 border-b border-line/70 py-4 transition-colors last:border-b-0 ${isOver ? "bg-accent/5" : ""}`}
     >
-      <div className="flex items-center gap-2 px-2">
-        <button onClick={() => setOpen((o) => !o)} className="text-muted hover:text-fg" aria-label={open ? "Collapse" : "Expand"}>
+      {/* Top-aligned so the chevron and dot stay level with the title when a subheading is shown */}
+      <div className="flex items-start gap-2 px-2">
+        <button onClick={() => setOpen((o) => !o)} className="mt-2 text-muted hover:text-fg" aria-label={open ? "Collapse" : "Expand"}>
           <ChevronDown className={`size-4 transition-transform ${open ? "" : "-rotate-90"}`} />
         </button>
-        <span className="size-2.5 shrink-0 rounded-full" style={{ background: info.color }} />
+        <span className="mt-[11px] size-2.5 shrink-0 rounded-full" style={{ background: info.color }} />
         <div className="min-w-0 flex-1">
           {info.kind === "day" ? (
             <h3 className="truncate font-display text-[21px]">
@@ -101,10 +103,20 @@ export function Section(p: Props) {
               className="w-full bg-transparent font-display text-[21px] outline-none"
             />
           )}
-          <Subheading value={p.subtitle} onSave={p.readOnly ? undefined : p.onSubtitle} />
+          <Subheading value={p.subtitle} onSave={p.readOnly ? undefined : p.onSubtitle} editing={subEditing} setEditing={setSubEditing} />
         </div>
-        {dayTravel && <span className="text-xs text-muted tabular-nums max-sm:hidden">{dayTravel}</span>}
-        {placeCount > 0 && <span className="text-xs text-muted tabular-nums">{placeCount}</span>}
+        {dayTravel && <span className="mt-2 text-xs text-muted tabular-nums max-sm:hidden">{dayTravel}</span>}
+        {placeCount > 0 && <span className="mt-2 text-xs text-muted tabular-nums">{placeCount}</span>}
+        {!p.subtitle && !p.readOnly && p.onSubtitle && !subEditing && (
+          <button
+            onClick={() => setSubEditing(true)}
+            className="grid size-7 place-items-center rounded-md text-muted opacity-0 transition-opacity group-hover/section:opacity-100 hover:bg-surface-2 hover:text-fg focus-visible:opacity-100 max-md:opacity-60"
+            title="Add a subheading"
+            aria-label="Add a subheading"
+          >
+            <Heading2 className="size-3.5" />
+          </button>
+        )}
         <button
           onClick={p.onFocus}
           className={`grid size-7 place-items-center rounded-md transition-colors ${
@@ -262,8 +274,7 @@ function InsertMenu({ onClose, onPlace, onNote, onChecklist }: { onClose: () => 
 }
 
 /** Optional subheading under a day or list ("Osaka", "Golden Circle"), edited in place. */
-function Subheading({ value, onSave }: { value?: string; onSave?: (t: string) => void }) {
-  const [editing, setEditing] = useState(false);
+function Subheading({ value, onSave, editing, setEditing }: { value?: string; onSave?: (t: string) => void; editing: boolean; setEditing: (b: boolean) => void }) {
   if (!onSave) return value ? <p className="truncate text-[14px] font-semibold text-muted">{value}</p> : null;
   if (editing)
     return (
@@ -281,9 +292,5 @@ function Subheading({ value, onSave }: { value?: string; onSave?: (t: string) =>
       <span className="truncate">{value}</span>
       <Pencil className="size-3.5 shrink-0 opacity-0 transition-opacity group-hover/sub:opacity-100 max-md:opacity-60" />
     </button>
-  ) : (
-    <button onClick={() => setEditing(true)} className="text-[13px] text-muted/0 transition-colors group-hover/section:text-muted/70 hover:!text-fg focus-visible:text-muted max-md:text-muted/50">
-      + Add subheading
-    </button>
-  );
+  ) : null;
 }
