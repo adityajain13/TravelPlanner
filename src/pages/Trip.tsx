@@ -25,6 +25,7 @@ import { Photo } from "../components/Photo";
 import { PhotoCredit } from "../components/PhotoCredit";
 import { RES_ICON, RES_SINGULAR } from "../components/Reservations";
 import { GENERIC_PLACE } from "../lib/geocode";
+import { findPlaceId, GOOGLE_KEY } from "../lib/google";
 import { edit } from "../lib/trips";
 import { parseISODate } from "../lib/dates";
 import { scrollToId } from "../lib/scroll";
@@ -544,8 +545,13 @@ export function TripPage() {
                 onSelect={(itemId) => setSelectedId((cur) => (cur === itemId ? null : itemId))}
                 onRename={s.listId ? (t) => renameList(doc, s.listId!, t) : undefined}
                 onAddPlace={(p, index) => {
-                  const newId = addItem(doc, s.key, { kind: "place", name: p.name, address: p.address, category: p.category, lat: p.lat, lng: p.lng, osmId: p.osmId }, undefined, index);
+                  const newId = addItem(doc, s.key, { kind: "place", name: p.name, address: p.address || undefined, category: p.category || undefined, lat: p.lat, lng: p.lng, osmId: p.osmId }, undefined, index);
                   setSelectedId(newId);
+                  // From a Google Maps link: link its Google place ID (the only Google data we keep) so Google details work straight away
+                  if (p.fromLink && GOOGLE_KEY)
+                    findPlaceId({ name: p.name, lat: p.lat, lng: p.lng })
+                      .then((googlePlaceId) => googlePlaceId && updateItem(doc, newId, { googlePlaceId }))
+                      .catch(() => undefined);
                   if (!near) updateMeta(doc, { center: [p.lng, p.lat] });
                 }}
                 onAddNote={(text, index) => addItem(doc, s.key, { kind: "note", name: text }, undefined, index)}

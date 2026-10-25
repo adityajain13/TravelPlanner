@@ -44,25 +44,61 @@ interface PhotonFeature {
   properties: Record<string, string | number | undefined>;
 }
 
+// OSM tag values → the words people use ("information" → "tourist information")
+const CATEGORY: Record<string, string> = {
+  information: "tourist information",
+  peak: "mountain",
+  volcano: "volcano",
+  hot_spring: "hot spring",
+  attraction: "attraction",
+  viewpoint: "viewpoint",
+  national_park: "national park",
+  protected_area: "protected area",
+  fuel: "gas station",
+  supermarket: "supermarket",
+  guest_house: "guest house",
+  aerodrome: "airport",
+  place_of_worship: "church",
+  fast_food: "fast food",
+  car_rental: "car rental",
+  yes: "",
+};
+export const prettyCategory = (v?: string | number) => {
+  if (v == null) return undefined;
+  const k = String(v);
+  return (k in CATEGORY ? CATEGORY[k] : k.replace(/_/g, " ")) || undefined;
+};
+
+function fromPhoton(f: PhotonFeature, q = ""): GeoHit {
+  const p = f.properties;
+  const street = [p.housenumber, p.street].filter(Boolean).join(" ");
+  return {
+    lng: f.geometry.coordinates[0],
+    lat: f.geometry.coordinates[1],
+    name: String(p.name ?? (street || q)),
+    address: [street, p.district ?? p.locality, p.city, p.state, p.country].filter(Boolean).join(", ") || undefined,
+    category: prettyCategory(p.osm_value),
+    osmId: p.osm_id ? `${String(p.osm_type ?? "")}${p.osm_id}` : undefined,
+    countryCode: p.countrycode ? String(p.countrycode).toLowerCase() : undefined,
+  };
+}
+
+/** What's at a spot: named OSM features within radiusKm, nearest first (Photon reverse). */
+export async function reversePlaces(at: [number, number], radiusKm = 0.15, signal?: AbortSignal): Promise<GeoHit[]> {
+  const params = new URLSearchParams({ lon: String(at[0]), lat: String(at[1]), limit: "8", radius: String(radiusKm), lang: "en" });
+  const res = await fetch(`https://photon.komoot.io/reverse?${params}`, { signal });
+  if (!res.ok) throw new Error(`Photon ${res.status}`);
+  const json = (await res.json()) as { features: PhotonFeature[] };
+  return json.features.map((f) => fromPhoton(f)).sort((a, b) => distanceKm(at, [a.lng, a.lat]) - distanceKm(at, [b.lng, b.lat]));
+}
+
 async function photon(q: string, o: GeoOpts): Promise<GeoHit[]> {
   const params = new URLSearchParams({ q, limit: String(o.limit ?? 8), lang: "en" });
   if (o.near) params.set("lon", String(o.near[0])), params.set("lat", String(o.near[1])), params.set("location_bias_scale", "0.3");
   const res = await fetch(`https://photon.komoot.io/api/?${params}`, { signal: o.signal });
   if (!res.ok) throw new Error(`Photon ${res.status}`);
   const json = (await res.json()) as { features: PhotonFeature[] };
-  return json.features.map((f) => {
-    const p = f.properties;
-    const street = [p.housenumber, p.street].filter(Boolean).join(" ");
-    return {
-      lng: f.geometry.coordinates[0],
-      lat: f.geometry.coordinates[1],
-      name: String(p.name ?? street ?? q),
-      address: [street, p.district ?? p.locality, p.city, p.state, p.country].filter(Boolean).join(", ") || undefined,
-      category: p.osm_value ? String(p.osm_value).replace(/_/g, " ") : undefined,
-      osmId: p.osm_id ? `${String(p.osm_type ?? "")}${p.osm_id}` : undefined,
-      countryCode: p.countrycode ? String(p.countrycode).toLowerCase() : undefined,
-    };
-  });
+  return json.features.map((f) => fromPhoton(f, q));
 }
 
 interface NominatimRow {
@@ -94,7 +130,7 @@ async function nominatim(q: string, o: GeoOpts): Promise<GeoHit[]> {
     lng: Number(r.lon),
     name: r.name || r.display_name.split(",")[0],
     address: r.display_name,
-    category: r.type?.replace(/_/g, " "),
+    category: prettyCategory(r.type),
     osmId: r.osm_type && r.osm_id ? `${r.osm_type[0].toUpperCase()}${r.osm_id}` : undefined,
     countryCode: r.address?.country_code?.toLowerCase(),
   }));
