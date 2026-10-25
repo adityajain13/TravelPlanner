@@ -25,7 +25,8 @@
   },
   "migrations": [{ "tag": "v1", "new_sqlite_classes": ["TripRoom"] }],
 
-  // Login emails. Sending to your own verified address works on the free plan.
+  // Login codes + import receipts via Email Routing (free plan). Only delivers to verified
+  // destination addresses in Email Routing, i.e. the owner's own inbox.
   "send_email": [{ "name": "EMAIL" }],
 
   "vars": {

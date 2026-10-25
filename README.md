@@ -38,7 +38,9 @@ Every push to `main` deploys through GitHub Actions (`.github/workflows/deploy.y
 5. **Worker secrets:** Workers & Pages → travelplanner → Settings → Variables and Secrets. Add:
    - `ALLOWED_EMAILS`: your Gmail
    - `SHARE_SECRET`: any long random string
-6. **Email sending:** Email → Email Sending → enable it for `adityajain.ca`, so login codes can be sent from `trips@adityajain.ca`. Your Gmail must be a verified destination address in Email Routing, which it already is.
+6. **Inbound email:** Email → Email Routing → Routing rules → Create address: custom address `trips`, action **Send to a Worker**, destination `travelplanner`.
+
+Outgoing mail (login codes, import receipts) goes through Email Routing's free `send_email` binding. That binding can only deliver to **verified destination addresses**, so the address in `ALLOWED_EMAILS` must be one; your Gmail already is. No Workers Paid plan or Email Sending is needed.
 
 Then open adityajain.ca/travelplanner and sign in.
 

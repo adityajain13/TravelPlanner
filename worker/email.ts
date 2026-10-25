@@ -1,5 +1,5 @@
 import PostalMime from "postal-mime";
-import type { Env } from "./util";
+import { sendMail, type Env } from "./util";
 
 /*
  * trips@adityajain.ca → Email Routing → this handler.
@@ -125,7 +125,7 @@ function htmlToText(html: string) {
 
 async function reply(env: Env, to: string, subject: string, text: string) {
   try {
-    await env.EMAIL.send({ to, from: { email: env.MAIL_FROM, name: "Travel Planner" }, subject, text });
+    await sendMail(env, { to, subject, text });
   } catch (e) {
     console.error("receipt failed", e);
   }

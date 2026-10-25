@@ -1,3 +1,5 @@
+import { EmailMessage } from "cloudflare:email";
+
 export interface Env {
   ASSETS: Fetcher;
   DB: D1Database;
@@ -8,11 +10,6 @@ export interface Env {
   SHARE_SECRET: string;
   ANTHROPIC_API_KEY: string;
   EXTRACT_MODEL?: string;
-}
-
-// Structured Email Service binding (env.EMAIL.send({...})).
-export interface SendEmail {
-  send(msg: { to: string; from: string | { email: string; name: string }; subject: string; text?: string; html?: string }): Promise<unknown>;
 }
 
 export const BASE = "/travelplanner";
@@ -71,3 +68,35 @@ export function parseCookies(req: Request): Record<string, string> {
 }
 
 export const isValidTripId = (id: string) => /^[A-Za-z0-9_-]{6,32}$/.test(id);
+
+/*
+ * Outgoing mail via Email Routing's send_email binding (free plan). It can only deliver to
+ * verified destination addresses in Email Routing, which is fine: mail only ever goes to the
+ * allow-listed owner (login codes, import receipts).
+ */
+const b64 = (s: string) => {
+  const bytes = enc.encode(s);
+  let bin = "";
+  for (const b of bytes) bin += String.fromCharCode(b);
+  return btoa(bin).replace(/.{76}/g, "$&\r\n");
+};
+const encodeHeader = (s: string) => (/^[\x20-\x7e]*$/.test(s) ? s : `=?UTF-8?B?${b64(s).replace(/\r\n/g, "")}?=`);
+
+export async function sendMail(env: Env, m: { to: string; subject: string; text: string; html?: string }) {
+  const domain = env.MAIL_FROM.split("@")[1];
+  const boundary = `tp-${randomToken(12)}`;
+  const head = [
+    `From: ${encodeHeader("Travel Planner")} <${env.MAIL_FROM}>`,
+    `To: <${m.to}>`,
+    `Subject: ${encodeHeader(m.subject)}`,
+    `Message-ID: <${randomToken(16)}@${domain}>`,
+    `Date: ${new Date().toUTCString()}`,
+    "MIME-Version: 1.0",
+  ];
+  const part = (type: string, body: string) =>
+    [`Content-Type: ${type}; charset=utf-8`, "Content-Transfer-Encoding: base64", "", b64(body)].join("\r\n");
+  const raw = m.html
+    ? [...head, `Content-Type: multipart/alternative; boundary="${boundary}"`, "", `--${boundary}`, part("text/plain", m.text), `--${boundary}`, part("text/html", m.html), `--${boundary}--`, ""].join("\r\n")
+    : [...head, part("text/plain", m.text), ""].join("\r\n");
+  await env.EMAIL.send(new EmailMessage(env.MAIL_FROM, m.to, raw));
+}
