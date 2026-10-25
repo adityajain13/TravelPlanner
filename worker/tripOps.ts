@@ -201,7 +201,8 @@ export type Op =
   | { type: "update"; id: string; patch: Record<string, unknown> }
   | { type: "move"; id: string; section: string; position?: number }
   | { type: "remove"; id: string }
-  | { type: "meta"; patch: Partial<Meta> };
+  | { type: "meta"; patch: Partial<Meta> }
+  | { type: "addMany"; items: { section: string; item: ItemInput }[] };
 
 /** Apply one op; returns the affected item (or null for meta/remove). */
 export function applyOp(doc: Y.Doc, op: Op): Item | null {
@@ -212,6 +213,12 @@ export function applyOp(doc: Y.Doc, op: Op): Item | null {
     case "add":
       id = addItem(doc, resolveSection(snap, op.section), op.item, op.position);
       break;
+    case "addMany": {
+      // Resolve every section first so a bad one fails the whole batch before anything is written
+      const keys = op.items.map((x) => resolveSection(snap, x.section));
+      op.items.forEach((x, i) => addItem(doc, keys[i], x.item));
+      break;
+    }
     case "update":
       updateItem(doc, op.id, op.patch);
       id = op.id;

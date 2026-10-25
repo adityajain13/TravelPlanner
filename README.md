@@ -56,6 +56,12 @@ Forward any booking confirmation (flights, hotels, trains, restaurants…) to **
 
 Resetting a trip's links in the app also cuts off Claude's access to that trip.
 
+### Importing old Wanderlog trips (free, uses your Claude plan, not the API)
+
+1. In Wanderlog: open the trip → ⋯ → **Print this trip** → Save as PDF.
+2. In the app: create the trip with the same name and dates → Share → copy the **edit** link.
+3. In a Claude chat: attach the PDF, paste the edit link, and say *"Import this Wanderlog trip"*. Claude adds everything in one `add_items` call (one approval). Places get map pins automatically, and anything it can't locate is listed for you.
+
 ## How data flows
 
 - Trips live on the device (IndexedDB) and work fully offline.
