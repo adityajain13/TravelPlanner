@@ -7,7 +7,7 @@ import { Photo } from "./Photo";
 import { PhotoCredit } from "./PhotoCredit";
 import { CURRENCIES, formatMoney } from "../lib/fx";
 import type { CheckItem, Item } from "../lib/trips";
-import { fmtTime, TimeField } from "./TimeField";
+import { fmtTime, TimeRangeField } from "./TimeField";
 import { googleMapsLink } from "../lib/photon";
 import { GoogleDetails } from "./GoogleDetails";
 import { SectionPicker, type SectionTarget } from "./SectionPicker";
@@ -183,15 +183,28 @@ function ItemCardView({
           {isPlace && !selected && (item.startTime || item.cost != null) && (
             <div className="mt-2.5 flex flex-wrap gap-1.5 text-[13px] font-semibold">
               {item.startTime && (
-                <span className="flex items-center gap-1.5 rounded-full bg-accent/12 px-2.5 py-1 text-fg ring-1 ring-accent/25">
+                <TimeRangeField
+                  disabled={readOnly}
+                  start={item.startTime}
+                  end={item.endTime}
+                  onChange={(startTime, endTime) => onChange({ startTime, endTime })}
+                  title="Change time"
+                  className={`${chip} ${readOnly ? "" : "hover:bg-accent/20"}`}
+                >
                   <Clock className="size-3.5 text-accent" /> {fmtTime(item.startTime)}
                   {item.endTime ? ` – ${fmtTime(item.endTime)}` : ""}
-                </span>
+                </TimeRangeField>
               )}
               {item.cost != null && (
-                <span className="flex items-center gap-1.5 rounded-full bg-accent/12 px-2.5 py-1 text-fg ring-1 ring-accent/25">
+                <button
+                  type="button"
+                  disabled={readOnly || !onCostDetails}
+                  onClick={(e) => (e.stopPropagation(), onCostDetails?.())}
+                  title="Cost details"
+                  className={`${chip} ${readOnly ? "" : "hover:bg-accent/20"}`}
+                >
                   <Wallet className="size-3.5 text-accent" /> {formatMoney(item.cost, item.costCurrency ?? currency)}
-                </span>
+                </button>
               )}
             </div>
           )}
@@ -219,21 +232,12 @@ function ItemCardView({
                 </div>
               )}
               {isPlace && (
-                <div className="flex items-center gap-1 text-[14px]">
-                  <TimeField
+                <div className="flex items-center text-[14px]">
+                  <TimeRangeField
                     disabled={readOnly}
-                    value={item.startTime}
-                    onChange={(v) => onChange({ startTime: v })}
-                    placeholder="Start time"
-                    className="rounded-full px-2.5 py-1 hover:bg-surface"
-                  />
-                  <span className="text-muted">–</span>
-                  <TimeField
-                    disabled={readOnly}
-                    value={item.endTime}
-                    near={item.startTime}
-                    onChange={(v) => onChange({ endTime: v })}
-                    placeholder="End time"
+                    start={item.startTime}
+                    end={item.endTime}
+                    onChange={(startTime, endTime) => onChange({ startTime, endTime })}
                     className="rounded-full px-2.5 py-1 hover:bg-surface"
                   />
                 </div>
@@ -355,6 +359,8 @@ function NotesInput({ value, onCommit, disabled }: { value: string; onCommit: (v
     />
   );
 }
+
+const chip = "flex items-center gap-1.5 rounded-full bg-accent/12 px-2.5 py-1 text-fg ring-1 ring-accent/25 transition-colors disabled:cursor-default";
 
 export const capitalize = (s: string) => (s ? s[0].toUpperCase() + s.slice(1) : s);
 

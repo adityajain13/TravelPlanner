@@ -26,6 +26,8 @@ interface Props {
   variant: "column" | "drawer";
   /** Shown above the contents (undo / redo). */
   header?: React.ReactNode;
+  /** Day/list subheadings ("Osaka"), keyed by section key. */
+  subtitles?: Record<string, string>;
 }
 
 /** Wanderlog-style table of contents: overview (lists + bookings), every day with its stops, budget. */
@@ -94,6 +96,7 @@ export function Contents(p: Props) {
                 <>
                   <span className="mr-1.5 inline-block size-2 rounded-full align-middle" style={{ background: s.color }} />
                   {dayLabel(s.date!)}
+                  {p.subtitles?.[s.key] && <span className="text-muted"> · {p.subtitles[s.key]}</span>}
                 </>,
                 s.items
                   .filter((i) => i.kind === "place")

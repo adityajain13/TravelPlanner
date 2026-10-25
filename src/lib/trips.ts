@@ -71,6 +71,8 @@ export interface TripMeta {
   budget?: number;
   /** People splitting costs; the first is "you". */
   travelers?: string[];
+  /** Custom subheading per day/list (e.g. "Osaka" under a day), keyed by section key. */
+  subtitles?: Record<string, string>;
 }
 
 export type ReservationType = "flight" | "lodging" | "car" | "train" | "restaurant" | "other";
