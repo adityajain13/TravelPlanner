@@ -4,6 +4,8 @@ import { useLiveQuery } from "dexie-react-hooks";
 import { CalendarDays, LogOut, MapPin, Plus, Trash2, Users } from "lucide-react";
 import { useSession } from "../lib/api";
 import { reconcileTrips } from "../lib/sync";
+import { fetchInbox, type InboxItem } from "../lib/inbox";
+import { UnmatchedInbox } from "../components/UnmatchedInbox";
 import { db, type TripIndexRow } from "../lib/db";
 import { formatRange, todayISO } from "../lib/dates";
 import { deleteTrip } from "../lib/trips";
@@ -15,9 +17,17 @@ export function Home() {
   const [theme, toggleTheme] = useTheme();
   const { email, logout } = useSession();
 
-  // Pull trips from other devices / push ones made offline
+  const [unmatched, setUnmatched] = useState<InboxItem[]>([]);
+  const loadInbox = () =>
+    fetchInbox()
+      .then((items) => setUnmatched(items.filter((i) => !i.trip_id)))
+      .catch(() => undefined);
+
+  // Pull trips from other devices / push ones made offline; check for forwarded bookings
   useEffect(() => {
-    if (navigator.onLine) reconcileTrips().catch(() => undefined);
+    if (!navigator.onLine) return;
+    reconcileTrips().catch(() => undefined);
+    void loadInbox();
   }, []);
   const [creating, setCreating] = useState(false);
   const navigate = useNavigate();
@@ -61,6 +71,7 @@ export function Home() {
         </div>
       )}
 
+      <UnmatchedInbox items={unmatched} trips={trips ?? []} onChange={loadInbox} />
       <TripGroup title="Upcoming" trips={upcoming} />
       <TripGroup title="Past" trips={past} />
 

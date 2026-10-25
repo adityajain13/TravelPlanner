@@ -6,6 +6,8 @@ export interface Env {
   ALLOWED_EMAILS: string;
   MAIL_FROM: string;
   SHARE_SECRET: string;
+  ANTHROPIC_API_KEY: string;
+  EXTRACT_MODEL?: string;
 }
 
 // Structured Email Service binding (env.EMAIL.send({...})).

@@ -26,6 +26,7 @@
   "send_email": [{ "name": "EMAIL" }],
 
   "vars": {
-    "MAIL_FROM": "trips@adityajain.ca"
+    "MAIL_FROM": "trips@adityajain.ca",
+    "EXTRACT_MODEL": "claude-haiku-5-5"
   }
 }
