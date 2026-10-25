@@ -51,11 +51,11 @@ export function GoogleDetails({ item, onLink }: Props) {
 
   if (!details) {
     return (
-      <div className="flex items-center gap-2 text-xs">
+      <div className="flex items-center gap-2 text-[13px]">
         <button
           onClick={load}
           disabled={!online || state === "loading"}
-          className="flex items-center gap-1.5 rounded-full border border-line px-3 py-1 text-muted transition-colors hover:border-accent hover:text-fg disabled:opacity-50"
+          className="flex items-center gap-1.5 rounded-full border border-line px-3 py-1.5 font-semibold text-muted transition-colors hover:border-accent hover:text-fg disabled:opacity-50"
         >
           {state === "loading" ? <Loader2 className="size-3.5 animate-spin" /> : !online ? <WifiOff className="size-3.5" /> : <GoogleG />}
           {!online ? "Google details need a connection" : "Google details"}

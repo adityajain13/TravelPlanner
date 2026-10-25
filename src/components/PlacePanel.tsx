@@ -61,7 +61,7 @@ export function PlacePanel(p: Props) {
       const r = el.getBoundingClientRect();
       const parent = el.offsetParent?.getBoundingClientRect();
       if (!parent) return;
-      p.onInset(mode === "full" ? { top: r.bottom - parent.top, bottom: 0 } : { top: 0, bottom: parent.bottom - r.top });
+      p.onInset({ top: 0, bottom: parent.bottom - r.top }); // both modes sit at the bottom of the map
     };
     report();
     const ro = new ResizeObserver(report);
@@ -133,7 +133,7 @@ export function PlacePanel(p: Props) {
   }
 
   return (
-    <div ref={ref} className="absolute inset-x-3 top-14 z-20 flex max-h-[min(70%,640px)] flex-col overflow-hidden rounded-2xl border border-line bg-surface/97 shadow-2xl backdrop-blur">
+    <div ref={ref} className="absolute bottom-3 left-3 right-14 z-20 flex max-h-[min(58%,560px)] flex-col overflow-hidden rounded-2xl border border-line bg-surface/97 shadow-2xl backdrop-blur max-sm:right-3">
       <div className="flex items-center justify-between gap-2 border-b border-line px-3 py-2">
         {nav}
         <div className="flex">
@@ -145,7 +145,7 @@ export function PlacePanel(p: Props) {
           </button>
         </div>
       </div>
-      <div className="min-h-0 overflow-y-auto px-4 pt-3.5 pb-4">
+      <div className="min-h-0 overflow-y-auto px-4 pt-3 pb-3.5">
         <div className="flex gap-4">
           <div className="min-w-0 flex-1">
             <div className="flex items-start gap-2">
@@ -167,14 +167,6 @@ export function PlacePanel(p: Props) {
                 )}
               </p>
             ) : null}
-          </div>
-          {item.image && (
-            <div className="w-40 shrink-0 max-sm:hidden">
-              <Photo srcs={[item.image.url, item.image.thumb]} className="aspect-[4/3] w-full rounded-xl object-cover" />
-              <PhotoCredit img={item.image} className="mt-1 block truncate text-[10.5px] text-muted" />
-            </div>
-          )}
-        </div>
 
         <div className="mt-3 flex flex-wrap items-center gap-2">
           <SectionPicker
@@ -189,14 +181,14 @@ export function PlacePanel(p: Props) {
             {section ? `Added to ${section.label}` : "Added"}
           </SectionPicker>
           {item.category && <span className="rounded-full bg-surface-2 px-2.5 py-1 text-[13px] text-muted capitalize">{item.category}</span>}
+          {item.address && (
+            <span className="flex min-w-0 items-center gap-1.5 text-[14px] text-muted">
+              <MapPin className="size-4 shrink-0" /> <span className="truncate">{item.address}</span>
+            </span>
+          )}
         </div>
 
-        <ul className="mt-3 space-y-1.5 text-[14px] text-muted">
-          {item.address && (
-            <li className="flex gap-2">
-              <MapPin className="mt-0.5 size-4 shrink-0" /> <span>{item.address}</span>
-            </li>
-          )}
+        <ul className="mt-2.5 space-y-1.5 text-[14px] text-muted empty:hidden">
           {item.startTime && (
             <li className="flex gap-2">
               <Clock className="mt-0.5 size-4 shrink-0" /> {item.startTime}
@@ -216,13 +208,11 @@ export function PlacePanel(p: Props) {
         </ul>
 
         {item.kind === "place" && (
-          <div className="mt-3">
-            <GoogleDetails item={item} onLink={p.onLink} />
-          </div>
-        )}
-
-        {item.kind === "place" && (
-          <div className="mt-3 flex flex-wrap gap-2 text-[13px] font-semibold">
+          <div className="mt-3 flex flex-wrap items-center gap-2 text-[13px] font-semibold">
+            {/* The Google details button sits first in the row; once loaded, its panel takes a full row below */}
+            <div className="contents [&>div.space-y-2]:order-last [&>div.space-y-2]:basis-full">
+              <GoogleDetails item={item} onLink={p.onLink} />
+            </div>
             <a href={googleMapsLink(item)} target="_blank" rel="noreferrer" className="flex items-center gap-1.5 rounded-full border border-line px-3 py-1.5 text-muted hover:border-accent hover:text-fg">
               <ExternalLink className="size-3.5" /> Google Maps
             </a>
@@ -248,6 +238,14 @@ export function PlacePanel(p: Props) {
             )}
           </div>
         )}
+          </div>
+          {item.image && (
+            <div className="w-36 shrink-0 max-sm:hidden">
+              <Photo srcs={[item.image.url, item.image.thumb]} className="aspect-[4/3] w-full rounded-xl object-cover" />
+              <PhotoCredit img={item.image} className="mt-1 block truncate text-[10.5px] text-muted" />
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
