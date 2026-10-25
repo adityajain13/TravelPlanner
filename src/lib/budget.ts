@@ -30,6 +30,7 @@ export interface Line {
   paidBy: string;
   splitWith: string[];
   fromReservation?: Reservation;
+  fromItem?: boolean;
   expense?: Expense;
 }
 
@@ -65,7 +66,34 @@ export function budgetLines(state: TripState, convert: (a: number, c: string) =>
       fromReservation: r,
     });
   }
+  for (const it of state.items) {
+    if (it.cost == null) continue;
+    const cur = it.costCurrency ?? tripCurrency;
+    lines.push({
+      id: `item:${it.id}`,
+      title: it.name,
+      category: itemCategory(it.category),
+      amount: it.cost,
+      currency: cur,
+      converted: convert(it.cost, cur),
+      date: it.section.startsWith("day:") ? it.section.slice(4) : undefined,
+      paidBy: travelers[0],
+      splitWith: travelers,
+      fromItem: true,
+    });
+  }
   return lines.sort((a, b) => (b.date ?? "").localeCompare(a.date ?? ""));
+}
+
+const FOOD = /restaurant|cafe|café|bar|pub|food|bakery|ramen|sushi|izakaya|meal|lunch|dinner|breakfast/i;
+const SHOP = /shop|market|mall|store|boutique|department/i;
+const TRANSPORT = /station|airport|ferry|bus|train|taxi|parking/i;
+function itemCategory(category?: string): ExpenseCategory {
+  if (!category) return "activities";
+  if (FOOD.test(category)) return "food";
+  if (SHOP.test(category)) return "shopping";
+  if (TRANSPORT.test(category)) return "transport";
+  return "activities";
 }
 
 export const travelersOf = (state: TripState) => (state.meta.travelers?.length ? state.meta.travelers : ["Me"]);

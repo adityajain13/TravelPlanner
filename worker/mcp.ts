@@ -34,6 +34,8 @@ const itemFields = {
   notes: { type: "string", description: "Free text: tips, booking refs, links." },
   start_time: { type: "string", pattern: "^\\d{2}:\\d{2}$", description: "HH:MM, 24-hour, local time." },
   end_time: { type: "string", pattern: "^\\d{2}:\\d{2}$", description: "HH:MM, 24-hour, local time." },
+  cost: { type: "number", description: "Entry fee, meal, tickets; counted in the budget." },
+  cost_currency: { type: "string", description: "ISO code, e.g. JPY. Defaults to the trip currency." },
 };
 
 const TOOLS = [
@@ -348,6 +350,8 @@ async function callTool(env: Env, name: string, a: Args): Promise<string> {
         notes: str(a, "notes"),
         startTime: time(a, "start_time"),
         endTime: time(a, "end_time"),
+        cost: num(a, "cost"),
+        costCurrency: str(a, "cost_currency")?.toUpperCase() || undefined,
       };
       return mutate(env, a, { type: "add", section: str(a, "section", true)!, item, position: num(a, "position") }, "Added");
     }
@@ -376,6 +380,8 @@ async function callTool(env: Env, name: string, a: Args): Promise<string> {
               notes: str(x, "notes") || undefined,
               startTime: time(x, "start_time") || undefined,
               endTime: time(x, "end_time") || undefined,
+              cost: num(x, "cost"),
+              costCurrency: str(x, "cost_currency")?.toUpperCase() || undefined,
             } as ItemInput,
           };
         } catch (e) {
@@ -484,6 +490,8 @@ async function callTool(env: Env, name: string, a: Args): Promise<string> {
         notes: str(a, "notes"),
         startTime: time(a, "start_time"),
         endTime: time(a, "end_time"),
+        cost: a.cost === "" ? "" : num(a, "cost"),
+        costCurrency: str(a, "cost_currency")?.toUpperCase(),
       };
       if (patch.name === "") throw new ToolError("name can't be empty.");
       return mutate(env, a, { type: "update", id: str(a, "item_id", true)!, patch }, "Updated");

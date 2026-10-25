@@ -162,7 +162,7 @@ export function BudgetPanel({ doc, state, readOnly }: { doc: Y.Doc; state: TripS
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-medium">{l.title}</p>
                   <p className="text-xs text-muted">
-                    {[l.date && formatShort(l.date), CATEGORY_LABEL[l.category], travelers.length > 1 && `${l.paidBy} paid`, l.fromReservation && "from reservation"]
+                    {[l.date && formatShort(l.date), CATEGORY_LABEL[l.category], travelers.length > 1 && `${l.paidBy} paid`, l.fromReservation && "from reservation", l.fromItem && "from itinerary"]
                       .filter(Boolean)
                       .join(" · ")}
                   </p>

@@ -37,6 +37,9 @@ export interface Item {
   category?: string;
   osmId?: string; // e.g. "N123456" — stable OSM reference, fine to store forever
   googlePlaceId?: string; // only the ID; details are fetched live (Phase 2)
+  /** Entry fee, meal, tickets… counted in the budget. Currency defaults to the trip's. */
+  cost?: number;
+  costCurrency?: string;
   createdAt: number;
 }
 
