@@ -1,7 +1,7 @@
 export interface Env {
   ASSETS: Fetcher;
   DB: D1Database;
-  TRIP_ROOM: DurableObjectNamespace;
+  TRIP_ROOM: DurableObjectNamespace<import("./room").TripRoom>;
   EMAIL: SendEmail;
   ALLOWED_EMAILS: string;
   MAIL_FROM: string;
