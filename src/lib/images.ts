@@ -24,9 +24,23 @@ import { shareQuery } from "./shareToken";
 async function unsplash(query: string, signal?: AbortSignal): Promise<PlaceImage[]> {
   const q = new URLSearchParams({ q: query, ...shareQuery() });
   const res = await fetch(`/travelplanner/api/photos?${q}`, { signal, credentials: "same-origin" });
-  if (!res.ok) return [];
+  if (!res.ok) {
+    const body = (await res.json().catch(() => ({}))) as { error?: string };
+    unsplashIssue =
+      res.status === 501
+        ? "Unsplash isn't set up: add the UNSPLASH_ACCESS_KEY secret to the travelplanner Worker."
+        : res.status === 401
+          ? "Unsplash needs you to be signed in (or opened from a share link)."
+          : res.status === 429
+            ? "Unsplash's hourly limit is used up; showing other sources."
+            : `Unsplash unavailable (${body.error ?? res.status}).`;
+    return [];
+  }
+  unsplashIssue = null;
   return ((await res.json()) as { photos?: PlaceImage[] }).photos ?? [];
 }
+/** Why the last search had no Unsplash results, for the picker to show. */
+export let unsplashIssue: string | null = null;
 
 /** Unsplash asks apps to report when a photo is actually used. */
 export function trackPick(img: PlaceImage) {

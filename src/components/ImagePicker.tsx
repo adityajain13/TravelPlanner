@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import { Photo } from "./Photo";
 import { PhotoCredit } from "./PhotoCredit";
 import { ImageOff, Link2, Loader2, Search, Trash2, X } from "lucide-react";
-import { searchImages, type PlaceImage, trackPick, forStorage } from "../lib/images";
+import { searchImages, type PlaceImage, trackPick, forStorage, unsplashIssue } from "../lib/images";
 import { inputCls } from "./NewTripDialog";
 
 /** Pick a photo for a place (or the trip cover) from Wikipedia, Commons and Openverse, or paste a link. */
@@ -106,6 +106,7 @@ export function ImagePicker({
           )}
         </div>
 
+        {shown !== null && unsplashIssue && <p className="-mt-1 text-[12px] text-muted">{unsplashIssue}</p>}
         <div className="flex flex-wrap items-center gap-2 border-t border-line pt-3">
           <form
             onSubmit={(e) => {

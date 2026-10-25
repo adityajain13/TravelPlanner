@@ -92,3 +92,4 @@ Hosted at **adityajain.ca/travelplanner** by the `travelplanner` Cloudflare Work
 - Link-added places: when the name has no OSM match, Photon reverse at the pin supplies category/address (never raw coords); Google place ID auto-linked for link adds. Friendly OSM categories (prettyCategory).
 - HeroPill expand: 500ms ease-out-quint.
 - Place panel over the map (PlacePanel.tsx): full/compact, persisted (tp-place-panel), prev/next within the day, Wikipedia summary live (placeSummary), map pads the pin around it. SectionPicker "Added to ▾" on cards + panel. Multi-select checkboxes (pin swaps on hover, shift-range) with Copy to / Move to / Delete bar; trips.ts moveItems/copyItems/removeItems.
+- HeroPill: grid 0fr→1fr width animation (700ms, visible whole time). keep_vars in wrangler.jsonc so dashboard text vars survive deploys. Picker shows why Unsplash is missing (501/401/429).

@@ -29,6 +29,8 @@
   // destination addresses in Email Routing, i.e. the owner's own inbox.
   "send_email": [{ "name": "EMAIL" }],
 
+  // Keep variables added in the dashboard when GitHub Actions deploys (secrets are always kept)
+  "keep_vars": true,
   "vars": {
     "MAIL_FROM": "trips@adityajain.ca",
     "EXTRACT_MODEL": "claude-haiku-5-5"
