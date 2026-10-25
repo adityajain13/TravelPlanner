@@ -17,9 +17,10 @@ export function NewTripDialog({ onClose, onCreated }: { onClose: () => void; onC
     setBusy(true);
     // Centre the map on the destination; offline or no match just means no initial centre
     let center: [number, number] | undefined;
+    let countryCode: string | undefined;
     try {
       const [hit] = await searchPlaces(destination);
-      if (hit) center = [hit.lng, hit.lat];
+      if (hit) (center = [hit.lng, hit.lat]), (countryCode = hit.countryCode);
     } catch {
       /* offline */
     }
@@ -29,6 +30,7 @@ export function NewTripDialog({ onClose, onCreated }: { onClose: () => void; onC
       startDate,
       endDate: endDate < startDate ? startDate : endDate,
       center,
+      countryCode,
     });
     onCreated(id);
   }

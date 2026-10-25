@@ -4,12 +4,13 @@ import { searchPlaces, type PlaceResult } from "../lib/photon";
 
 interface Props {
   near?: [number, number];
+  countryCode?: string;
   onPick: (p: PlaceResult) => void;
   onNote: (text: string) => void;
 }
 
 /** "Add a place" box at the bottom of each day/list. Photon results, or save the text as a note. */
-export function PlaceSearch({ near, onPick, onNote }: Props) {
+export function PlaceSearch({ near, countryCode, onPick, onNote }: Props) {
   const [q, setQ] = useState("");
   const [results, setResults] = useState<PlaceResult[]>([]);
   const [loading, setLoading] = useState(false);
@@ -29,7 +30,7 @@ export function PlaceSearch({ near, onPick, onNote }: Props) {
       setLoading(true);
       setError(null);
       try {
-        setResults(await searchPlaces(term, near, ctrl.signal));
+        setResults(await searchPlaces(term, near, ctrl.signal, countryCode));
         setActive(0);
       } catch (e) {
         if (!ctrl.signal.aborted) setError(navigator.onLine ? "Search failed" : "Offline — save it as a note instead");
@@ -41,7 +42,7 @@ export function PlaceSearch({ near, onPick, onNote }: Props) {
       clearTimeout(t);
       ctrl.abort();
     };
-  }, [q, near]);
+  }, [q, near, countryCode]);
 
   useEffect(() => {
     const close = (e: MouseEvent) => wrap.current && !wrap.current.contains(e.target as Node) && setOpen(false);

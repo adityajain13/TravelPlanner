@@ -56,7 +56,11 @@ Forward any booking confirmation (flights, hotels, trains, restaurants…) to **
 
 Resetting a trip's links in the app also cuts off Claude's access to that trip.
 
-### Importing old Wanderlog trips (free, uses your Claude plan, not the API)
+### Importing old Wanderlog trips
+
+**In the app (no AI):** Home → **Import** → choose the PDF from Wanderlog's ⋯ → Print this trip → Save as PDF. It's parsed on your device. Days, places, notes, flights, hotels, cars and the budget come across, and places get pins automatically.
+
+**Or via Claude** (uses your Claude plan, not the API):
 
 1. In Wanderlog: open the trip → ⋯ → **Print this trip** → Save as PDF.
 2. In the app: create the trip with the same name and dates → Share → copy the **edit** link.

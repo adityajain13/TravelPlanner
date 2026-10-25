@@ -30,6 +30,7 @@ interface Props {
   onChipClick?: (r: Reservation) => void;
   selectedId: string | null;
   near?: [number, number];
+  countryCode?: string;
   onFocus: () => void;
   onSelect: (id: string) => void;
   onRename?: (title: string) => void;
@@ -120,7 +121,7 @@ export function Section(p: Props) {
           </SortableContext>
           {info.key !== "orphan" && !p.readOnly && (
             <div className="pt-1.5 pr-1 pl-6">
-              <PlaceSearch near={p.near} onPick={p.onAddPlace} onNote={p.onAddNote} />
+              <PlaceSearch near={p.near} countryCode={p.countryCode} onPick={p.onAddPlace} onNote={p.onAddNote} />
             </div>
           )}
         </div>

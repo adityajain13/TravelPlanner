@@ -49,6 +49,8 @@ export interface TripMeta {
   startDate: string;
   endDate: string;
   center?: [number, number];
+  /** ISO country of the destination (lowercase); keeps place lookups in-country. */
+  countryCode?: string;
   /** Budget: everything is totalled in this currency (ISO code, e.g. "CAD"). */
   currency?: string;
   budget?: number;

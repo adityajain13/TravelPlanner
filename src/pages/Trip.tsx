@@ -62,6 +62,14 @@ export function TripPage() {
   const [sharing, setSharing] = useState(false);
   const [tab, setTab] = useState<"plan" | "bookings" | "budget">("plan");
   const [editingRes, setEditingRes] = useState<Reservation | null>(null);
+  // Places a Wanderlog import couldn't locate (set by the importer for this session)
+  const [unpinned, setUnpinned] = useState<string[]>(() => {
+    try {
+      return JSON.parse(sessionStorage.getItem(`tp-unpinned-${id}`) ?? "[]");
+    } catch {
+      return [];
+    }
+  });
   const [waited, setWaited] = useState(false);
 
   // Trip index row tells us whether this is our trip or one opened from a share link
@@ -283,6 +291,24 @@ export function TripPage() {
           {tab === "bookings" && <ReservationsPanel doc={doc} state={state} readOnly={readOnly} />}
           {tab === "budget" && <BudgetPanel doc={doc} state={state} readOnly={readOnly} />}
           {tab === "plan" && (<>
+          {unpinned.length > 0 && (
+            <div className="mx-2 mt-4 rounded-xl border border-line bg-surface-2 p-3 text-sm">
+              <div className="flex items-start justify-between gap-2">
+                <p>
+                  <span className="font-semibold">{unpinned.length} place{unpinned.length > 1 ? "s" : ""} without a map pin</span>
+                  <span className="text-muted">. Generic names (parking, rest stops) are skipped on purpose. Select one and use Google details, or delete and re-add it.</span>
+                </p>
+                <button
+                  onClick={() => (sessionStorage.removeItem(`tp-unpinned-${id}`), setUnpinned([]))}
+                  className="text-muted hover:text-fg"
+                  aria-label="Dismiss"
+                >
+                  ✕
+                </button>
+              </div>
+              <p className="mt-1 text-xs text-muted">{unpinned.join(" · ")}</p>
+            </div>
+          )}
           {isOwner && <InboxPanel items={inbox} doc={doc} state={state} onDone={(itemId) => setInbox((xs) => xs.filter((x) => x.id !== itemId))} />}
           <DndContext sensors={readOnly ? [] : sensors} collisionDetection={closestCorners} onDragStart={onDragStart} onDragEnd={onDragEnd}>
             {view.sections.map((s) => (
@@ -294,6 +320,7 @@ export function TripPage() {
                 near={near}
                 readOnly={readOnly}
                 currency={state.meta.currency ?? "CAD"}
+                countryCode={state.meta.countryCode}
                 chips={s.kind === "day" ? dayChips(state.reservations, s.date!) : []}
                 onChipClick={(r) => !readOnly && setEditingRes(r)}
                 onFocus={() => setFocus((f) => (f === s.key ? null : s.key))}
