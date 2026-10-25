@@ -8,5 +8,25 @@
     "binding": "ASSETS",
     "run_worker_first": true
   },
-  "routes": [{ "pattern": "adityajain.ca/travelplanner*", "zone_name": "adityajain.ca" }]
+  "routes": [{ "pattern": "adityajain.ca/travelplanner*", "zone_name": "adityajain.ca" }],
+
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "travelplanner",
+      "database_id": "00000000-0000-0000-0000-000000000000",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "durable_objects": {
+    "bindings": [{ "name": "TRIP_ROOM", "class_name": "TripRoom" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["TripRoom"] }],
+
+  "send_email": [{ "name": "EMAIL" }],
+
+  "vars": {
+    "ALLOWED_EMAILS": "",
+    "MAIL_FROM": "trips@adityajain.ca"
+  }
 }

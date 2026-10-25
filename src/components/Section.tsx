@@ -23,6 +23,7 @@ export interface SectionInfo {
 interface Props {
   info: SectionInfo;
   focused: boolean;
+  readOnly?: boolean;
   selectedId: string | null;
   near?: [number, number];
   onFocus: () => void;
@@ -57,7 +58,7 @@ export function Section(p: Props) {
               <span className="text-muted">Day {info.dayNumber} · </span>
               {formatDayHeading(info.date!)}
             </h3>
-          ) : info.readonlyTitle || !p.onRename ? (
+          ) : info.readonlyTitle || !p.onRename || p.readOnly ? (
             <h3 className="truncate font-display text-lg">{info.title}</h3>
           ) : (
             <input
@@ -91,13 +92,14 @@ export function Section(p: Props) {
                 number={it.kind === "place" ? ++n : undefined}
                 color={info.color}
                 selected={p.selectedId === it.id}
+                readOnly={p.readOnly}
                 onSelect={() => p.onSelect(it.id)}
                 onChange={(patch) => p.onChange(it.id, patch)}
                 onDelete={() => p.onDelete(it.id)}
               />
             ))}
           </SortableContext>
-          {info.key !== "orphan" && (
+          {info.key !== "orphan" && !p.readOnly && (
             <div className="pt-1.5 pr-1 pl-6">
               <PlaceSearch near={p.near} onPick={p.onAddPlace} onNote={p.onAddNote} />
             </div>

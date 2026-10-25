@@ -91,17 +91,28 @@ export function openTrip(id: string): OpenTrip {
 function syncIndex(id: string, doc: Y.Doc) {
   const m = doc.getMap("meta").toJSON() as Partial<TripMeta>;
   if (!m.title) return;
-  void db.trips.put({
-    id,
+  const fields = {
     title: m.title,
     destination: m.destination ?? "",
     startDate: m.startDate ?? "",
     endDate: m.endDate ?? "",
     updatedAt: Date.now(),
+  };
+  // update() keeps shareToken/role on shared trips; put() only for trips not indexed yet
+  void db.trips.update(id, fields).then(async (n) => {
+    if (n === 0) await db.trips.put({ id, ...fields });
   });
 }
 
+const readOnly = new WeakSet<Y.Doc>();
+/** View-only share links: local edits are blocked (the server drops them too). */
+export function setReadOnly(doc: Y.Doc, ro: boolean) {
+  if (ro) readOnly.add(doc);
+  else readOnly.delete(doc);
+}
+
 export function edit(doc: Y.Doc, fn: () => void, origin: EditOrigin = ME) {
+  if (readOnly.has(doc)) return;
   doc.transact(fn, origin);
 }
 
@@ -121,13 +132,19 @@ export async function createTrip(meta: TripMeta): Promise<string> {
   return id;
 }
 
-export async function deleteTrip(id: string) {
+/** Removes the trip from this device; owners also delete it on the server (best effort). */
+export async function deleteTrip(id: string, opts: { server: boolean }) {
+  if (opts.server) {
+    const res = await fetch(`/travelplanner/api/trips/${id}`, { method: "DELETE", credentials: "same-origin" }).catch(() => null);
+    if (res && !res.ok && res.status !== 401) throw new Error("Couldn't delete on the server");
+  }
   const t = openTrip(id);
   await t.ready;
   await t.persistence.clearData();
   t.doc.destroy();
   open.delete(id);
   await db.trips.delete(id);
+  await db.regions.delete(id);
 }
 
 export function readTrip(doc: Y.Doc): TripState {
