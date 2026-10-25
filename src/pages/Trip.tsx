@@ -1,4 +1,5 @@
 import { Suspense, lazy, useEffect, useMemo, useRef, useState } from "react";
+import { DateRangeField } from "../components/DatePicker";
 import { Link, Navigate, useParams } from "react-router-dom";
 import { useLiveQuery } from "dexie-react-hooks";
 import {
@@ -469,22 +470,13 @@ export function TripPage() {
                 onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()}
                 className="w-full bg-transparent font-display text-[2.25rem] leading-tight text-white outline-none [text-shadow:0_1px_12px_rgb(0_0_0/.5)]"
               />
-              <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-sm text-white/90 [color-scheme:dark]">
-                <input
+              <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[15px] text-white/90">
+                <DateRangeField
                   disabled={readOnly}
-                  type="date"
-                  value={state.meta.startDate}
-                  onChange={(e) => e.target.value && updateMeta(doc, { startDate: e.target.value, ...(e.target.value > state.meta.endDate ? { endDate: e.target.value } : {}) })}
-                  className="rounded-md bg-white/10 px-2 py-1 outline-none backdrop-blur"
-                />
-                <span>→</span>
-                <input
-                  disabled={readOnly}
-                  type="date"
-                  value={state.meta.endDate}
-                  min={state.meta.startDate}
-                  onChange={(e) => e.target.value && updateMeta(doc, { endDate: e.target.value })}
-                  className="rounded-md bg-white/10 px-2 py-1 outline-none backdrop-blur"
+                  start={state.meta.startDate}
+                  end={state.meta.endDate}
+                  onChange={(startDate, endDate) => updateMeta(doc, { startDate, endDate })}
+                  className="rounded-full bg-black/35 px-3.5 py-1.5 font-semibold backdrop-blur transition-colors hover:bg-black/55 disabled:hover:bg-black/35"
                 />
               </div>
             </div>

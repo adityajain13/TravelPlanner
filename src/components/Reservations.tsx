@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { DateField } from "./DatePicker";
 import type * as Y from "yjs";
 import { BedDouble, Car, ChevronDown, Inbox, Loader2, Mail, PenLine, Pencil, Plane, Plus, Ticket, TrainFront, Trash2, Utensils, X } from "lucide-react";
 import { PlaceSearch } from "./PlaceSearch";
@@ -282,8 +283,8 @@ export function ReservationForm({ doc, state, initial, onClose }: { doc: Y.Doc; 
     <label className="block space-y-1">
       <span className="text-xs text-muted">{label}</span>
       <div className="flex gap-2">
-        <input type="date" value={r[d] ?? ""} onChange={(e) => set({ [d]: e.target.value })} className={inputCls} />
-        <input type="time" value={r[t] ?? ""} onChange={(e) => set({ [t]: e.target.value })} className={`${inputCls} w-32`} />
+        <DateField value={r[d]} onChange={(v) => set({ [d]: v })} min={d === "endDate" ? r.startDate : undefined} clearable placeholder="Date" className={`${inputCls} min-w-0 flex-1`} />
+        <input type="time" value={r[t] ?? ""} onChange={(e) => set({ [t]: e.target.value })} className={`${inputCls} !w-32 shrink-0`} />
       </div>
     </label>
   );
