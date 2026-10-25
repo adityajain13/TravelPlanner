@@ -80,3 +80,5 @@ Hosted at **adityajain.ca/travelplanner** by the `travelplanner` Cloudflare Work
 - Smoke-tested in headless Chromium: create trip, add note, reload persists, drag note into another day.
 
 - Photos fix: covers come from Commons landscape photos (no more "Iceland (supermarket)"); auto-fill only takes exact-title or nearby Wikipedia matches; cards use the API-returned standard-width thumbnails with a fallback chain (Photo.tsx); broken picker tiles are hidden; ImagePicker is portalled to <body> as a centered modal; Cover button sits above the title overlay.
+- Contents column (Wanderlog-style): Overview (lists, booking types with counts), Itinerary (days with stop names), Budget total; scroll-spy highlight, collapsible to a rail (remembered), drawer below lg. Plan column widened (540/620/680px).
+- Photo.tsx snaps old non-standard Wikimedia widths (e.g. 320) to standard ones and falls back to the original file; old namesake Wikipedia covers ("X (supermarket)") get replaced automatically.

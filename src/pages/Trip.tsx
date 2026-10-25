@@ -14,7 +14,10 @@ import {
   type DragStartEvent,
 } from "@dnd-kit/core";
 import { sortableKeyboardCoordinates } from "@dnd-kit/sortable";
-import { ArrowLeft, Camera, Eye, ImagePlus, List, Loader2, Map as MapIcon, Plus, Share2 } from "lucide-react";
+import { ArrowLeft, Camera, Eye, ImagePlus, List, Loader2, Map as MapIcon, PanelLeft, Plus, Share2 } from "lucide-react";
+import { Contents, ContentsRail, type Tab } from "../components/Contents";
+import { useConverter } from "../lib/fx";
+import { budgetLines, totals } from "../lib/budget";
 import { bestImage, coverFor } from "../lib/images";
 import { ImagePicker } from "../components/ImagePicker";
 import { Photo } from "../components/Photo";
@@ -72,7 +75,17 @@ export function TripPage() {
   const [mobileView, setMobileView] = useState<"plan" | "map">("plan");
   const [dragging, setDragging] = useState<Item | null>(null);
   const [sharing, setSharing] = useState(false);
-  const [tab, setTab] = useState<"plan" | "bookings" | "budget">("plan");
+  const [tab, setTab] = useState<Tab>("plan");
+  const [contentsHidden, setContentsHidden] = useState(() => {
+    try {
+      return localStorage.getItem("tp-contents-hidden") === "1";
+    } catch {
+      return false;
+    }
+  });
+  const [contentsDrawer, setContentsDrawer] = useState(false);
+  const headerRef = useRef<HTMLElement>(null);
+  const fx = useConverter(state?.meta.currency ?? "CAD");
   const [editingRes, setEditingRes] = useState<Partial<Reservation> | null>(null);
   const [pickingCover, setPickingCover] = useState(false);
   const [photoFill, setPhotoFill] = useState<{ done: number; total: number; added: number } | null>(null);
@@ -199,11 +212,16 @@ export function TripPage() {
   // Suggest a cover photo once, for editable trips that don't have one
   const coverTried = useRef(false);
   useEffect(() => {
-    if (!doc || !state || readOnly || state.meta.cover || coverTried.current || !navigator.onLine) return;
+    // Older auto-covers could be a namesake article ("Iceland (supermarket)"); treat those as missing
+    const badAuto = (c = state?.meta.cover) => c?.source === "wikipedia" && /\(.+\)$/.test(c.title ?? "");
+    if (!doc || !state || readOnly || (state.meta.cover && !badAuto()) || coverTried.current || !navigator.onLine) return;
     const dest = state.meta.destination || state.meta.title;
     if (!dest) return;
     coverTried.current = true;
-    coverFor(dest).then((cover) => cover && !readTrip(doc).meta.cover && updateMeta(doc, { cover }));
+    coverFor(dest).then((cover) => {
+      const cur = readTrip(doc).meta.cover;
+      if (cover && (!cur || badAuto(cur))) updateMeta(doc, { cover });
+    });
   }, [doc, state, readOnly]);
 
   async function autofillPhotos() {
@@ -271,16 +289,63 @@ export function TripPage() {
     );
   };
 
+  const hideContents = (hidden: boolean) => {
+    setContentsHidden(hidden);
+    try {
+      localStorage.setItem("tp-contents-hidden", hidden ? "1" : "0");
+    } catch {
+      /* private mode */
+    }
+  };
+  const go = (next: Tab, targetId?: string) => {
+    setTab(next);
+    setMobileView("plan");
+    setContentsDrawer(false);
+    // let the tab render before scrolling to its section
+    setTimeout(() => {
+      const el = targetId && document.getElementById(targetId);
+      if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+      else scrollRef.current?.scrollTo({ top: headerRef.current?.offsetHeight ?? 0, behavior: "smooth" });
+    }, 40);
+  };
+  const spent = totals(budgetLines(state, fx.convert)).total;
+  const contentsProps = {
+    sections: view.sections.filter((s) => s.key !== ORPHAN),
+    reservations: state.reservations,
+    tab,
+    budgetTotal: spent > 0 ? { amount: spent, currency: state.meta.currency ?? "CAD" } : undefined,
+    scrollRef,
+    go,
+  };
+
   return (
     <div className="flex h-full flex-col md:flex-row">
+      {/* Contents column (wide screens); a drawer below that */}
+      <div className="hidden shrink-0 border-r border-line bg-bg lg:block">
+        {contentsHidden ? (
+          <ContentsRail onShow={() => hideContents(false)} />
+        ) : (
+          <div className="h-full w-[220px] xl:w-[240px]">
+            <Contents {...contentsProps} variant="column" onHide={() => hideContents(true)} />
+          </div>
+        )}
+      </div>
+      {contentsDrawer && (
+        <div className="fixed inset-0 z-[90] lg:hidden" onClick={() => setContentsDrawer(false)}>
+          <div className="absolute inset-0 bg-black/50" />
+          <div onClick={(e) => e.stopPropagation()} className="absolute inset-y-0 left-0 w-[280px] max-w-[85vw] border-r border-line bg-bg shadow-2xl">
+            <Contents {...contentsProps} variant="drawer" onHide={() => setContentsDrawer(false)} />
+          </div>
+        </div>
+      )}
       {/* Plan panel */}
       <aside
-        className={`flex min-h-0 flex-col border-line bg-bg md:w-[440px] md:shrink-0 md:border-r lg:w-[480px] ${
+        className={`flex min-h-0 flex-col border-line bg-bg md:w-[480px] md:shrink-0 md:border-r lg:w-[540px] xl:w-[620px] 2xl:w-[680px] ${
           mobileView === "map" ? "max-md:hidden" : "flex-1 md:flex-none"
         }`}
       >
         <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto pb-28 md:pb-10">
-        <header className="relative">
+        <header ref={headerRef} className="relative">
           <div className="relative h-52 overflow-hidden bg-surface-2 md:h-60">
             {state.meta.cover ? (
               <Photo srcs={[state.meta.cover.url, state.meta.cover.thumb]} className="absolute inset-0 size-full object-cover" />
@@ -358,7 +423,10 @@ export function TripPage() {
 
         {/* Tabs + day jump chips stay pinned while the plan scrolls */}
         <div className="sticky top-0 z-30 border-b border-line bg-bg/95 px-5 backdrop-blur">
-          <nav className="flex gap-5 pt-3 text-sm">
+          <nav className="flex items-end gap-5 pt-3 text-sm">
+            <button onClick={() => setContentsDrawer(true)} className="-ml-1 pb-2.5 text-muted hover:text-fg lg:hidden" title="Contents" aria-label="Contents">
+              <PanelLeft className="size-4" />
+            </button>
             {(
               [
                 ["plan", "Itinerary"],
