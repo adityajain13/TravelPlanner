@@ -3,6 +3,7 @@ import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { Clock, ExternalLink, GripVertical, ImagePlus, StickyNote, Trash2, Wallet } from "lucide-react";
 import { ImagePicker } from "./ImagePicker";
+import { Photo } from "./Photo";
 import { CURRENCIES, formatMoney } from "../lib/fx";
 import type { Item } from "../lib/trips";
 import { googleMapsLink } from "../lib/photon";
@@ -143,7 +144,7 @@ export function ItemCard({ item, number, color, selected, readOnly, currency = "
             title={item.image ? item.image.credit ?? "Photo" : "Add a photo"}
           >
             {item.image ? (
-              <img src={item.image.thumb} alt="" loading="lazy" referrerPolicy="no-referrer" className="size-full object-cover" />
+              <Photo srcs={[item.image.thumb, item.image.url]} className="size-full object-cover" />
             ) : (
               <span className="flex size-full flex-col items-center justify-center gap-1 text-[10px]">
                 <ImagePlus className="size-4" /> Photo

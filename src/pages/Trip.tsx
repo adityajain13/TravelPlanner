@@ -17,6 +17,7 @@ import { sortableKeyboardCoordinates } from "@dnd-kit/sortable";
 import { ArrowLeft, Camera, Eye, ImagePlus, List, Loader2, Map as MapIcon, Plus, Share2 } from "lucide-react";
 import { bestImage, coverFor } from "../lib/images";
 import { ImagePicker } from "../components/ImagePicker";
+import { Photo } from "../components/Photo";
 import { RES_ICON, RES_SINGULAR } from "../components/Reservations";
 import { GENERIC_PLACE } from "../lib/geocode";
 import { edit } from "../lib/trips";
@@ -282,7 +283,7 @@ export function TripPage() {
         <header className="relative">
           <div className="relative h-52 overflow-hidden bg-surface-2 md:h-60">
             {state.meta.cover ? (
-              <img src={state.meta.cover.url} alt="" referrerPolicy="no-referrer" className="absolute inset-0 size-full object-cover" />
+              <Photo srcs={[state.meta.cover.url, state.meta.cover.thumb]} className="absolute inset-0 size-full object-cover" />
             ) : (
               <div className="absolute inset-0 bg-[radial-gradient(120%_90%_at_20%_10%,rgb(95_214_139/.35),transparent_60%),radial-gradient(90%_80%_at_90%_30%,rgb(106_168_255/.3),transparent_60%)]" />
             )}
@@ -310,7 +311,7 @@ export function TripPage() {
             {!readOnly && (
               <button
                 onClick={() => setPickingCover(true)}
-                className="absolute right-4 bottom-4 flex items-center gap-1.5 rounded-full bg-black/35 px-3 py-1.5 text-xs text-white/90 backdrop-blur hover:bg-black/50"
+                className="absolute right-4 bottom-4 z-10 flex items-center gap-1.5 rounded-full bg-black/35 px-3 py-1.5 text-xs text-white/90 backdrop-blur hover:bg-black/50"
                 title="Change cover photo"
               >
                 <ImagePlus className="size-3.5" /> Cover

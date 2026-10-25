@@ -39,7 +39,10 @@ export function similarity(a: string, b: string) {
   return inter / Math.max(1, Math.min(ta.size, tb.size));
 }
 
-// Wikimedia thumbnail URLs embed the width ("/640px-File.jpg"); swap it for other sizes
+// Wikimedia thumbnail URLs embed the width ("/500px-File.jpg"). Wikimedia only serves a fixed set of
+// "standard" widths reliably, so cards use the exact URL the API returned (500px) and the large
+// version asks for 1280 with the API URL as a fallback (see Photo.tsx).
+const THUMB_W = "500";
 const resize = (u: string, w: number) => u.replace(/\/(\d+)px-([^/]+)$/, `/${w}px-$2`);
 const strip = (html?: string) => html?.replace(/<[^>]+>/g, "").replace(/\s+/g, " ").trim();
 
@@ -51,7 +54,7 @@ interface WikiPage {
 }
 
 async function wikiQuery(params: Record<string, string>, signal?: AbortSignal): Promise<WikiPage[]> {
-  const q = new URLSearchParams({ action: "query", format: "json", formatversion: "2", origin: "*", prop: "pageimages|info", piprop: "thumbnail", pithumbsize: "640", inprop: "url", ...params });
+  const q = new URLSearchParams({ action: "query", format: "json", formatversion: "2", origin: "*", prop: "pageimages|info", piprop: "thumbnail", pithumbsize: THUMB_W, inprop: "url", ...params });
   const res = await fetch(`${WIKI}?${q}`, { signal });
   if (!res.ok) throw new Error(`Wikipedia ${res.status}`);
   const j = (await res.json()) as { query?: { pages?: WikiPage[] } };
@@ -62,7 +65,7 @@ async function wikiQuery(params: Record<string, string>, signal?: AbortSignal): 
 
 const fromWiki = (p: WikiPage): PlaceImage => ({
   url: resize(p.thumbnail!.source, 1280),
-  thumb: resize(p.thumbnail!.source, 320),
+  thumb: p.thumbnail!.source,
   source: "wikipedia",
   credit: `Wikipedia: ${p.title}`,
   link: p.fullurl,
@@ -70,14 +73,14 @@ const fromWiki = (p: WikiPage): PlaceImage => ({
 });
 
 /** Wikipedia articles near the place, best name match first; then a plain title search. */
-async function wikipedia(name: string, coords?: [number, number], signal?: AbortSignal): Promise<{ img: PlaceImage; score: number }[]> {
-  const out: { img: PlaceImage; score: number }[] = [];
+async function wikipedia(name: string, coords?: [number, number], signal?: AbortSignal): Promise<{ img: PlaceImage; score: number; near: boolean }[]> {
+  const out: { img: PlaceImage; score: number; near: boolean }[] = [];
   if (coords) {
     const near = await wikiQuery({ generator: "geosearch", ggscoord: `${coords[1]}|${coords[0]}`, ggsradius: "2000", ggslimit: "20" }, signal).catch(() => []);
-    for (const p of near) out.push({ img: fromWiki(p), score: similarity(name, p.title) + 0.1 });
+    for (const p of near) out.push({ img: fromWiki(p), score: similarity(name, p.title) + 0.1, near: true });
   }
   const found = await wikiQuery({ generator: "search", gsrsearch: name, gsrlimit: "6" }, signal).catch(() => []);
-  for (const p of found) if (!out.some((o) => o.img.title === p.title)) out.push({ img: fromWiki(p), score: similarity(name, p.title) });
+  for (const p of found) if (!out.some((o) => o.img.title === p.title)) out.push({ img: fromWiki(p), score: similarity(name, p.title), near: false });
   return out.sort((a, b) => b.score - a.score);
 }
 
@@ -93,7 +96,7 @@ async function commons(query: string, signal?: AbortSignal): Promise<PlaceImage[
     gsrlimit: "12",
     prop: "imageinfo",
     iiprop: "url|extmetadata",
-    iiurlwidth: "640",
+    iiurlwidth: THUMB_W,
   });
   const res = await fetch(`${COMMONS}?${q}`, { signal });
   if (!res.ok) throw new Error(`Commons ${res.status}`);
@@ -109,7 +112,7 @@ async function commons(query: string, signal?: AbortSignal): Promise<PlaceImage[
       return [
         {
           url: resize(ii.thumburl, 1280),
-          thumb: resize(ii.thumburl, 320),
+          thumb: ii.thumburl,
           source: "commons" as const,
           credit: [artist && `Photo: ${artist}`, license].filter(Boolean).join(", ") || "Wikimedia Commons",
           link: ii.descriptionurl,
@@ -148,17 +151,22 @@ export async function searchImages(query: string, opts: { name?: string; coords?
   );
 }
 
-/** A confident automatic pick (Wikipedia article at/near the place with a matching name), or null. */
+/** A confident automatic pick, or null:
+ *  - a Wikipedia article near the pin whose title matches the name, or
+ *  - a title-search hit whose title is essentially the name ("Iceland (supermarket)" ≠ "Iceland"). */
 export async function bestImage(name: string, coords?: [number, number], signal?: AbortSignal): Promise<PlaceImage | null> {
   const wiki = await wikipedia(name, coords, signal).catch(() => []);
-  const top = wiki[0];
-  return top && top.score >= 0.75 ? top.img : null;
+  const hit = wiki.find((w) => (w.near ? w.score >= 0.75 : norm(w.img.title ?? "") === norm(name)));
+  return hit?.img ?? null;
 }
 
-/** Cover photo suggestion for a destination: a Wikipedia lead image, else a Commons landscape. */
+/** Cover photo suggestion: a landscape photo of the destination from Commons (article lead images
+ *  for places are often flags, maps, or, as with "Iceland", a namesake supermarket). */
 export async function coverFor(destination: string, signal?: AbortSignal): Promise<PlaceImage | null> {
-  const wiki = await bestImage(destination, undefined, signal);
-  if (wiki) return wiki;
-  const com = await commons(`${destination} landscape`, signal).catch(() => []);
-  return com[0] ?? null;
+  for (const q of [`${destination} landscape`, `${destination} panorama`, destination]) {
+    const com = await commons(q, signal).catch(() => []);
+    const pick = com.find((c) => !/logo|map|flag|store|shop|supermarket|sign|diagram|chart/i.test(c.title ?? ""));
+    if (pick) return pick;
+  }
+  return null;
 }

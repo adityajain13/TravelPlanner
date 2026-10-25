@@ -137,6 +137,7 @@ export function TripMap({ pins, routes, selectedId, onSelect, theme, fitKey, fal
         img.src = p.image;
         img.referrerPolicy = "no-referrer";
         img.alt = "";
+        img.onerror = () => img.remove();
         el.append(img);
       }
       const t = document.createElement("p");
