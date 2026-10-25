@@ -2,7 +2,8 @@ import { useState } from "react";
 import { useDroppable } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { ChevronDown, Eye } from "lucide-react";
-import type { Item } from "../lib/trips";
+import type { Item, Reservation } from "../lib/trips";
+import { RES_ICON } from "./Reservations";
 import type { PlaceResult } from "../lib/photon";
 import { formatDayHeading } from "../lib/dates";
 import { ItemCard } from "./ItemCard";
@@ -24,6 +25,8 @@ interface Props {
   info: SectionInfo;
   focused: boolean;
   readOnly?: boolean;
+  chips?: { r: Reservation; label: string }[];
+  onChipClick?: (r: Reservation) => void;
   selectedId: string | null;
   near?: [number, number];
   onFocus: () => void;
@@ -82,6 +85,20 @@ export function Section(p: Props) {
         </button>
       </div>
 
+      {p.chips && p.chips.length > 0 && (
+        <div className="mt-2 flex flex-wrap gap-1.5 pl-9">
+          {p.chips.map((c, i) => (
+            <button
+              key={`${c.r.id}-${i}`}
+              onClick={() => p.onChipClick?.(c.r)}
+              className="flex items-center gap-1.5 rounded-full bg-surface-2 px-2.5 py-1 text-xs text-muted hover:text-fg"
+            >
+              <span className="[&>svg]:size-3.5">{RES_ICON[c.r.type]}</span>
+              {c.label}
+            </button>
+          ))}
+        </div>
+      )}
       {open && (
         <div className="mt-2 space-y-0.5 pl-3">
           <SortableContext items={info.items.map((i) => i.id)} strategy={verticalListSortingStrategy}>

@@ -34,6 +34,9 @@ export interface Meta {
   startDate: string;
   endDate: string;
   center?: number[]; // [lng, lat]
+  currency?: string;
+  budget?: number;
+  travelers?: string[];
 }
 
 export interface Section {
@@ -46,7 +49,18 @@ export interface Snapshot {
   meta: Meta;
   sections: Section[];
   outsideDates: Item[];
+  reservations: Rec[];
+  expenses: Rec[];
 }
+
+// Plain JSON shape so it survives Durable Object RPC serialization
+export type Rec = { id: string; [k: string]: string | number | boolean | string[] | number[] | undefined };
+
+export const RES_TYPES = ["flight", "lodging", "car", "train", "restaurant", "other"] as const;
+export const EXPENSE_CATEGORIES = ["flights", "lodging", "transport", "food", "activities", "shopping", "other"] as const;
+
+const recs = (doc: Y.Doc, name: string): Rec[] =>
+  [...doc.getMap<Y.Map<unknown>>(name).entries()].map(([id, m]) => ({ ...(m.toJSON() as Omit<Rec, "id">), id }));
 
 const byOrder = (a: { order: string }, b: { order: string }) => (a.order < b.order ? -1 : a.order > b.order ? 1 : 0);
 
@@ -80,7 +94,9 @@ export function snapshot(doc: Y.Doc): Snapshot {
   const byKey = new Map(sections.map((s) => [s.key, s]));
   const outsideDates: Item[] = [];
   for (const it of items) (byKey.get(it.section)?.items ?? outsideDates).push(it);
-  return { meta, sections, outsideDates };
+  const reservations = recs(doc, "reservations").sort((a, b) => String(a.startDate ?? "9999").localeCompare(String(b.startDate ?? "9999")));
+  const expenses = recs(doc, "expenses").sort((a, b) => String(a.date ?? "").localeCompare(String(b.date ?? "")));
+  return { meta, sections, outsideDates, reservations, expenses };
 }
 
 /** Accepts "day 3", "3", "2026-12-03", a list name ("Places to visit"), or a raw section key. */
@@ -189,6 +205,21 @@ export function render(snap: Snapshot, role: string): string {
     lines.push(s.items.length ? s.items.map((it, i) => fmt(it, i + 1)).join("\n") : "(empty)");
     lines.push("");
   }
+  if (snap.reservations.length) {
+    lines.push("## Reservations");
+    for (const r of snap.reservations) {
+      const span = [r.startDate && `${r.startDate}${r.startTime ? ` ${r.startTime}` : ""}`, r.endDate && `${r.endDate}${r.endTime ? ` ${r.endTime}` : ""}`].filter(Boolean).join(" → ");
+      lines.push(
+        `- [${r.type}] ${r.title}${r.from || r.to ? ` (${[r.from, r.to].filter(Boolean).join(" → ")})` : ""}${span ? ` · ${span}` : ""}${r.confirmation ? ` · conf ${r.confirmation}` : ""}${r.cost != null ? ` · ${r.cost} ${r.costCurrency ?? meta.currency ?? ""}` : ""}  {id: ${r.id}}`,
+      );
+    }
+    lines.push("");
+  }
+  if (snap.expenses.length) {
+    lines.push(`## Expenses (trip currency ${meta.currency ?? "CAD"}${meta.budget ? `, budget ${meta.budget}` : ""})`);
+    for (const e of snap.expenses) lines.push(`- ${e.date ?? ""} ${e.title}: ${e.amount} ${e.currency} [${e.category}]${e.paidBy ? ` paid by ${e.paidBy}` : ""}  {id: ${e.id}}`);
+    lines.push("");
+  }
   if (snap.outsideDates.length) {
     lines.push("## Outside trip dates");
     lines.push(snap.outsideDates.map((it, i) => fmt(it, i + 1)).join("\n"));
@@ -202,7 +233,8 @@ export type Op =
   | { type: "move"; id: string; section: string; position?: number }
   | { type: "remove"; id: string }
   | { type: "meta"; patch: Partial<Meta> }
-  | { type: "addMany"; items: { section: string; item: ItemInput }[] };
+  | { type: "addMany"; items: { section: string; item: ItemInput }[] }
+  | { type: "addRecords"; map: "reservations" | "expenses"; records: Omit<Rec, "id">[] };
 
 /** Apply one op; returns the affected item (or null for meta/remove). */
 export function applyOp(doc: Y.Doc, op: Op): Item | null {
@@ -213,6 +245,15 @@ export function applyOp(doc: Y.Doc, op: Op): Item | null {
     case "add":
       id = addItem(doc, resolveSection(snap, op.section), op.item, op.position);
       break;
+    case "addRecords": {
+      const map = doc.getMap<Y.Map<unknown>>(op.map);
+      for (const r of op.records) {
+        const m = new Y.Map<unknown>();
+        for (const [k, v] of Object.entries({ ...r, createdAt: Date.now() } as Record<string, unknown>)) if (v !== undefined && v !== null && v !== "") m.set(k, v);
+        map.set(nanoid(10), m);
+      }
+      break;
+    }
     case "addMany": {
       // Resolve every section first so a bad one fails the whole batch before anything is written
       const keys = op.items.map((x) => resolveSection(snap, x.section));
