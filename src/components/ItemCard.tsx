@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react";
+import { CurrencySelect } from "./CurrencySelect";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { Bookmark, CheckSquare, Clock, Users, ListChecks, Plus, X, ExternalLink, GripVertical, ImagePlus, StickyNote, Trash2, Wallet } from "lucide-react";
 import { ImagePicker } from "./ImagePicker";
 import { Photo } from "./Photo";
 import { PhotoCredit } from "./PhotoCredit";
-import { CURRENCIES, formatMoney } from "../lib/fx";
+import { formatMoney } from "../lib/fx";
 import type { CheckItem, Item } from "../lib/trips";
 import { fmtTime, TimeRangeField } from "./TimeField";
 import { googleMapsLink } from "../lib/photon";
@@ -321,16 +322,7 @@ function CostInput({ amount, currency, disabled, onCommit }: { amount?: number; 
         onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()}
         className="w-24 rounded-md bg-transparent px-1 py-0.5 text-fg outline-none placeholder:text-muted/60 focus:bg-surface"
       />
-      <select
-        disabled={disabled}
-        value={currency}
-        onChange={(e) => amount != null && onCommit(amount, e.target.value)}
-        className="rounded-md bg-transparent py-0.5 text-fg outline-none focus:bg-surface"
-      >
-        {CURRENCIES.map((c) => (
-          <option key={c}>{c}</option>
-        ))}
-      </select>
+      <CurrencySelect value={currency} disabled={disabled} onChange={(c) => amount != null && onCommit(amount, c)} className="text-[12px] text-fg" />
     </div>
   );
 }

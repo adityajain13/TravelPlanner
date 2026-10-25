@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { CurrencySelect } from "./CurrencySelect";
 import { createPortal } from "react-dom";
 import { DateField } from "./DatePicker";
 import type * as Y from "yjs";
 import { ArrowLeft, ArrowRight, Check, BedDouble, Car, ChevronDown, ChevronRight, Fuel, Landmark, Pencil, Plane, Plus, Receipt, ShoppingBag, ShoppingCart, Ticket, TrainFront, Trash2, Users, Utensils, Wine, X } from "lucide-react";
 import { removeExpense, saveExpense, saveReservation, updateItem, updateMeta, type CostSplit, type Expense, type ExpenseCategory, type TripState } from "../lib/trips";
-import { CURRENCIES, formatMoney, useConverter } from "../lib/fx";
+import { formatMoney, useConverter } from "../lib/fx";
 import { budgetLines, CATEGORIES, CATEGORY_LABEL, settleUp, totals, travelersOf, type Line } from "../lib/budget";
 import { formatShort, todayISO } from "../lib/dates";
 
@@ -75,16 +76,7 @@ export function BudgetPanel({ doc, state, readOnly }: { doc: Y.Doc; state: TripS
               onBlur={(e) => updateMeta(doc, { budget: e.target.value ? Number(e.target.value) : undefined })}
               className="w-24 rounded-md bg-surface-2 px-2 py-1 text-right outline-none"
             />
-            <select
-              value={currency}
-              disabled={readOnly}
-              onChange={(e) => updateMeta(doc, { currency: e.target.value })}
-              className="rounded-md bg-surface-2 px-1.5 py-1 outline-none"
-            >
-              {CURRENCIES.map((c) => (
-                <option key={c}>{c}</option>
-              ))}
-            </select>
+            <CurrencySelect value={currency} disabled={readOnly} onChange={(c) => updateMeta(doc, { currency: c })} className="bg-surface-2 text-[14px]" />
           </div>
         </div>
         {budget ? (
@@ -313,15 +305,7 @@ export function ExpenseForm({ doc, travelers, initial, linked, onClose }: { doc:
             <h2 className="pr-10 text-center font-display text-[24px]">{linked ? "Cost details" : initial.id ? "Edit expense" : "Add expense"}</h2>
 
             <div className={`${box} flex items-center gap-2 px-3 py-2.5`}>
-              <select
-                value={e.currency}
-                onChange={(ev) => set({ currency: ev.target.value })}
-                className="rounded-lg bg-surface-2 px-2 py-1.5 text-[14px] font-bold outline-none disabled:opacity-70"
-              >
-                {CURRENCIES.map((c) => (
-                  <option key={c}>{c}</option>
-                ))}
-              </select>
+              <CurrencySelect value={e.currency ?? "CAD"} onChange={(c) => set({ currency: c })} className="bg-surface-2 text-[14px]" />
               <input
                 required
                 type="number"

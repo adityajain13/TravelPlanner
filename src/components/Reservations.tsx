@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { CurrencySelect } from "./CurrencySelect";
 import { DateField } from "./DatePicker";
 import { TimeField } from "./TimeField";
 import type * as Y from "yjs";
@@ -10,7 +11,7 @@ import { db } from "../lib/db";
 import type { PlaceResult } from "../lib/photon";
 import { removeReservation, saveReservation, type Reservation, type ReservationType, type TripState } from "../lib/trips";
 import { searchPlaces } from "../lib/photon";
-import { CURRENCIES, formatMoney } from "../lib/fx";
+import { formatMoney } from "../lib/fx";
 import { inputCls } from "./NewTripDialog";
 
 export const RES_ICON: Record<ReservationType, React.ReactNode> = {
@@ -326,11 +327,7 @@ export function ReservationForm({ doc, state, initial, onClose }: { doc: Y.Doc; 
               onChange={(e) => set({ cost: e.target.value === "" ? undefined : Number(e.target.value) })}
               className={inputCls}
             />
-            <select value={r.costCurrency} onChange={(e) => set({ costCurrency: e.target.value })} className={`${inputCls} w-28`}>
-              {CURRENCIES.map((c) => (
-                <option key={c}>{c}</option>
-              ))}
-            </select>
+            <CurrencySelect value={r.costCurrency ?? "CAD"} onChange={(c) => set({ costCurrency: c })} className={`${inputCls} !w-auto`} />
           </div>
         </label>
         <label className="block space-y-1">
