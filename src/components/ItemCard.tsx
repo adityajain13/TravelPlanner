@@ -45,24 +45,61 @@ export function PinMarker({ color, label, size = 28 }: { color: string; label?: 
   );
 }
 
-export function ItemCard({ item, number, color, selected, readOnly, currency = "CAD", searchContext, onSelect, onChange, onDelete, checked, selecting, onCheck, targets, onMoveTo }: Props) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: item.id, disabled: readOnly });
-  const style = { transform: CSS.Translate.toString(transform), transition };
+export function ItemCard(props: Props) {
+  const sortable = useSortable({ id: props.item.id, disabled: props.readOnly });
+  return <ItemCardView {...props} sortable={sortable} />;
+}
+
+/** The card as it looks while being dragged (rendered in the DragOverlay; no sortable hooks). */
+export function ItemCardDragPreview(props: Pick<Props, "item" | "number" | "color" | "currency">) {
+  return (
+    <div className="rotate-[0.6deg] cursor-grabbing rounded-xl shadow-2xl ring-1 ring-accent/60">
+      <ItemCardView {...props} selected={false} readOnly onSelect={() => undefined} onChange={() => undefined} onDelete={() => undefined} overlay />
+    </div>
+  );
+}
+
+function ItemCardView({
+  item,
+  number,
+  color,
+  selected,
+  readOnly,
+  currency = "CAD",
+  searchContext,
+  onSelect,
+  onChange,
+  onDelete,
+  checked,
+  selecting,
+  onCheck,
+  targets,
+  onMoveTo,
+  sortable,
+  overlay,
+}: Props & { sortable?: ReturnType<typeof useSortable>; overlay?: boolean }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = sortable ?? ({} as Partial<ReturnType<typeof useSortable>>);
+  const style = sortable ? { transform: CSS.Translate.toString(transform ?? null), transition } : undefined;
   const [picking, setPicking] = useState(false);
   const isPlace = item.kind === "place";
   const subtitle = [item.category, item.address?.split(",").slice(0, 2).join(",")].filter(Boolean).join(" · ");
 
   return (
-    <div ref={setNodeRef} style={style} id={`item-${item.id}`} className={`group relative flex items-start gap-2 py-1 ${isDragging ? "z-10 opacity-40" : ""}`}>
-      {!readOnly && (
+    <div
+      ref={setNodeRef}
+      style={style}
+      id={overlay ? undefined : `item-${item.id}`}
+      className={`group relative flex items-start gap-2 py-1 ${overlay ? "bg-bg pr-1 pl-1" : ""} ${isDragging ? "z-10 opacity-30" : ""}`}
+    >
+      {!readOnly && sortable && (
         <button
           {...attributes}
           {...listeners}
           onClick={(e) => e.stopPropagation()}
-          className="absolute top-1/2 -left-3 flex w-4 -translate-y-1/2 cursor-grab touch-none text-muted/50 opacity-0 transition-opacity group-hover:opacity-100 active:cursor-grabbing max-md:opacity-100"
+          className="absolute top-1/2 -left-5 grid h-12 w-7 -translate-y-1/2 cursor-grab touch-none place-items-center rounded-lg text-muted/60 opacity-0 transition-opacity group-hover:opacity-100 hover:bg-surface-2 hover:text-fg active:cursor-grabbing max-md:opacity-100"
           aria-label="Drag to reorder"
         >
-          <GripVertical className="size-4" />
+          <GripVertical className="size-5" />
         </button>
       )}
 

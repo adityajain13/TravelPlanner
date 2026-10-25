@@ -57,6 +57,7 @@ import type { Pin, Route } from "../components/TripMap";
 // MapLibre is the heaviest dependency; load it after the plan panel is on screen.
 const TripMap = lazy(() => import("../components/TripMap").then((m) => ({ default: m.TripMap })));
 import { Section, type SectionInfo } from "../components/Section";
+import { ItemCardDragPreview } from "../components/ItemCard";
 import { OfflineMapButton } from "../components/OfflineMapButton";
 import { HeroPill } from "../components/HeroPill";
 import { LogoMark } from "../components/Logo";
@@ -667,9 +668,16 @@ export function TripPage() {
             ))}
             <DragOverlay>
               {dragging && (
-                <div className="rounded-xl border border-accent/60 bg-surface px-4 py-3 text-sm font-semibold shadow-2xl">
-                  {dragging.name}
-                </div>
+                <ItemCardDragPreview
+                  item={dragging}
+                  color={sectionOf(dragging.id)?.color ?? "#888"}
+                  number={(() => {
+                    const sec = sectionOf(dragging.id);
+                    const i = sec?.items.filter((x) => x.kind === "place").findIndex((x) => x.id === dragging.id) ?? -1;
+                    return dragging.kind === "place" && i >= 0 ? i + 1 : undefined;
+                  })()}
+                  currency={state.meta.currency ?? "CAD"}
+                />
               )}
             </DragOverlay>
           </DndContext>
