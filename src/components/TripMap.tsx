@@ -3,6 +3,9 @@ import * as maplibregl from "maplibre-gl";
 import type { GeoJSONSource, LngLatLike, MapLayerMouseEvent } from "maplibre-gl";
 import type { FeatureCollection } from "geojson";
 import "maplibre-gl/dist/maplibre-gl.css";
+// MapLibre 6 runs tile decoding in a separate module worker. Let Vite emit it as an asset and
+// point MapLibre at it; otherwise it looks for an unbundled file next to the chunk and fails.
+import workerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?url";
 import { Layers, Map as MapIcon, Satellite } from "lucide-react";
 import { buildStyle, MAPTILER_KEY, PROTOMAPS_KEY, type MapMode } from "../lib/mapStyle";
 import type { Theme } from "../lib/theme";
@@ -30,6 +33,8 @@ interface Props {
   fitKey: string;
   fallbackCenter?: [number, number];
 }
+
+maplibregl.setWorkerUrl(workerUrl);
 
 const readMode = (): MapMode => {
   try {
