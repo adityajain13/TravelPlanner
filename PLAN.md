@@ -97,3 +97,4 @@ Hosted at **adityajain.ca/travelplanner** by the `travelplanner` Cloudflare Work
 - Reservations tab redesign (Wanderlog spacing): big collapsible sections, two-column cards (details | confirmation # + cost), "+ Add another X" → place search / Enter details / Forward email. ForwardDialog: copy trips@ address + Imported emails list (GET /api/inbox?all=1).
 - Undo/redo (lib/undo.ts): Y.UndoManager over all trip maps, tracks only ME-origin edits (never collaborators/Claude/email), 500ms grouping, Cmd/Ctrl+Z, Shift+Z / Ctrl+Y outside text fields; buttons atop the contents sidebar/drawer. Contents sidebar roomier (17px rows, 20px groups, 250/280px wide).
 - Branding: "Atlas Journeys", logo = Atlas New Tab globe recoloured green (Logo.tsx, public/icon.svg), new icon.svg + PNG/maskable/apple icons, manifest/title/emails/MCP renamed. URL stays /travelplanner.
+- Save map offline button moved into the tab row (icon-only on phones).

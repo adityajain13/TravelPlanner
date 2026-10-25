@@ -46,23 +46,24 @@ export function OfflineMapButton({ tripId, state }: { tripId: string; state: Tri
   }
 
   return (
-    <div className="flex flex-wrap items-center gap-2">
+    <div className="flex items-center gap-2 whitespace-nowrap">
       {region && !stale ? (
         <button onClick={start} className={`${pill} bg-accent/15 text-accent hover:bg-accent/25`} title="Re-download">
-          <CircleCheck className="size-3.5" /> Map saved offline
+          <CircleCheck className="size-3.5" /> <span className="max-sm:hidden">Map saved offline</span>
         </button>
       ) : (
         <button
           onClick={start}
           disabled={!navigator.onLine}
           className={`${pill} border border-line text-muted hover:border-accent hover:text-fg disabled:opacity-50`}
-          title={`~${plan.tiles.toLocaleString()} tiles, street detail to zoom ${plan.maxZoom}`}
+          title={`${stale ? "Update offline map" : "Save map offline"}: ~${plan.tiles.toLocaleString()} tiles, street detail to zoom ${plan.maxZoom}`}
+          aria-label={stale ? "Update offline map" : "Save map offline"}
         >
           {stale ? <RefreshCw className="size-3.5" /> : <CloudDownload className="size-3.5" />}
-          {stale ? "Update offline map" : "Save map offline"}
+          <span className="max-sm:hidden">{stale ? "Update offline map" : "Save map offline"}</span>
         </button>
       )}
-      {error && <span className="text-xs text-danger">{error}</span>}
+      {error && <span className="max-w-40 truncate text-xs text-danger" title={error}>{error}</span>}
     </div>
   );
 }
