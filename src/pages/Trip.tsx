@@ -18,7 +18,7 @@ import { sortableKeyboardCoordinates } from "@dnd-kit/sortable";
 import { ArrowLeft, Camera, Redo2, Undo2, Copy, FolderInput, Trash2, X, Cloud, CloudOff, Moon, Sun, Eye, ImagePlus, List, Loader2, Map as MapIcon, PanelLeft, Share2 } from "lucide-react";
 import { Contents, ContentsRail, type Tab } from "../components/Contents";
 import { useConverter } from "../lib/fx";
-import { budgetLines, totals } from "../lib/budget";
+import { budgetLines, lineForItem, totals, travelersOf } from "../lib/budget";
 import { bestImage, coverFor, firstPhoto } from "../lib/images";
 import { setShareToken } from "../lib/shareToken";
 import { ImagePicker } from "../components/ImagePicker";
@@ -69,7 +69,7 @@ import { ShareDialog } from "../components/ShareDialog";
 import { InboxPanel } from "../components/InboxPanel";
 import { fetchInbox, type InboxItem } from "../lib/inbox";
 import { ReservationForm, ReservationsPanel, dayChips } from "../components/Reservations";
-import { BudgetPanel } from "../components/Budget";
+import { BudgetPanel, ExpenseForm } from "../components/Budget";
 import { departureTime, legKey, MODES, useLegs, type LegRequest, type TravelMode } from "../lib/routing";
 import { MODE_ICON, MODE_LABEL } from "../components/LegChip";
 import type { Reservation } from "../lib/trips";
@@ -103,6 +103,7 @@ export function TripPage() {
     }
   };
   const [panelInset, setPanelInset] = useState<{ top: number; bottom: number } | null>(null);
+  const [costFor, setCostFor] = useState<string | null>(null); // stop whose cost details are open
   const [focus, setFocus] = useState<string | null>(null); // section shown alone on the map
   const [mobileView, setMobileView] = useState<"plan" | "map">("plan");
   const [dragging, setDragging] = useState<Item | null>(null);
@@ -672,6 +673,7 @@ export function TripPage() {
                 onCheck={readOnly ? undefined : onCheck}
                 targets={readOnly ? undefined : targets}
                 onMoveTo={readOnly ? undefined : (itemId, k) => moveItems(doc, [itemId], k)}
+                onCostDetails={readOnly ? undefined : setCostFor}
               />
               {s.kind === "list" && view.sections[si + 1]?.kind !== "list" && !readOnly && <AddSection onAdd={(t) => addList(doc, t)} />}
               </Fragment>
@@ -739,6 +741,21 @@ export function TripPage() {
         )}
       </main>
 
+      {costFor &&
+        (() => {
+          const it = state.items.find((x) => x.id === costFor);
+          if (!it || it.cost == null) return null;
+          const line = lineForItem(it, state);
+          return (
+            <ExpenseForm
+              doc={doc}
+              travelers={travelersOf(state)}
+              linked={line}
+              initial={{ title: line.title, amount: line.amount, currency: line.currency, category: line.category, paidBy: line.paidBy, splitWith: line.splitWith, date: line.date }}
+              onClose={() => setCostFor(null)}
+            />
+          );
+        })()}
       {pickingCover && (
         <ImagePicker
           initialQuery={state.meta.destination || state.meta.title}

@@ -118,6 +118,23 @@ function itemCategory(category?: string): ExpenseCategory {
   return RULES.find(([re]) => re.test(category))?.[1] ?? "activities";
 }
 
+/** The budget line for one stop's cost (for opening its cost details from the itinerary). */
+export function lineForItem(it: Item, state: TripState): Line {
+  const travelers = travelersOf(state);
+  const cur = it.costCurrency ?? state.meta.currency ?? "CAD";
+  return {
+    id: `item:${it.id}`,
+    title: it.name,
+    category: normCategory(it.costCategory ?? itemCategory(it.category)),
+    amount: it.cost ?? 0,
+    currency: cur,
+    converted: null,
+    ...people(it, travelers),
+    fromItem: true,
+    item: it,
+  };
+}
+
 export const travelersOf = (state: TripState) => (state.meta.travelers?.length ? state.meta.travelers : ["Me"]);
 
 export function totals(lines: Line[]) {

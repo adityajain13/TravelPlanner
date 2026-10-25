@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { Bookmark, CheckSquare, Clock, ListChecks, Plus, X, ExternalLink, GripVertical, ImagePlus, StickyNote, Trash2, Wallet } from "lucide-react";
+import { Bookmark, CheckSquare, Clock, Users, ListChecks, Plus, X, ExternalLink, GripVertical, ImagePlus, StickyNote, Trash2, Wallet } from "lucide-react";
 import { ImagePicker } from "./ImagePicker";
 import { Photo } from "./Photo";
 import { PhotoCredit } from "./PhotoCredit";
@@ -32,6 +32,8 @@ interface Props {
   /** Days and lists, for the "Added to ▾" menu */
   targets?: SectionTarget[];
   onMoveTo?: (section: string) => void;
+  /** Open the budget editor (category, who paid, split) for this stop's cost. */
+  onCostDetails?: () => void;
 }
 
 /** Wanderlog-style teardrop marker with the stop number, in the day's colour. */
@@ -76,6 +78,7 @@ function ItemCardView({
   onCheck,
   targets,
   onMoveTo,
+  onCostDetails,
   sortable,
   overlay,
 }: Props & { sortable?: ReturnType<typeof useSortable>; overlay?: boolean }) {
@@ -236,15 +239,25 @@ function ItemCardView({
                 </div>
               )}
               {(item.cost != null || !readOnly) && (
-                <CostInput
-                  disabled={readOnly}
-                  amount={item.cost}
-                  currency={item.costCurrency ?? currency}
-                  onCommit={(cost, costCurrency) => onChange({ cost, costCurrency: cost == null || costCurrency === currency ? undefined : costCurrency })}
-                />
+                <div className="flex flex-wrap items-center gap-2">
+                  <CostInput
+                    disabled={readOnly}
+                    amount={item.cost}
+                    currency={item.costCurrency ?? currency}
+                    onCommit={(cost, costCurrency) => onChange({ cost, costCurrency: cost == null || costCurrency === currency ? undefined : costCurrency })}
+                  />
+                  {item.cost != null && onCostDetails && !readOnly && (
+                    <button onClick={onCostDetails} className="flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[12px] font-semibold text-muted hover:bg-surface hover:text-fg">
+                      <Users className="size-3.5" /> Category & split
+                    </button>
+                  )}
+                </div>
               )}
-              {isPlace && <GoogleDetails item={item} onLink={(googlePlaceId) => onChange({ googlePlaceId })} />}
-              {item.image && <PhotoCredit img={item.image} className="block truncate text-[11px] text-muted" />}
+              {/* Google details and the photo credit share a row */}
+              <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5 [&>div.space-y-2]:basis-full">
+                {isPlace && <GoogleDetails item={item} onLink={(googlePlaceId) => onChange({ googlePlaceId })} />}
+                {item.image && <PhotoCredit img={item.image} className="ml-auto truncate text-[11px] text-muted" />}
+              </div>
               {(item.notes || !readOnly) && <NotesInput disabled={readOnly} value={item.notes ?? ""} onCommit={(v) => onChange({ notes: v })} />}
             </div>
           )}

@@ -51,6 +51,7 @@ interface Props {
   onCheck?: (id: string, checked: boolean, shift: boolean) => void;
   targets?: SectionTarget[];
   onMoveTo?: (id: string, section: string) => void;
+  onCostDetails?: (id: string) => void;
 }
 
 export function Section(p: Props) {
@@ -203,6 +204,7 @@ export function Section(p: Props) {
                 onCheck={p.onCheck && info.key !== "orphan" ? (c, shift) => p.onCheck!(it.id, c, shift) : undefined}
                 targets={p.targets}
                 onMoveTo={p.onMoveTo ? (k) => p.onMoveTo!(it.id, k) : undefined}
+                onCostDetails={p.onCostDetails ? () => p.onCostDetails!(it.id) : undefined}
               />
               </div>
             ))}
