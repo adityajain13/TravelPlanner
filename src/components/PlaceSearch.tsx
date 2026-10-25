@@ -7,10 +7,13 @@ interface Props {
   countryCode?: string;
   onPick: (p: PlaceResult) => void;
   onNote: (text: string) => void;
+  autoFocus?: boolean;
+  /** Escape, or leaving the box empty (used by the inline "insert here" search). */
+  onCancel?: () => void;
 }
 
 /** "Add a place" box at the bottom of each day/list. Photon results, or save the text as a note. */
-export function PlaceSearch({ near, countryCode, onPick, onNote }: Props) {
+export function PlaceSearch({ near, countryCode, onPick, onNote, autoFocus, onCancel }: Props) {
   const [q, setQ] = useState("");
   const [results, setResults] = useState<PlaceResult[]>([]);
   const [loading, setLoading] = useState(false);
@@ -72,7 +75,7 @@ export function PlaceSearch({ near, countryCode, onPick, onNote }: Props) {
       e.preventDefault();
       if (active < results.length) pick(results[active]);
       else note();
-    } else if (e.key === "Escape") setOpen(false);
+    } else if (e.key === "Escape") (setOpen(false), onCancel?.());
   }
 
   const showMenu = open && q.trim().length >= 2;
@@ -85,8 +88,10 @@ export function PlaceSearch({ near, countryCode, onPick, onNote }: Props) {
           value={q}
           onChange={(e) => (setQ(e.target.value), setOpen(true))}
           onFocus={() => setOpen(true)}
+          onBlur={() => !q.trim() && onCancel?.()}
+          autoFocus={autoFocus}
           onKeyDown={onKey}
-          placeholder="Add a place"
+          placeholder={onCancel ? "Add a place or note here" : "Add a place"}
           className="w-full bg-transparent text-sm outline-none placeholder:text-muted/80"
         />
       </div>

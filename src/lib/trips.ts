@@ -289,10 +289,13 @@ export function addItem(
   section: string,
   data: Omit<Item, "id" | "section" | "order" | "createdAt">,
   origin: EditOrigin = ME,
+  /** Insert before the item currently at this position (default: append). */
+  index?: number,
 ): string {
   const id = nanoid(10);
   const existing = itemsIn(doc, section);
-  const order = generateKeyBetween(existing.at(-1)?.order ?? null, null);
+  const i = index == null ? existing.length : Math.max(0, Math.min(index, existing.length));
+  const order = generateKeyBetween(existing[i - 1]?.order ?? null, existing[i]?.order ?? null);
   edit(
     doc,
     () => {
