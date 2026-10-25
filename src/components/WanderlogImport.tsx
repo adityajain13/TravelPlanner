@@ -1,10 +1,10 @@
 import { useMemo, useRef, useState } from "react";
+import { CurrencySelect } from "./CurrencySelect";
 import { useNavigate } from "react-router-dom";
 import { FileUp, Loader2, MapPin, X } from "lucide-react";
 import { parseWanderlog, type RawItem, type WanderlogTrip } from "../lib/wanderlog/parse";
 import { extractPdf } from "../lib/wanderlog/extract";
 import { importWanderlog, type Progress } from "../lib/wanderlog/importTrip";
-import { CURRENCIES } from "../lib/fx";
 import { formatRange } from "../lib/dates";
 import { inputCls } from "./NewTripDialog";
 
@@ -131,11 +131,7 @@ export function WanderlogImport({ onClose }: { onClose: () => void }) {
               </label>
               <label className="flex items-center gap-2">
                 <span className="text-muted">Costs in</span>
-                <select value={currency} onChange={(e) => setCurrency(e.target.value)} className="rounded-md bg-surface-2 px-2 py-1">
-                  {CURRENCIES.map((c) => (
-                    <option key={c}>{c}</option>
-                  ))}
-                </select>
+                <CurrencySelect value={currency} onChange={setCurrency} className="bg-surface-2" />
               </label>
             </div>
             {trip.warnings.map((w) => (
