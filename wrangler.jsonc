@@ -1,0 +1,13 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "travelplanner",
+  "main": "worker/index.ts",
+  "compatibility_date": "2026-10-01",
+  "assets": {
+    "directory": "./dist",
+    "binding": "ASSETS",
+    "run_worker_first": true
+  },
+  // More specific than the personal site's adityajain.ca/* route, so it wins for this path.
+  "routes": [{ "pattern": "adityajain.ca/travelplanner*", "zone_name": "adityajain.ca" }]
+}
