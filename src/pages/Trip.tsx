@@ -14,7 +14,7 @@ import {
   type DragStartEvent,
 } from "@dnd-kit/core";
 import { sortableKeyboardCoordinates } from "@dnd-kit/sortable";
-import { ArrowLeft, Camera, Eye, ImagePlus, List, Loader2, Map as MapIcon, PanelLeft, Plus, Share2 } from "lucide-react";
+import { ArrowLeft, Camera, Cloud, CloudOff, Moon, Sun, Eye, ImagePlus, List, Loader2, Map as MapIcon, PanelLeft, Plus, Share2 } from "lucide-react";
 import { Contents, ContentsRail, type Tab } from "../components/Contents";
 import { useConverter } from "../lib/fx";
 import { budgetLines, totals } from "../lib/budget";
@@ -52,9 +52,8 @@ import type { Pin, Route } from "../components/TripMap";
 // MapLibre is the heaviest dependency; load it after the plan panel is on screen.
 const TripMap = lazy(() => import("../components/TripMap").then((m) => ({ default: m.TripMap })));
 import { Section, type SectionInfo } from "../components/Section";
-import { ThemeToggle } from "../components/ThemeToggle";
 import { OfflineMapButton } from "../components/OfflineMapButton";
-import { SyncBadge } from "../components/SyncBadge";
+import { HeroPill } from "../components/HeroPill";
 import { ShareDialog } from "../components/ShareDialog";
 import { InboxPanel } from "../components/InboxPanel";
 import { fetchInbox, type InboxItem } from "../lib/inbox";
@@ -293,6 +292,8 @@ export function TripPage() {
     );
   };
 
+  const syncIcon = syncStatus === "online" ? <Cloud /> : syncStatus === "offline" ? <CloudOff /> : <Loader2 className="animate-spin" />;
+  const syncLabel = syncStatus === "online" ? "Synced" : syncStatus === "offline" ? "Offline · saved on device" : "Connecting";
   const hideContents = (hidden: boolean) => {
     setContentsHidden(hidden);
     try {
@@ -356,38 +357,27 @@ export function TripPage() {
             )}
             <div className="absolute inset-0 bg-gradient-to-b from-black/55 via-black/5 to-black/85" />
             <div className="absolute inset-x-0 top-0 flex items-center justify-between px-4 pt-[max(env(safe-area-inset-top),0.75rem)] text-white">
-              <Link to="/" className="flex items-center gap-1.5 rounded-full bg-black/30 px-3 py-1.5 text-sm backdrop-blur hover:bg-black/45">
-                <ArrowLeft className="size-4" /> Trips
-              </Link>
-              <div className="flex items-center gap-1.5 [&>*]:backdrop-blur">
+              <HeroPill to="/" icon={<ArrowLeft />} label="Trips" />
+              <div className="flex items-center gap-1.5">
                 {canSync && (
-                  <span className="rounded-full bg-black/30 px-2.5 py-1.5">
-                    <SyncBadge status={syncStatus} />
-                  </span>
+                  <HeroPill
+                    icon={syncIcon}
+                    label={syncLabel}
+                    className={syncStatus === "online" ? "text-accent" : ""}
+                    title={syncStatus === "offline" ? "Changes sync when you're back online" : undefined}
+                  />
                 )}
-                {isOwner && (
-                  <button onClick={() => setSharing(true)} className="flex items-center gap-1.5 rounded-full bg-black/30 px-3 py-1.5 text-xs font-medium hover:bg-black/45">
-                    <Share2 className="size-3.5" /> Share
-                  </button>
-                )}
-                <span className="rounded-full bg-black/30 text-white [&_button]:text-white/90">
-                  <ThemeToggle theme={theme} toggle={toggleTheme} />
-                </span>
+                {isOwner && <HeroPill icon={<Share2 />} label="Share" onClick={() => setSharing(true)} />}
+                <HeroPill icon={theme === "dark" ? <Sun /> : <Moon />} label={theme === "dark" ? "Light mode" : "Dark mode"} onClick={toggleTheme} />
               </div>
             </div>
-            {state.meta.cover && (
-              <PhotoCredit img={state.meta.cover} className="absolute right-4 bottom-12 z-10 max-w-[45%] truncate text-right text-[10.5px] text-white/75 [text-shadow:0_1px_4px_rgb(0_0_0/.6)]" />
-            )}
-            {!readOnly && (
-              <button
-                onClick={() => setPickingCover(true)}
-                className="absolute right-4 bottom-4 z-10 flex items-center gap-1.5 rounded-full bg-black/35 px-3 py-1.5 text-xs text-white/90 backdrop-blur hover:bg-black/50"
-                title="Change cover photo"
-              >
-                <ImagePlus className="size-3.5" /> Cover
-              </button>
-            )}
-            <div className="absolute inset-x-0 bottom-0 px-5 pr-28 pb-4 text-white">
+            <div className="absolute right-4 bottom-3 z-10 flex max-w-[45%] flex-col items-end gap-1.5">
+              {!readOnly && <HeroPill icon={<ImagePlus />} label="Change cover" onClick={() => setPickingCover(true)} />}
+              {state.meta.cover && (
+                <PhotoCredit img={state.meta.cover} className="max-w-full truncate text-right text-[10.5px] text-white/75 [text-shadow:0_1px_4px_rgb(0_0_0/.6)]" />
+              )}
+            </div>
+            <div className="absolute inset-x-0 bottom-0 px-5 pr-16 pb-4 text-white">
               {readOnly && (
                 <p className="mb-1.5 inline-flex items-center gap-1.5 rounded-full bg-black/35 px-3 py-1 text-xs text-white/85">
                   <Eye className="size-3.5" /> View only
