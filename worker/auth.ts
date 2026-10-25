@@ -1,4 +1,4 @@
-import { API, BASE, error, json, parseCookies, randomToken, safeEqual, sha256, type Env } from "./util";
+import { API, BASE, error, json, parseCookies, randomToken, safeEqual, sendMail, sha256, type Env } from "./util";
 
 /*
  * Passwordless login, entirely on this Worker:
@@ -86,9 +86,8 @@ export async function handleAuth(req: Request, env: Env, url: URL): Promise<Resp
 
     const link = `${url.origin}${API}/auth/link?e=${encodeURIComponent(email)}&t=${linkToken}`;
     try {
-      await env.EMAIL.send({
+      await sendMail(env, {
         to: email,
-        from: { email: env.MAIL_FROM, name: "Travel Planner" },
         subject: `${code} is your Travel Planner code`,
         text: `Your login code is ${code}\n\nOr sign in on this device with one tap:\n${link}\n\nThe code expires in 15 minutes. If you didn't ask for this, ignore it.`,
         html: `<div style="font-family:system-ui,sans-serif;max-width:420px">
