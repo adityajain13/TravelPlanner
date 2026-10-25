@@ -96,7 +96,7 @@ export function PlaceSearch({ near, countryCode, onPick, onNote, autoFocus, onCa
           autoFocus={autoFocus}
           onKeyDown={onKey}
           placeholder={onCancel ? "Add a place or note here" : "Add a place or paste a Google Maps link"}
-          className="w-full bg-transparent text-sm outline-none placeholder:text-muted/80"
+          className="w-full bg-transparent text-[15px] outline-none placeholder:text-muted/80"
         />
       </div>
       {showMenu && (

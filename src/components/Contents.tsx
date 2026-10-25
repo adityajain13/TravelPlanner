@@ -46,8 +46,8 @@ export function Contents(p: Props) {
       >
         {icon && <span className="mt-0.5 shrink-0 [&>svg]:size-3.5">{icon}</span>}
         <span className="min-w-0 flex-1">
-          <span className="block truncate text-sm">{label}</span>
-          {sub && <span className="block truncate text-[11px] text-muted/80">{sub}</span>}
+          <span className="block truncate text-[15px]">{label}</span>
+          {sub && <span className="block truncate text-xs text-muted/80">{sub}</span>}
         </span>
         {count != null && <span className="mt-0.5 text-[11px] text-muted tabular-nums">{count}</span>}
       </button>
@@ -58,7 +58,7 @@ export function Contents(p: Props) {
     <div className="mb-3">
       <button
         onClick={() => setOpen((o) => ({ ...o, [key]: !o[key] }))}
-        className="flex w-full items-center gap-1.5 px-1 py-1.5 font-display text-[15px] text-fg"
+        className="flex w-full items-center gap-1.5 px-1 py-1.5 font-display text-lg text-fg"
       >
         <ChevronDown className={`size-3.5 text-muted transition-transform ${open[key] ? "" : "-rotate-90"}`} />
         {title}

@@ -399,7 +399,7 @@ export function TripPage() {
                 defaultValue={state.meta.title}
                 onBlur={(e) => e.target.value.trim() && e.target.value !== state.meta.title && updateMeta(doc, { title: e.target.value.trim() })}
                 onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()}
-                className="w-full bg-transparent font-display text-[2rem] leading-tight text-white outline-none [text-shadow:0_1px_12px_rgb(0_0_0/.5)]"
+                className="w-full bg-transparent font-display text-[2.25rem] leading-tight text-white outline-none [text-shadow:0_1px_12px_rgb(0_0_0/.5)]"
               />
               <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-sm text-white/90 [color-scheme:dark]">
                 <input
@@ -428,7 +428,7 @@ export function TripPage() {
 
         {/* Tabs + day jump chips stay pinned while the plan scrolls */}
         <div className="sticky top-0 z-30 border-b border-line bg-bg/95 px-5 backdrop-blur">
-          <nav className="flex items-end gap-5 pt-3 text-sm">
+          <nav className="flex items-end gap-5 pt-3 text-[15px] font-semibold">
             <button onClick={() => setContentsDrawer(true)} className="-ml-1 pb-2.5 text-muted hover:text-fg lg:hidden" title="Contents" aria-label="Contents">
               <PanelLeft className="size-4" />
             </button>
