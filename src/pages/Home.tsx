@@ -1,3 +1,4 @@
+import { Logo } from "../components/Logo";
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useLiveQuery } from "dexie-react-hooks";
@@ -41,7 +42,7 @@ export function Home() {
   return (
     <div className="mx-auto min-h-full max-w-3xl px-5 pt-[max(env(safe-area-inset-top),1.5rem)] pb-16">
       <header className="mb-10 flex items-center justify-between">
-        <span className="text-sm font-semibold tracking-wide text-muted">travel planner</span>
+        <Logo size={30} />
         <div className="flex items-center gap-1">
           <span className="mr-1 hidden text-xs text-muted sm:inline">{email}</span>
           <ThemeToggle theme={theme} toggle={toggleTheme} />

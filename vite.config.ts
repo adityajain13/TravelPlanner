@@ -32,11 +32,11 @@ export default defineConfig({
     tailwindcss(),
     VitePWA({
       registerType: "autoUpdate",
-      includeAssets: ["icon.svg"],
+      includeAssets: ["icon.svg", "apple-touch-icon.png"],
       manifest: {
-        name: "Travel Planner",
-        short_name: "Trips",
-        description: "Offline-first trip planner",
+        name: "Cairn · trip planner",
+        short_name: "Cairn",
+        description: "Offline-first trip planner: itineraries, maps, bookings and budgets",
         start_url: BASE,
         scope: BASE,
         display: "standalone",
@@ -45,7 +45,7 @@ export default defineConfig({
         icons: [
           { src: "icon-192.png", sizes: "192x192", type: "image/png" },
           { src: "icon-512.png", sizes: "512x512", type: "image/png" },
-          { src: "icon-512.png", sizes: "512x512", type: "image/png", purpose: "maskable" },
+          { src: "icon-maskable-512.png", sizes: "512x512", type: "image/png", purpose: "maskable" },
         ],
       },
       workbox: {
