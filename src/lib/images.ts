@@ -1,6 +1,7 @@
 /*
  * Photos for places, from free sources with clear licensing:
- *   Wikipedia (by location + name, then by title) → Wikimedia Commons → Openverse (CC images web-wide)
+ *   Unsplash (via our Worker, travel-quality) → Wikipedia (the place's own article) →
+ *   Wikimedia Commons / Openverse (filtered to large landscape photos)
  * Only the image URL + credit is stored on the item. Images are hotlinked (all three permit it)
  * and cached by the service worker so they show offline.
  */
@@ -8,11 +9,43 @@
 export interface PlaceImage {
   url: string; // large, for headers / viewers
   thumb: string; // ~320px, for cards and pins
-  source: "wikipedia" | "commons" | "openverse" | "link";
+  source: "unsplash" | "wikipedia" | "commons" | "openverse" | "link";
   credit?: string; // "Photo: Jane Doe, CC BY-SA 4.0"
   link?: string; // page the image came from
   title?: string;
+  author?: string; // photographer's page (Unsplash attribution)
+  track?: string; // Unsplash download_location, pinged when picked; not stored
 }
+
+// Share-link editors aren't signed in; the Worker accepts their share token instead
+let shareToken: string | undefined;
+export const setPhotoShareToken = (t?: string) => void (shareToken = t);
+
+/** Unsplash results through the Worker, or [] when it isn't configured / offline / over quota. */
+async function unsplash(query: string, signal?: AbortSignal): Promise<PlaceImage[]> {
+  const q = new URLSearchParams({ q: query, ...(shareToken ? { share: shareToken } : {}) });
+  const res = await fetch(`/travelplanner/api/photos?${q}`, { signal, credentials: "same-origin" });
+  if (!res.ok) return [];
+  return ((await res.json()) as { photos?: PlaceImage[] }).photos ?? [];
+}
+
+/** Unsplash asks apps to report when a photo is actually used. */
+export function trackPick(img: PlaceImage) {
+  if (img.source !== "unsplash" || !img.track) return;
+  fetch(`/travelplanner/api/photos/track${shareToken ? `?share=${encodeURIComponent(shareToken)}` : ""}`, {
+    method: "POST",
+    credentials: "same-origin",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ download: img.track }),
+  }).catch(() => undefined);
+}
+
+/** What gets saved on an item / cover (drop the tracking URL). */
+export const forStorage = ({ track: _t, ...img }: PlaceImage): PlaceImage => img;
+
+// Charts, maps, diagrams, logos, signage... nobody's travel photo
+const NOT_A_PHOTO = /\b(map|maps|locator|location|flag|coat of arms|emblem|seal|logo|diagram|chart|graph|pyramid|population|census|plot|satellite|nasa|iss0|modis|earth|globe|svg|plan|scheme|stamp|coin|banknote|poster|document|book|page|scan|signpost|sign|supermarket|store|shop|screenshot|icon)\b/i;
+const goodShape = (w?: number, h?: number) => !!w && !!h && w >= 1400 && w / h >= 1.2 && w / h <= 2.6;
 
 const WIKI = "https://en.wikipedia.org/w/api.php";
 const COMMONS = "https://commons.wikimedia.org/w/api.php";
@@ -95,18 +128,18 @@ async function commons(query: string, signal?: AbortSignal): Promise<PlaceImage[
     gsrsearch: `${query} filetype:bitmap`,
     gsrlimit: "12",
     prop: "imageinfo",
-    iiprop: "url|extmetadata",
+    iiprop: "url|extmetadata|size",
     iiurlwidth: THUMB_W,
   });
   const res = await fetch(`${COMMONS}?${q}`, { signal });
   if (!res.ok) throw new Error(`Commons ${res.status}`);
-  type Info = { thumburl?: string; descriptionurl?: string; extmetadata?: Record<string, { value?: string }> };
+  type Info = { thumburl?: string; descriptionurl?: string; width?: number; height?: number; extmetadata?: Record<string, { value?: string }> };
   const j = (await res.json()) as { query?: { pages?: { title: string; index?: number; imageinfo?: Info[] }[] } };
   return (j.query?.pages ?? [])
     .sort((a, b) => (a.index ?? 0) - (b.index ?? 0))
     .flatMap((p) => {
       const ii = p.imageinfo?.[0];
-      if (!ii?.thumburl) return [];
+      if (!ii?.thumburl || !goodShape(ii.width, ii.height) || NOT_A_PHOTO.test(p.title)) return [];
       const artist = strip(ii.extmetadata?.Artist?.value);
       const license = ii.extmetadata?.LicenseShortName?.value;
       return [
@@ -126,9 +159,9 @@ async function openverse(query: string, signal?: AbortSignal): Promise<PlaceImag
   const q = new URLSearchParams({ q: query, page_size: "12", mature: "false" });
   const res = await fetch(`https://api.openverse.org/v1/images/?${q}`, { signal });
   if (!res.ok) throw new Error(`Openverse ${res.status}`);
-  type R = { url: string; thumbnail?: string; title?: string; creator?: string; license?: string; license_version?: string; foreign_landing_url?: string };
+  type R = { url: string; thumbnail?: string; title?: string; creator?: string; license?: string; license_version?: string; foreign_landing_url?: string; width?: number; height?: number };
   const j = (await res.json()) as { results?: R[] };
-  return (j.results ?? []).map((r) => ({
+  return (j.results ?? []).filter((r) => goodShape(r.width, r.height) && !NOT_A_PHOTO.test(r.title ?? "")).map((r) => ({
     url: r.url,
     thumb: r.thumbnail ?? r.url,
     source: "openverse" as const,
@@ -140,15 +173,16 @@ async function openverse(query: string, signal?: AbortSignal): Promise<PlaceImag
 
 /** Everything the picker shows, best guesses first. Each source fails independently. */
 export async function searchImages(query: string, opts: { name?: string; coords?: [number, number]; signal?: AbortSignal } = {}): Promise<PlaceImage[]> {
-  const [wiki, com, ov] = await Promise.all([
+  const [un, wiki, com, ov] = await Promise.all([
+    unsplash(query, opts.signal).catch(() => []),
     wikipedia(opts.name ?? query, opts.coords, opts.signal).catch(() => []),
     commons(query, opts.signal).catch(() => []),
     openverse(query, opts.signal).catch(() => []),
   ]);
+  // Only the place's own article (nearby + matching, or exact title); loose matches were the junk
+  const own = wiki.filter((w) => (w.near ? w.score >= 0.75 : norm(w.img.title ?? "") === norm(opts.name ?? query))).map((w) => w.img);
   const seen = new Set<string>();
-  return [...wiki.filter((w) => w.score >= 0.3).map((w) => w.img), ...com, ...ov, ...wiki.filter((w) => w.score < 0.3).map((w) => w.img)].filter(
-    (i) => (seen.has(i.thumb) ? false : (seen.add(i.thumb), true)),
-  );
+  return [...own.slice(0, 2), ...un, ...com, ...ov].filter((i) => (seen.has(i.thumb) ? false : (seen.add(i.thumb), true)));
 }
 
 /** A confident automatic pick, or null:
@@ -163,6 +197,8 @@ export async function bestImage(name: string, coords?: [number, number], signal?
 /** Cover photo suggestion: a landscape photo of the destination from Commons (article lead images
  *  for places are often flags, maps, or, as with "Iceland", a namesake supermarket). */
 export async function coverFor(destination: string, signal?: AbortSignal): Promise<PlaceImage | null> {
+  const un = await unsplash(destination, signal).catch(() => []);
+  if (un[0]) return (trackPick(un[0]), forStorage(un[0]));
   for (const q of [`${destination} landscape`, `${destination} panorama`, destination]) {
     const com = await commons(q, signal).catch(() => []);
     const pick = com.find((c) => !/logo|map|flag|store|shop|supermarket|sign|diagram|chart/i.test(c.title ?? ""));

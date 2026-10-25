@@ -10,6 +10,7 @@ export interface Env {
   SHARE_SECRET: string;
   ANTHROPIC_API_KEY: string;
   EXTRACT_MODEL?: string;
+  UNSPLASH_ACCESS_KEY?: string;
 }
 
 export const BASE = "/travelplanner";

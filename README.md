@@ -12,7 +12,7 @@ My own Wanderlog. It's an offline-first trip planner, dark down to the map, with
 - Days generated from the trip dates, plus lists like "Places to visit". Drag and drop stops within and between days.
 - Place search on OpenStreetMap (Photon, with Nominatim as a fallback). Each stop takes a time, notes and a cost. An optional live **Google details** button shows photos, hours and ratings; only the place ID is stored.
 - **Routing between stops:** each leg shows "🚗 21 min · 8.7 km". Tap it to switch to walk, bike or transit. The map draws the real road, path or transit line, and each day header shows that day's total travel.
-- **Photos** for every place: pick from Wikipedia, Wikimedia Commons or Openverse by the place's name (or paste a link). **Auto-fill photos** adds confident Wikipedia matches for the whole trip, and every trip gets a cover photo.
+- **Photos** for every place: pick from Unsplash, the place's Wikipedia article, or large landscape shots from Wikimedia Commons and Openverse (or paste a link). **Auto-fill photos** adds confident Wikipedia matches for the whole trip, and every trip gets a cover photo.
 - Dark vector map with Wanderlog-style numbered pins per day, photo popups, and a **satellite** toggle. Jump between days with the date chips, and focus the map on one day with the eye icon.
 
 **Book and budget**
@@ -121,10 +121,11 @@ Every push to `main` deploys through GitHub Actions (`.github/workflows/deploy.y
    - `ALLOWED_EMAILS`: your Gmail
    - `SHARE_SECRET`: any long random string
    - `ANTHROPIC_API_KEY`: only used for email import
+   - `UNSPLASH_ACCESS_KEY` (optional): the Access Key of an app at https://unsplash.com/oauth/applications. Gives travel-quality photos in the picker and for covers; searches are cached for a day.
 6. **Inbound email:** Email → Email Routing → Routing rules → Create address: custom address `trips`, action **Send to a Worker**, destination `travelplanner`.
 
 Outgoing mail (login codes, import receipts) goes through Email Routing's free `send_email` binding. That binding can only deliver to **verified destination addresses**, so the address in `ALLOWED_EMAILS` must be one. No Workers Paid plan or Email Sending is needed.
 
 ## Credits
 
-Map data © OpenStreetMap contributors · Protomaps · MapTiler. Search: Photon, Nominatim. Routing: FOSSGIS OSRM. Transit: [Transitous](https://transitous.org/sources/). Exchange rates: European Central Bank via Frankfurter.
+Map data © OpenStreetMap contributors · Protomaps · MapTiler. Search: Photon, Nominatim. Routing: FOSSGIS OSRM. Transit: [Transitous](https://transitous.org/sources/). Exchange rates: European Central Bank via Frankfurter. Photos: Unsplash, Wikipedia, Wikimedia Commons, Openverse.

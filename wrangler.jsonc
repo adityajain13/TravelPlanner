@@ -37,4 +37,5 @@
   //   ALLOWED_EMAILS  comma-separated emails allowed to log in
   //   SHARE_SECRET    any long random string (signs share links)
   //   ANTHROPIC_API_KEY  Claude API key for reading forwarded booking emails
+  //   UNSPLASH_ACCESS_KEY  optional: Unsplash app Access Key for travel-quality photos in the picker
 }
