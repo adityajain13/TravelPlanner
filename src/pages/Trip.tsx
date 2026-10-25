@@ -59,6 +59,7 @@ const TripMap = lazy(() => import("../components/TripMap").then((m) => ({ defaul
 import { Section, type SectionInfo } from "../components/Section";
 import { OfflineMapButton } from "../components/OfflineMapButton";
 import { HeroPill } from "../components/HeroPill";
+import { LogoMark } from "../components/Logo";
 import { PlacePanel, type PanelMode } from "../components/PlacePanel";
 import { SectionPicker, type SectionTarget } from "../components/SectionPicker";
 import { ShareDialog } from "../components/ShareDialog";
@@ -377,6 +378,9 @@ export function TripPage() {
   const mod = /Mac|iPhone|iPad/.test(navigator.platform) ? "⌘" : "Ctrl+";
   const undoBar = readOnly ? null : (
     <div className="flex items-center gap-1 border-b border-line px-4 py-3">
+      <Link to="/" title="All trips" className="mr-2 shrink-0">
+        <LogoMark size={30} />
+      </Link>
       <button onClick={history.undo} disabled={!history.canUndo} title={`Undo (${mod}Z)`} className="flex items-center gap-2 rounded-full px-3 py-1.5 text-[15px] font-semibold text-muted hover:bg-surface-2 hover:text-fg disabled:opacity-40 disabled:hover:bg-transparent">
         <Undo2 className="size-4" /> Undo
       </button>

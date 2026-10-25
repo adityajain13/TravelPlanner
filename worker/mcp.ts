@@ -12,10 +12,10 @@ import { json, type Env } from "./util";
  * Write tools are annotated as non-read-only so claude.ai can ask for approval on each call.
  */
 
-const SERVER_INFO = { name: "travel-planner", title: "Travel Planner", version: "1.0.0" };
+const SERVER_INFO = { name: "cairn-trips", title: "Cairn trip planner", version: "1.0.0" };
 const SUPPORTED_VERSIONS = ["2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05"];
 
-const INSTRUCTIONS = `Reads and edits trips in Aditya's travel planner (adityajain.ca/travelplanner).
+const INSTRUCTIONS = `Reads and edits trips in Cairn, Aditya's trip planner (adityajain.ca/travelplanner).
 Every tool needs a trip share link (https://adityajain.ca/travelplanner/s/...). Ask the user to paste one if you don't have it.
 Call get_trip first: it returns days, lists and the item ids the edit tools need.
 Sections are addressed as "day 3", a date like "2026-12-03", or a list name like "Places to visit".

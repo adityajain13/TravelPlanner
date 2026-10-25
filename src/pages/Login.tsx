@@ -1,3 +1,4 @@
+import { Logo } from "../components/Logo";
 import { useState } from "react";
 import { Navigate, useNavigate, useSearchParams } from "react-router-dom";
 import { ArrowLeft, Loader2, Mail } from "lucide-react";
@@ -49,7 +50,7 @@ export function Login() {
     <div className="grid min-h-full place-items-center px-5 py-12">
       <div className="w-full max-w-sm space-y-6">
         <div>
-          <p className="mb-3 text-sm font-semibold tracking-wide text-muted">travel planner</p>
+          <Logo size={34} className="mb-8" />
           <h1 className="font-display text-4xl">{step === "email" ? "Sign in" : "Check your email"}</h1>
           {step === "code" && (
             <p className="mt-2 text-sm text-muted">
