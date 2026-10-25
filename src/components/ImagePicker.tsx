@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { Photo } from "./Photo";
+import { PhotoCredit } from "./PhotoCredit";
 import { ImageOff, Link2, Loader2, Search, Trash2, X } from "lucide-react";
 import { searchImages, type PlaceImage, trackPick, forStorage } from "../lib/images";
 import { inputCls } from "./NewTripDialog";
@@ -83,22 +84,23 @@ export function ImagePicker({
           ) : (
             <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
               {shown.map((img) => (
-                <button
-                  key={img.thumb}
-                  onClick={() => pick(img)}
-                  className={`group relative aspect-[4/3] overflow-hidden rounded-lg bg-surface-2 ring-accent hover:ring-2 ${current?.thumb === img.thumb ? "ring-2" : ""}`}
-                  title={[img.title, img.credit].filter(Boolean).join(" · ")}
-                >
-                  <Photo
-                    srcs={[img.thumb, img.url]}
-                    alt={img.title ?? ""}
-                    className="size-full object-cover transition-transform group-hover:scale-105"
-                    onFail={() => setBroken((b) => new Set(b).add(img.thumb))}
-                  />
-                  <span className="absolute inset-x-0 bottom-0 truncate bg-gradient-to-t from-black/80 px-1.5 pt-4 pb-1 text-left text-[10px] text-white/90 opacity-0 transition-opacity group-hover:opacity-100">
-                    {img.source === "unsplash" ? img.credit : `${img.source === "wikipedia" ? "Wikipedia" : img.source === "commons" ? "Commons" : "Openverse"} · ${img.credit ?? ""}`}
-                  </span>
-                </button>
+                <figure key={img.thumb} className="min-w-0">
+                  <button
+                    onClick={() => pick(img)}
+                    className={`group relative block aspect-[4/3] w-full overflow-hidden rounded-lg bg-surface-2 ring-accent hover:ring-2 ${current?.thumb === img.thumb ? "ring-2" : ""}`}
+                    title={img.title ?? "Use this photo"}
+                  >
+                    <Photo
+                      srcs={[img.thumb, img.url]}
+                      alt={img.title ?? ""}
+                      className="size-full object-cover transition-transform group-hover:scale-105"
+                      onFail={() => setBroken((b) => new Set(b).add(img.thumb))}
+                    />
+                  </button>
+                  <figcaption className="mt-1 truncate text-[10.5px] text-muted">
+                    <PhotoCredit img={img} />
+                  </figcaption>
+                </figure>
               ))}
             </div>
           )}

@@ -14,6 +14,7 @@ export interface PlaceImage {
   link?: string; // page the image came from
   title?: string;
   author?: string; // photographer's page (Unsplash attribution)
+  authorName?: string;
   track?: string; // Unsplash download_location, pinged when picked; not stored
 }
 
