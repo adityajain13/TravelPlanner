@@ -430,9 +430,14 @@ function parseStops(lines: Line[], onDay: (heading: string) => ParsedStop[]) {
 const CATEGORY: [RegExp, ExpenseCategory][] = [
   [/flight|airfare/i, "flights"],
   [/lodging|hotel|accommodation/i, "lodging"],
-  [/car|gas|fuel|parking|transport|transit|taxi|train|bus|toll/i, "transport"],
-  [/food|drink|restaurant|grocer|dining|coffee/i, "food"],
-  [/activit|sightseeing|entertain|tour|ticket/i, "activities"],
+  [/car rental|rental car/i, "car"],
+  [/gas|fuel|petrol/i, "gas"],
+  [/grocer|supermarket/i, "groceries"],
+  [/drink|bar|wine|beer/i, "drinks"],
+  [/parking|transport|transit|taxi|train|bus|toll|car/i, "transit"],
+  [/food|restaurant|dining|coffee/i, "food"],
+  [/sightseeing|museum|tour/i, "sightseeing"],
+  [/activit|entertain|ticket/i, "activities"],
   [/shop|souvenir/i, "shopping"],
 ];
 

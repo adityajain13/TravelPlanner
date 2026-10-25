@@ -18,6 +18,8 @@ export function ForwardDialog({ tripId, tripTitles, initialView = "forward", onC
   const [copied, setCopied] = useState(false);
   const [items, setItems] = useState<InboxItem[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Per trip by default: this trip's emails plus any that didn't match a trip; old trips stay out
+  const [scope, setScope] = useState<"trip" | "all">(tripId ? "trip" : "all");
 
   useEffect(() => {
     if (view !== "history" || items) return;
@@ -42,6 +44,7 @@ export function ForwardDialog({ tripId, tripTitles, initialView = "forward", onC
     }
   };
 
+  const shown = items?.filter((it) => scope === "all" || it.trip_id === tripId || !it.trip_id);
   const when = (ms: number) => new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }).format(ms);
 
   return createPortal(
@@ -78,6 +81,20 @@ export function ForwardDialog({ tripId, tripTitles, initialView = "forward", onC
               )}
               <h2 className="font-display text-[24px]">Imported emails</h2>
             </div>
+            {tripId && (
+              <div className="mt-3 flex w-fit rounded-full border border-line p-1 text-[13px] font-semibold">
+                {(
+                  [
+                    ["trip", "This trip"],
+                    ["all", "All trips"],
+                  ] as const
+                ).map(([k, label]) => (
+                  <button key={k} onClick={() => setScope(k)} className={`rounded-full px-3 py-1 ${scope === k ? "bg-accent text-on-accent" : "text-muted hover:text-fg"}`}>
+                    {label}
+                  </button>
+                ))}
+              </div>
+            )}
             <div className="-mx-2 mt-4 min-h-0 overflow-y-auto px-2">
               {error ? (
                 <p className="py-10 text-center text-muted">{error}</p>
@@ -85,13 +102,13 @@ export function ForwardDialog({ tripId, tripTitles, initialView = "forward", onC
                 <div className="grid place-items-center py-12 text-muted">
                   <Loader2 className="size-5 animate-spin" />
                 </div>
-              ) : items.length === 0 ? (
+              ) : shown!.length === 0 ? (
                 <p className="py-10 text-center text-muted">
-                  Nothing forwarded yet. Send confirmations to <span className="text-fg">{INBOX_ADDRESS}</span>.
+                  {scope === "trip" && items.length ? "No emails for this trip yet." : "Nothing forwarded yet."} Send confirmations to <span className="text-fg">{INBOX_ADDRESS}</span>.
                 </p>
               ) : (
                 <ul className="space-y-2.5">
-                  {items.map((it) => {
+                  {shown!.map((it) => {
                     const st = STATUS[it.status ?? "pending"];
                     const here = tripId && it.trip_id === tripId;
                     return (

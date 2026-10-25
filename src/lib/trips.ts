@@ -20,9 +20,14 @@ import { daysBetween } from "./dates";
  * ("you", "Rahul", "Claude") and offer per-origin undo.
  */
 
-export type ItemKind = "place" | "note";
+export type ItemKind = "place" | "note" | "checklist";
+export interface CheckItem {
+  id: string;
+  text: string;
+  done?: boolean;
+}
 
-export interface Item {
+export interface Item extends CostSplit {
   id: string;
   kind: ItemKind;
   section: string;
@@ -44,6 +49,8 @@ export interface Item {
   image?: import("./images").PlaceImage;
   /** How you get here from the previous stop of the day; falls back to the trip default. */
   travelMode?: import("./routing").TravelMode;
+  /** Checklist rows (kind "checklist"); the item's name is the checklist title. */
+  checks?: CheckItem[];
   createdAt: number;
 }
 
@@ -69,7 +76,7 @@ export interface TripMeta {
 export type ReservationType = "flight" | "lodging" | "car" | "train" | "restaurant" | "other";
 
 /** Wanderlog-style booking: lives in its own tab and shows as chips on the matching days. */
-export interface Reservation {
+export interface Reservation extends CostSplit {
   id: string;
   type: ReservationType;
   title: string; // "AC1 Toronto → Tokyo", "Hotel Granvia Kyoto"
@@ -89,7 +96,29 @@ export interface Reservation {
   createdAt: number;
 }
 
-export type ExpenseCategory = "flights" | "lodging" | "transport" | "food" | "activities" | "shopping" | "other";
+export type ExpenseCategory =
+  | "flights"
+  | "lodging"
+  | "car"
+  | "transit"
+  | "food"
+  | "drinks"
+  | "sightseeing"
+  | "activities"
+  | "shopping"
+  | "gas"
+  | "groceries"
+  | "other"
+  /** legacy, read as "transit" */
+  | "transport";
+
+/** Budget overrides for a cost that lives on a stop or a reservation. */
+export interface CostSplit {
+  costCategory?: ExpenseCategory;
+  costPaidBy?: string;
+  /** Traveler names sharing it; missing = everyone. */
+  costSplit?: string[];
+}
 
 export interface Expense {
   id: string;

@@ -11,7 +11,7 @@ import { distanceKm } from "./geocode";
  */
 
 export type TravelMode = "drive" | "walk" | "bike" | "transit";
-export const MODES: TravelMode[] = ["drive", "walk", "bike", "transit"];
+export const MODES: TravelMode[] = ["drive", "transit", "walk", "bike"];
 export const FLIGHT_KM = 800;
 
 export interface TransitStep {
@@ -27,6 +27,8 @@ export interface LegResult {
   duration: number | null; // seconds (null for flights)
   steps?: TransitStep[];
   transfers?: number;
+  /** Transit timed on a nearby same weekday (the trip date is outside the timetables). */
+  estimated?: boolean;
 }
 
 export interface LegRequest {
@@ -126,10 +128,38 @@ async function transitous(a: [number, number], b: [number, number], when?: strin
   };
 }
 
+/**
+ * Timetables only cover a few weeks ahead (and nothing in the past), so a trip months away or
+ * an imported old trip finds no service on its real date. Then ask for the same weekday and time
+ * in the coming week instead: schedules repeat weekly, so the duration is a good estimate.
+ */
+export function nearbyWeekday(when: string, now = new Date()): string | null {
+  const m = when.match(/^(\d{4}-\d{2}-\d{2})T(.*)$/);
+  if (!m) return null;
+  const day = new Date(`${m[1]}T12:00:00Z`);
+  const today = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 12));
+  const ahead = (day.getTime() - today.getTime()) / 86400000;
+  if (ahead >= 1 && ahead <= 21) return null; // inside the timetable window: the real date is fine
+  const shift = ((day.getUTCDay() - today.getUTCDay() + 7) % 7) || 7;
+  const d = new Date(today.getTime() + shift * 86400000);
+  return `${d.toISOString().slice(0, 10)}T${m[2]}`;
+}
+
+async function transitWithFallback(a: [number, number], b: [number, number], when?: string): Promise<LegResult | null> {
+  const first = await transitous(a, b, when).catch(() => null);
+  if (first && first.steps?.some((st) => st.mode !== "WALK")) return first;
+  const alt = when ? nearbyWeekday(when) : null;
+  if (alt) {
+    const second = await transitous(a, b, alt).catch(() => null);
+    if (second) return { ...second, estimated: true };
+  }
+  return first;
+}
+
 async function fetchLeg(req: LegRequest): Promise<LegResult | null> {
   const km = distanceKm(req.from, req.to);
   if (km > FLIGHT_KM) return { mode: "flight", coords: [req.from, req.to], distance: km * 1000, duration: null };
-  if (req.mode === "transit") return transitQ.run(() => transitous(req.from, req.to, req.when));
+  if (req.mode === "transit") return transitQ.run(() => transitWithFallback(req.from, req.to, req.when));
   return osrmQ.run(() => osrm(req.mode as Exclude<TravelMode, "transit">, req.from, req.to));
 }
 

@@ -115,3 +115,44 @@ export const PRICE_LABEL: Record<string, string> = {
   PRICE_LEVEL_EXPENSIVE: "$$$",
   PRICE_LEVEL_VERY_EXPENSIVE: "$$$$",
 };
+
+/*
+ * Google Places Autocomplete (New), live only, for places OpenStreetMap doesn't find
+ * ("YYZ Terminal 3", a bakery counter inside a department store). Picking one looks up its
+ * location once, then the app matches it to OpenStreetMap; only the place ID is kept.
+ * One session token per typing session keeps billing to a single autocomplete session.
+ */
+export interface GoogleSuggestion {
+  placeId: string;
+  main: string;
+  secondary?: string;
+}
+
+let session: string | null = null;
+const newSession = () => (session = crypto.randomUUID());
+
+export async function autocomplete(input: string, near?: [number, number], signal?: AbortSignal): Promise<GoogleSuggestion[]> {
+  if (!GOOGLE_KEY || input.trim().length < 3) return [];
+  if (!session) newSession();
+  const body: Record<string, unknown> = { input, sessionToken: session, languageCode: "en" };
+  if (near) body.locationBias = { circle: { center: { latitude: near[1], longitude: near[0] }, radius: 50000 } };
+  type R = { suggestions?: { placePrediction?: { placeId: string; structuredFormat?: { mainText?: { text: string }; secondaryText?: { text: string } }; text?: { text: string } } }[] };
+  const json = await call<R>(
+    `${API}/places:autocomplete`,
+    { method: "POST", body: JSON.stringify(body), signal },
+    "suggestions.placePrediction.placeId,suggestions.placePrediction.structuredFormat,suggestions.placePrediction.text",
+  );
+  return (json.suggestions ?? [])
+    .map((s) => s.placePrediction)
+    .filter((p): p is NonNullable<typeof p> => !!p)
+    .slice(0, 5)
+    .map((p) => ({ placeId: p.placeId, main: p.structuredFormat?.mainText?.text ?? p.text?.text ?? "", secondary: p.structuredFormat?.secondaryText?.text }));
+}
+
+/** Where a suggestion is (ends the autocomplete session). Used only to find the OSM match. */
+export async function suggestionLocation(placeId: string): Promise<{ lat: number; lng: number } | null> {
+  const qs = session ? `?sessionToken=${session}` : "";
+  session = null;
+  const p = await call<{ location?: { latitude: number; longitude: number } }>(`${API}/places/${encodeURIComponent(placeId)}${qs}`, { method: "GET" }, "location");
+  return p.location ? { lat: p.location.latitude, lng: p.location.longitude } : null;
+}

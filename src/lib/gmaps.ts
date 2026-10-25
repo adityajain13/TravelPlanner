@@ -3,7 +3,8 @@
  * the place is then matched to OpenStreetMap so what gets saved is OSM data (see CLAUDE.md).
  */
 import { searchPlaces, type PlaceResult } from "./photon";
-import { distanceKm, reversePlaces } from "./geocode";
+import { distanceKm, reversePlaces, textScore } from "./geocode";
+import { suggestionLocation, type GoogleSuggestion } from "./google";
 import { shareQuery } from "./shareToken";
 
 const LINK = /^https?:\/\/(maps\.app\.goo\.gl|goo\.gl\/maps|g\.co\/kgs|(www\.)?google\.[a-z.]+\/maps|maps\.google\.[a-z.]+)\S*$/i;
@@ -71,4 +72,44 @@ export async function placesFromLink(link: string, signal?: AbortSignal): Promis
       fromLink: true,
     },
   ];
+}
+
+/**
+ * A Google autocomplete pick → a place to save. Google only says *where* it is; what's saved
+ * comes from OpenStreetMap at that spot (matching name first, else the nearest feature for the
+ * position and address), plus the Google place ID so live Google details work.
+ */
+export async function placeFromSuggestion(sug: GoogleSuggestion, signal?: AbortSignal): Promise<PlaceResult> {
+  const loc = await suggestionLocation(sug.placeId);
+  if (!loc) throw new Error("Couldn't locate that place");
+  const at: [number, number] = [loc.lng, loc.lat];
+  const [around, named] = await Promise.all([
+    reversePlaces(at, 0.15, signal).catch(() => []),
+    searchPlaces(sug.main, at, signal).catch(() => []),
+  ]);
+  const close = (h: { lat: number; lng: number }, km: number) => distanceKm(at, [h.lng, h.lat]) < km;
+  const match = [...named.filter((h) => close(h, 0.6)), ...around].find((h) => textScore(sug.main, h) >= 0.6);
+  if (match)
+    return {
+      osmId: match.osmId ?? `pin:${match.lat.toFixed(5)},${match.lng.toFixed(5)}`,
+      name: textScore(sug.main, match) >= 0.75 ? match.name : sug.main,
+      address: match.address ?? "",
+      category: match.category ?? "",
+      lat: match.lat,
+      lng: match.lng,
+      countryCode: match.countryCode,
+      googlePlaceId: sug.placeId,
+    };
+  const spot = around.find((h) => close(h, 0.15)) ?? (await reversePlaces(at, 0.6, signal).catch(() => []))[0];
+  const pos = spot ?? { lat: loc.lat, lng: loc.lng };
+  return {
+    osmId: spot?.osmId ? `near:${spot.osmId}` : `pin:${pos.lat.toFixed(5)},${pos.lng.toFixed(5)}`,
+    name: sug.main,
+    address: spot?.address ?? sug.secondary ?? "",
+    category: "",
+    lat: pos.lat,
+    lng: pos.lng,
+    countryCode: spot?.countryCode,
+    googlePlaceId: sug.placeId,
+  };
 }

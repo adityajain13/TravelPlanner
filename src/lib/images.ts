@@ -247,3 +247,16 @@ export function placeSummary(name: string, coords?: [number, number]) {
   }
   return summaries.get(key)!;
 }
+
+/**
+ * A photo for a place that was just added: its own Wikipedia article's image when there's a
+ * confident match, else the top Unsplash result for "<name> <destination>". Null when nothing fits.
+ */
+export async function firstPhoto(name: string, coords?: [number, number], context?: string): Promise<PlaceImage | null> {
+  const wiki = await bestImage(name, coords).catch(() => null);
+  if (wiki) return wiki;
+  const un = await unsplash([name, context].filter(Boolean).join(" ")).catch(() => []);
+  if (!un[0]) return null;
+  trackPick(un[0]);
+  return forStorage(un[0]);
+}

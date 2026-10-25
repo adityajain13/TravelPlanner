@@ -151,24 +151,63 @@ export function pickBest(cands: GeoHit[], o: GeoOpts): GeoHit | null {
   return best;
 }
 
-/** Search results for the "Add a place" box. Photon → Nominatim fallback; trip-country results first. */
+const fold = (s: string) =>
+  s
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N} ]+/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+/** How well a result's name (and, less so, address) covers the words typed: 0..1+. */
+export function textScore(q: string, h: { name: string; address?: string }) {
+  const words = fold(q).split(" ").filter((w) => w.length > 1 || /\d/.test(w));
+  if (!words.length) return 0;
+  const name = ` ${fold(h.name)} `;
+  const all = `${name} ${fold(h.address ?? "")} `;
+  let s = 0;
+  for (const w of words) s += name.includes(` ${w}`) ? 1 : all.includes(` ${w}`) ? 0.55 : 0;
+  s /= words.length;
+  // "Terminal 3" ≠ "Terminal 1": a different number in the name is a strong mismatch
+  const nums = words.filter((w) => /^\d+$/.test(w));
+  if (nums.some((n) => !name.includes(` ${n} `) && !name.includes(` ${n}`)) && /\d/.test(name)) s -= 0.35;
+  if (fold(h.name) === fold(q)) s += 0.3;
+  return s;
+}
+
+/**
+ * Search results for the "Add a place" box. Photon near the trip *and* worldwide (so "Toronto
+ * Pearson Terminal 3" on a Japan trip isn't drowned out by Tokyo), merged and ranked mainly by
+ * how well the name matches what was typed, then by distance. Nominatim if Photon finds nothing.
+ */
 export async function searchPlaces(q: string, o: GeoOpts = {}): Promise<GeoHit[]> {
   let hits: GeoHit[] = [];
   if (photonFailures < 3) {
     try {
-      hits = await photon(q, o);
+      const runs = await Promise.allSettled([photon(q, { ...o, limit: 10 }), ...(o.near ? [photon(q, { ...o, near: undefined, limit: 10 })] : [])]);
+      if (runs.every((r) => r.status === "rejected")) throw (runs[0] as PromiseRejectedResult).reason;
+      hits = runs.flatMap((r) => (r.status === "fulfilled" ? r.value : []));
       photonFailures = 0;
     } catch (e) {
       if ((e as Error).name === "AbortError") throw e;
       photonFailures++;
     }
   }
-  if (!hits.length) hits = await nominatim(q, { ...o, countryCode: undefined });
-  if (o.countryCode) {
-    const cc = o.countryCode.toLowerCase();
-    hits.sort((a, b) => Number(b.countryCode === cc) - Number(a.countryCode === cc));
-  }
-  return hits;
+  if (!hits.length) hits = await nominatim(q, { ...o, countryCode: undefined }).catch(() => []);
+  const seen = new Set<string>();
+  hits = hits.filter((h) => {
+    const k = h.osmId ?? `${h.lat.toFixed(4)},${h.lng.toFixed(4)}`;
+    return seen.has(k) ? false : (seen.add(k), true);
+  });
+  const cc = o.countryCode?.toLowerCase();
+  const score = (h: GeoHit) =>
+    textScore(q, h) * 3 + (o.near ? -0.5 * Math.log10(1 + distanceKm(o.near, [h.lng, h.lat]) / 25) : 0) + (cc && h.countryCode === cc ? 0.3 : 0);
+  return hits
+    .map((h, i) => ({ h, s: score(h) - i * 0.01 }))
+    .sort((a, b) => b.s - a.s)
+    .map((x) => x.h)
+    .slice(0, 8);
 }
 
 /** Best single match for an imported place, or null if nothing plausible. */
