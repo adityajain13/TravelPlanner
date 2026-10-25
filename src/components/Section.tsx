@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useDroppable } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
-import { ChevronDown, Eye } from "lucide-react";
+import { ChevronDown, Eye, Plus } from "lucide-react";
 import type { Item, Reservation } from "../lib/trips";
 import { RES_ICON } from "./Reservations";
 import { LegChip } from "./LegChip";
@@ -40,8 +40,9 @@ interface Props {
   onFocus: () => void;
   onSelect: (id: string) => void;
   onRename?: (title: string) => void;
-  onAddPlace: (p: PlaceResult) => void;
-  onAddNote: (text: string) => void;
+  /** index: insert before the item at that position (from the "+" between stops); omitted = append. */
+  onAddPlace: (p: PlaceResult, index?: number) => void;
+  onAddNote: (text: string, index?: number) => void;
   onChange: (id: string, patch: Partial<Item>) => void;
   onDelete: (id: string) => void;
 }
@@ -49,6 +50,8 @@ interface Props {
 export function Section(p: Props) {
   const { info } = p;
   const [open, setOpen] = useState(true);
+  const [insertAt, setInsertAt] = useState<number | null>(null);
+  const canInsert = !p.readOnly && info.key !== "orphan";
   const { setNodeRef, isOver } = useDroppable({ id: info.key });
   const placeCount = info.items.filter((i) => i.kind === "place").length;
   // Day total, like Wanderlog: "2 h 41 min · 182 km" (ground legs only)
@@ -119,9 +122,46 @@ export function Section(p: Props) {
       {open && (
         <div className="mt-2 space-y-0.5 pl-3">
           <SortableContext items={info.items.map((i) => i.id)} strategy={verticalListSortingStrategy}>
-            {info.items.map((it) => (
+            {info.items.map((it, idx) => (
               <div key={it.id}>
-              {p.legs?.has(it.id) && (
+              {insertAt === idx ? (
+                <div className="py-1.5 pr-1 pl-9" data-popover>
+                  <PlaceSearch
+                    autoFocus
+                    near={p.near}
+                    countryCode={p.countryCode}
+                    onPick={(r) => (p.onAddPlace(r, idx), setInsertAt(null))}
+                    onNote={(t) => (p.onAddNote(t, idx), setInsertAt(null))}
+                    onCancel={() => setInsertAt(null)}
+                  />
+                </div>
+              ) : (
+                idx > 0 &&
+                canInsert && (
+                  <div className="group/gap relative">
+                    <button
+                      onClick={() => setInsertAt(idx)}
+                      className="absolute top-1/2 left-0 z-10 grid size-7 -translate-y-1/2 place-items-center rounded-full text-muted opacity-0 transition-opacity group-hover/gap:opacity-100 hover:bg-surface-2 hover:text-accent focus-visible:opacity-100 max-md:opacity-50"
+                      title="Add a place or note here"
+                      aria-label="Add a place or note here"
+                    >
+                      <Plus className="size-4" />
+                    </button>
+                    {!p.legs?.has(it.id) && <div className="h-3.5" />}
+                    {p.legs?.has(it.id) && (
+                      <LegChip
+                        mode={p.legs.get(it.id)!.mode}
+                        state={p.legs.get(it.id)!.state}
+                        readOnly={p.readOnly}
+                        onMode={(m) => p.onLegMode?.(it.id, m)}
+                        from={p.legs.get(it.id)!.from}
+                        to={p.legs.get(it.id)!.to}
+                      />
+                    )}
+                  </div>
+                )
+              )}
+              {(insertAt === idx || idx === 0 || !canInsert) && p.legs?.has(it.id) && (
                 <LegChip
                   mode={p.legs.get(it.id)!.mode}
                   state={p.legs.get(it.id)!.state}

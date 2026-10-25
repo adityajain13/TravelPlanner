@@ -553,12 +553,12 @@ export function TripPage() {
                 onFocus={() => setFocus((f) => (f === s.key ? null : s.key))}
                 onSelect={(itemId) => setSelectedId((cur) => (cur === itemId ? null : itemId))}
                 onRename={s.listId ? (t) => renameList(doc, s.listId!, t) : undefined}
-                onAddPlace={(p) => {
-                  const newId = addItem(doc, s.key, { kind: "place", name: p.name, address: p.address, category: p.category, lat: p.lat, lng: p.lng, osmId: p.osmId });
+                onAddPlace={(p, index) => {
+                  const newId = addItem(doc, s.key, { kind: "place", name: p.name, address: p.address, category: p.category, lat: p.lat, lng: p.lng, osmId: p.osmId }, undefined, index);
                   setSelectedId(newId);
                   if (!near) updateMeta(doc, { center: [p.lng, p.lat] });
                 }}
-                onAddNote={(text) => addItem(doc, s.key, { kind: "note", name: text })}
+                onAddNote={(text, index) => addItem(doc, s.key, { kind: "note", name: text }, undefined, index)}
                 onChange={(itemId, patch) => updateItem(doc, itemId, patch)}
                 onDelete={(itemId) => removeItem(doc, itemId)}
               />

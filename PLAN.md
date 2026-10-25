@@ -84,3 +84,4 @@ Hosted at **adityajain.ca/travelplanner** by the `travelplanner` Cloudflare Work
 - Photo.tsx snaps old non-standard Wikimedia widths (e.g. 320) to standard ones and falls back to the original file; old namesake Wikipedia covers ("X (supermarket)") get replaced automatically.
 - Picker quality: Unsplash via Worker proxy (/api/photos, secret UNSPLASH_ACCESS_KEY, edge-cached 1 day, download tracking on pick); Wikipedia only for the place's own article; Commons/Openverse limited to >=1400px landscape photos and non-chart titles. Pointer cursor restored on buttons (Tailwind v4 default).
 - Unsplash attribution: linked "Photo by <name> on Unsplash" under every picker tile, on the cover, in the expanded card and in map popups (PhotoCredit.tsx).
+- Insert between stops: hover "+" in the gap/leg row opens an inline search; addItem takes an index.
