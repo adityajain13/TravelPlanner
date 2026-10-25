@@ -29,9 +29,9 @@
   "send_email": [{ "name": "EMAIL" }],
 
   "vars": {
-    // Comma-separated emails allowed to log in. Set to your Gmail.
-    "ALLOWED_EMAILS": "",
     "MAIL_FROM": "trips@adityajain.ca"
   }
-  // Secret (not in this file): SHARE_SECRET  →  npx wrangler secret put SHARE_SECRET
+  // Secrets (set in the Cloudflare dashboard → Workers → travelplanner → Settings → Variables and Secrets):
+  //   ALLOWED_EMAILS  comma-separated emails allowed to log in
+  //   SHARE_SECRET    any long random string (signs share links)
 }

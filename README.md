@@ -24,15 +24,23 @@ In local dev, login emails aren't sent; `wrangler dev` prints the code in its ou
 
 Restrict all three to the referrers `adityajain.ca/*` and `localhost`.
 
-## First deploy
+## First deploy (one time, ~10 minutes)
 
-1. **Database:** `npx wrangler d1 create travelplanner` → paste the `database_id` into `wrangler.jsonc`, then `npm run db:migrate`.
-2. **Allow-list:** set `ALLOWED_EMAILS` in `wrangler.jsonc` to the email(s) that may log in. That address must be a verified destination in Email Routing (your forwarding Gmail already is).
-3. **Share-link secret:** `npx wrangler secret put SHARE_SECRET` (paste any long random string).
-4. **Email sending:** in the Cloudflare dashboard, enable Email Sending for `adityajain.ca` so the Worker can send from `trips@adityajain.ca`.
-5. `npx wrangler login && npm run deploy`
+Every push to `main` deploys through GitHub Actions (`.github/workflows/deploy.yml`). One-time setup:
 
-The Worker claims `adityajain.ca/travelplanner*`, which beats the personal site's catch-all route.
+1. **API token:** Cloudflare dashboard → My Profile → API Tokens → Create Token → template **"Edit Cloudflare Workers"**. Add **Account → D1 → Edit** to it. Scope it to your account and the `adityajain.ca` zone.
+2. **Database:** Workers & Pages → D1 → Create → name `travelplanner`. Copy its **Database ID** into `wrangler.jsonc` (replacing the zeros) and commit.
+3. **GitHub secrets** (repo → Settings → Secrets and variables → Actions):
+   - `CLOUDFLARE_API_TOKEN`: the token from step 1
+   - `CLOUDFLARE_ACCOUNT_ID`: from the dashboard's account home, right sidebar
+   - `VITE_PROTOMAPS_KEY`, `VITE_MAPTILER_KEY`, and optionally `VITE_GOOGLE_PLACES_KEY`
+4. **Run it:** push, or Actions → Deploy → Run workflow. The first run creates the `travelplanner` Worker and the `adityajain.ca/travelplanner*` route.
+5. **Worker secrets:** Workers & Pages → travelplanner → Settings → Variables and Secrets. Add:
+   - `ALLOWED_EMAILS`: your Gmail
+   - `SHARE_SECRET`: any long random string
+6. **Email sending:** Email → Email Sending → enable it for `adityajain.ca`, so login codes can be sent from `trips@adityajain.ca`. Your Gmail must be a verified destination address in Email Routing, which it already is.
+
+Then open adityajain.ca/travelplanner and sign in.
 
 ## How data flows
 

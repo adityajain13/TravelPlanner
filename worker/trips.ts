@@ -25,9 +25,14 @@ interface TripRow {
 
 const enc = new TextEncoder();
 
+function secret(env: Env) {
+  if (!env.SHARE_SECRET) throw new Error("SHARE_SECRET is not set on the Worker");
+  return env.SHARE_SECRET;
+}
+
 async function makeShareToken(env: Env, tripId: string, role: Role, version: number) {
   const payload = `${tripId}.${role}.${version}`;
-  return `${b64url(enc.encode(payload))}.${await hmac(env.SHARE_SECRET, payload)}`;
+  return `${b64url(enc.encode(payload))}.${await hmac(secret(env), payload)}`;
 }
 
 export async function verifyShareToken(env: Env, token: string): Promise<{ tripId: string; role: Role } | null> {
@@ -39,7 +44,7 @@ export async function verifyShareToken(env: Env, token: string): Promise<{ tripI
   } catch {
     return null;
   }
-  if (!safeEqual(sig, await hmac(env.SHARE_SECRET, payload))) return null;
+  if (!safeEqual(sig, await hmac(secret(env), payload))) return null;
   const [tripId, role, v] = payload.split(".");
   if (role !== "view" && role !== "edit") return null;
   const row = await env.DB.prepare("SELECT share_version FROM trips WHERE id = ?").bind(tripId).first<{ share_version: number }>();
