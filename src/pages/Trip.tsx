@@ -1,4 +1,4 @@
-import { Suspense, lazy, useEffect, useMemo, useState } from "react";
+import { Suspense, lazy, useEffect, useMemo, useRef, useState } from "react";
 import { Link, Navigate, useParams } from "react-router-dom";
 import { useLiveQuery } from "dexie-react-hooks";
 import {
@@ -14,7 +14,13 @@ import {
   type DragStartEvent,
 } from "@dnd-kit/core";
 import { sortableKeyboardCoordinates } from "@dnd-kit/sortable";
-import { ArrowLeft, Eye, List, Map as MapIcon, Plus, Share2 } from "lucide-react";
+import { ArrowLeft, Camera, Eye, ImagePlus, List, Loader2, Map as MapIcon, Plus, Share2 } from "lucide-react";
+import { bestImage, coverFor } from "../lib/images";
+import { ImagePicker } from "../components/ImagePicker";
+import { RES_ICON, RES_SINGULAR } from "../components/Reservations";
+import { GENERIC_PLACE } from "../lib/geocode";
+import { edit } from "../lib/trips";
+import { parseISODate } from "../lib/dates";
 import { db } from "../lib/db";
 import { useSession } from "../lib/api";
 import { useSync } from "../lib/sync";
@@ -22,6 +28,7 @@ import { useTrip } from "../lib/useTrip";
 import { useTheme } from "../lib/theme";
 import { daysBetween } from "../lib/dates";
 import {
+  readTrip,
   addItem,
   addList,
   moveItem,
@@ -51,6 +58,8 @@ import { MODE_ICON, MODE_LABEL } from "../components/LegChip";
 import type { Reservation } from "../lib/trips";
 
 const ORPHAN = "orphan";
+const formatChip = (d: string) =>
+  new Intl.DateTimeFormat(undefined, { weekday: "short", month: "short", day: "numeric", timeZone: "UTC" }).format(parseISODate(d));
 const LOADING = "loading" as const;
 
 export function TripPage() {
@@ -63,7 +72,10 @@ export function TripPage() {
   const [dragging, setDragging] = useState<Item | null>(null);
   const [sharing, setSharing] = useState(false);
   const [tab, setTab] = useState<"plan" | "bookings" | "budget">("plan");
-  const [editingRes, setEditingRes] = useState<Reservation | null>(null);
+  const [editingRes, setEditingRes] = useState<Partial<Reservation> | null>(null);
+  const [pickingCover, setPickingCover] = useState(false);
+  const [photoFill, setPhotoFill] = useState<{ done: number; total: number; added: number } | null>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
   // Places a Wanderlog import couldn't locate (set by the importer for this session)
   const [unpinned, setUnpinned] = useState<string[]>(() => {
     try {
@@ -139,7 +151,7 @@ export function TripPage() {
         if (it.kind !== "place") continue;
         n++;
         if (it.lat == null || it.lng == null) continue;
-        if (!focus || s.key === focus) pins.push({ id: it.id, lat: it.lat, lng: it.lng, color: s.color, label: String(n) });
+        if (!focus || s.key === focus) pins.push({ id: it.id, lat: it.lat, lng: it.lng, color: s.color, label: String(n), name: it.name, image: it.image?.thumb });
         if (s.kind === "day" && prev) {
           const mode = it.travelMode ?? defaultMode;
           const from: [number, number] = [prev.lng!, prev.lat!];
@@ -154,7 +166,7 @@ export function TripPage() {
     if (!focus)
       for (const r of state.reservations)
         if (r.lat != null && r.lng != null && (r.type === "lodging" || r.type === "restaurant" || r.type === "other"))
-          pins.push({ id: `res:${r.id}`, lat: r.lat, lng: r.lng, color: "#e8ece9", label: r.type === "lodging" ? "H" : r.type === "restaurant" ? "R" : "•" });
+          pins.push({ id: `res:${r.id}`, lat: r.lat, lng: r.lng, color: "#e8ece9", label: r.type === "lodging" ? "H" : r.type === "restaurant" ? "R" : "•", name: r.title });
     return { sections, pins, legs };
   }, [state, focus]);
 
@@ -175,13 +187,37 @@ export function TripPage() {
     [view, legResults, focus],
   );
   const legsBySection = useMemo(() => {
-    const m = new Map<string, Map<string, { mode: TravelMode; state?: ReturnType<typeof legResults.get> }>>();
+    const m = new Map<string, Map<string, { mode: TravelMode; state?: ReturnType<typeof legResults.get>; from: [number, number]; to: [number, number] }>>();
     for (const l of view?.legs ?? []) {
       if (!m.has(l.section)) m.set(l.section, new Map());
-      m.get(l.section)!.set(l.toId, { mode: l.req.mode, state: legResults.get(l.req.key) });
+      m.get(l.section)!.set(l.toId, { mode: l.req.mode, state: legResults.get(l.req.key), from: l.req.from, to: l.req.to });
     }
     return m;
   }, [view, legResults]);
+
+  // Suggest a cover photo once, for editable trips that don't have one
+  const coverTried = useRef(false);
+  useEffect(() => {
+    if (!doc || !state || readOnly || state.meta.cover || coverTried.current || !navigator.onLine) return;
+    const dest = state.meta.destination || state.meta.title;
+    if (!dest) return;
+    coverTried.current = true;
+    coverFor(dest).then((cover) => cover && !readTrip(doc).meta.cover && updateMeta(doc, { cover }));
+  }, [doc, state, readOnly]);
+
+  async function autofillPhotos() {
+    if (!doc || !state) return;
+    // Generic stops ("Parking lot", "Rest stop") would just get a random photo
+    const todo = state.items.filter((i) => i.kind === "place" && !i.image && !GENERIC_PLACE.test(i.name.trim()));
+    setPhotoFill({ done: 0, total: todo.length, added: 0 });
+    let added = 0;
+    for (const [n, it] of todo.entries()) {
+      const img = await bestImage(it.name, it.lat != null && it.lng != null ? [it.lng, it.lat] : undefined).catch(() => null);
+      if (img) (added++, updateItem(doc, it.id, { image: img }));
+      setPhotoFill({ done: n + 1, total: todo.length, added });
+    }
+    setTimeout(() => setPhotoFill(null), 2500);
+  }
 
   if (row !== LOADING && !shareToken && auth === "out") return <Navigate to="/login" replace />;
   if (!ready || row === LOADING) return <div className="grid h-full place-items-center text-muted">Loading…</div>;
@@ -242,59 +278,86 @@ export function TripPage() {
           mobileView === "map" ? "max-md:hidden" : "flex-1 md:flex-none"
         }`}
       >
-        <header className="border-b border-line px-5 pt-[max(env(safe-area-inset-top),0.75rem)] pb-4">
-          <div className="mb-3 flex items-center justify-between">
-            <Link to="/" className="flex items-center gap-1.5 text-sm text-muted hover:text-fg">
-              <ArrowLeft className="size-4" /> Trips
-            </Link>
-            <div className="flex items-center gap-1">
-              {canSync && <SyncBadge status={syncStatus} />}
-              {isOwner && (
-                <button
-                  onClick={() => setSharing(true)}
-                  className="ml-2 flex items-center gap-1.5 rounded-full bg-surface-2 px-3 py-1.5 text-xs font-medium hover:text-accent"
-                >
-                  <Share2 className="size-3.5" /> Share
-                </button>
+        <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto pb-28 md:pb-10">
+        <header className="relative">
+          <div className="relative h-52 overflow-hidden bg-surface-2 md:h-60">
+            {state.meta.cover ? (
+              <img src={state.meta.cover.url} alt="" referrerPolicy="no-referrer" className="absolute inset-0 size-full object-cover" />
+            ) : (
+              <div className="absolute inset-0 bg-[radial-gradient(120%_90%_at_20%_10%,rgb(95_214_139/.35),transparent_60%),radial-gradient(90%_80%_at_90%_30%,rgb(106_168_255/.3),transparent_60%)]" />
+            )}
+            <div className="absolute inset-0 bg-gradient-to-b from-black/55 via-black/5 to-black/85" />
+            <div className="absolute inset-x-0 top-0 flex items-center justify-between px-4 pt-[max(env(safe-area-inset-top),0.75rem)] text-white">
+              <Link to="/" className="flex items-center gap-1.5 rounded-full bg-black/30 px-3 py-1.5 text-sm backdrop-blur hover:bg-black/45">
+                <ArrowLeft className="size-4" /> Trips
+              </Link>
+              <div className="flex items-center gap-1.5 [&>*]:backdrop-blur">
+                {canSync && (
+                  <span className="rounded-full bg-black/30 px-2.5 py-1.5">
+                    <SyncBadge status={syncStatus} />
+                  </span>
+                )}
+                {isOwner && (
+                  <button onClick={() => setSharing(true)} className="flex items-center gap-1.5 rounded-full bg-black/30 px-3 py-1.5 text-xs font-medium hover:bg-black/45">
+                    <Share2 className="size-3.5" /> Share
+                  </button>
+                )}
+                <span className="rounded-full bg-black/30 text-white [&_button]:text-white/90">
+                  <ThemeToggle theme={theme} toggle={toggleTheme} />
+                </span>
+              </div>
+            </div>
+            {!readOnly && (
+              <button
+                onClick={() => setPickingCover(true)}
+                className="absolute right-4 bottom-4 flex items-center gap-1.5 rounded-full bg-black/35 px-3 py-1.5 text-xs text-white/90 backdrop-blur hover:bg-black/50"
+                title="Change cover photo"
+              >
+                <ImagePlus className="size-3.5" /> Cover
+              </button>
+            )}
+            <div className="absolute inset-x-0 bottom-0 px-5 pr-28 pb-4 text-white">
+              {readOnly && (
+                <p className="mb-1.5 inline-flex items-center gap-1.5 rounded-full bg-black/35 px-3 py-1 text-xs text-white/85">
+                  <Eye className="size-3.5" /> View only
+                </p>
               )}
-              <ThemeToggle theme={theme} toggle={toggleTheme} />
+              <input
+                disabled={readOnly}
+                key={state.meta.title}
+                defaultValue={state.meta.title}
+                onBlur={(e) => e.target.value.trim() && e.target.value !== state.meta.title && updateMeta(doc, { title: e.target.value.trim() })}
+                onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()}
+                className="w-full bg-transparent font-display text-[2rem] leading-tight text-white outline-none [text-shadow:0_1px_12px_rgb(0_0_0/.5)]"
+              />
+              <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-sm text-white/90 [color-scheme:dark]">
+                <input
+                  disabled={readOnly}
+                  type="date"
+                  value={state.meta.startDate}
+                  onChange={(e) => e.target.value && updateMeta(doc, { startDate: e.target.value, ...(e.target.value > state.meta.endDate ? { endDate: e.target.value } : {}) })}
+                  className="rounded-md bg-white/10 px-2 py-1 outline-none backdrop-blur"
+                />
+                <span>→</span>
+                <input
+                  disabled={readOnly}
+                  type="date"
+                  value={state.meta.endDate}
+                  min={state.meta.startDate}
+                  onChange={(e) => e.target.value && updateMeta(doc, { endDate: e.target.value })}
+                  className="rounded-md bg-white/10 px-2 py-1 outline-none backdrop-blur"
+                />
+              </div>
             </div>
           </div>
-          {readOnly && (
-            <p className="mb-2 inline-flex items-center gap-1.5 rounded-full bg-surface-2 px-3 py-1 text-xs text-muted">
-              <Eye className="size-3.5" /> View only
-            </p>
-          )}
-          <input
-            disabled={readOnly}
-            key={state.meta.title}
-            defaultValue={state.meta.title}
-            onBlur={(e) => e.target.value.trim() && e.target.value !== state.meta.title && updateMeta(doc, { title: e.target.value.trim() })}
-            onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()}
-            className="w-full bg-transparent font-display text-3xl leading-tight outline-none"
-          />
-          <div className="mt-2 flex flex-wrap items-center gap-2 text-sm text-muted">
-            <input
-            disabled={readOnly}
-              type="date"
-              value={state.meta.startDate}
-              onChange={(e) => e.target.value && updateMeta(doc, { startDate: e.target.value, ...(e.target.value > state.meta.endDate ? { endDate: e.target.value } : {}) })}
-              className="rounded-md bg-surface-2 px-2 py-1 outline-none"
-            />
-            <span>→</span>
-            <input
-            disabled={readOnly}
-              type="date"
-              value={state.meta.endDate}
-              min={state.meta.startDate}
-              onChange={(e) => e.target.value && updateMeta(doc, { endDate: e.target.value })}
-              className="rounded-md bg-surface-2 px-2 py-1 outline-none"
-            />
-          </div>
-          <div className="mt-3">
+          <div className="flex flex-wrap items-center gap-2 px-5 pt-3">
             <OfflineMapButton tripId={id!} state={state} />
           </div>
-          <nav className="mt-4 -mb-4 flex gap-5 text-sm">
+        </header>
+
+        {/* Tabs + day jump chips stay pinned while the plan scrolls */}
+        <div className="sticky top-0 z-30 border-b border-line bg-bg/95 px-5 backdrop-blur">
+          <nav className="flex gap-5 pt-3 text-sm">
             {(
               [
                 ["plan", "Itinerary"],
@@ -311,17 +374,29 @@ export function TripPage() {
               </button>
             ))}
           </nav>
+          {tab === "plan" && view.sections.some((s) => s.kind === "day") && (
+            <div className="flex gap-1.5 overflow-x-auto pt-1 pb-2.5 [scrollbar-width:none]">
+              {view.sections
+                .filter((s) => s.kind === "day")
+                .map((s) => (
+                  <button
+                    key={s.key}
+                    onClick={() => document.getElementById(`sec-${s.key}`)?.scrollIntoView({ behavior: "smooth", block: "start" })}
+                    className="flex shrink-0 items-center gap-1.5 rounded-full border border-line px-2.5 py-1 text-xs text-muted hover:border-accent hover:text-fg"
+                  >
+                    <span className="size-2 rounded-full" style={{ background: s.color }} />
+                    {formatChip(s.date!)}
+                  </button>
+                ))}
+            </div>
+          )}
           {focus && tab === "plan" && (
-            <button
-              onClick={() => setFocus(null)}
-              className="mt-3 flex items-center gap-1.5 rounded-full bg-accent/15 px-3 py-1 text-xs font-medium text-accent"
-            >
-              <Eye className="size-3.5" /> Showing one section on the map · show all
+            <button onClick={() => setFocus(null)} className="mb-2.5 flex items-center gap-1.5 rounded-full bg-accent/15 px-3 py-1 text-xs font-medium text-accent">
+              <Eye className="size-3.5" /> Showing one day on the map · show all
             </button>
           )}
-        </header>
-
-        <div className="min-h-0 flex-1 overflow-y-auto px-3 pb-28 md:pb-10">
+        </div>
+        <div className="px-3">
           {tab === "bookings" && <ReservationsPanel doc={doc} state={state} readOnly={readOnly} />}
           {tab === "budget" && <BudgetPanel doc={doc} state={state} readOnly={readOnly} />}
           {tab === "plan" && (<>
@@ -343,7 +418,34 @@ export function TripPage() {
               <p className="mt-1 text-xs text-muted">{unpinned.join(" · ")}</p>
             </div>
           )}
-          <div className="mx-2 mt-3 flex items-center gap-1.5 text-xs text-muted">
+          {!readOnly && (
+            <div className="mx-2 mt-4 rounded-xl border border-line bg-surface p-3">
+              <p className="mb-2 text-xs font-semibold tracking-wide text-muted uppercase">Reservations</p>
+              <div className="flex flex-wrap gap-1.5">
+                {(["flight", "lodging", "car", "train", "restaurant", "other"] as const).map((t) => (
+                  <button
+                    key={t}
+                    onClick={() => setEditingRes({ type: t, startDate: state.meta.startDate })}
+                    className="flex items-center gap-1.5 rounded-lg bg-surface-2 px-2.5 py-1.5 text-xs text-muted hover:text-fg"
+                  >
+                    {RES_ICON[t]} {RES_SINGULAR[t]}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+          <div className="mx-2 mt-3 flex flex-wrap items-center gap-1.5 text-xs text-muted">
+            {!readOnly && (
+              <button
+                onClick={autofillPhotos}
+                disabled={!!photoFill || !navigator.onLine}
+                className="mr-1 flex items-center gap-1.5 rounded-full border border-line px-2.5 py-1 hover:border-accent hover:text-fg disabled:opacity-60"
+                title="Find a photo for every place without one (Wikipedia matches only)"
+              >
+                {photoFill ? <Loader2 className="size-3.5 animate-spin" /> : <Camera className="size-3.5" />}
+                {photoFill ? `Photos ${photoFill.done}/${photoFill.total} · ${photoFill.added} added` : "Auto-fill photos"}
+              </button>
+            )}
             <span>Getting around</span>
             {MODES.map((m) => (
               <button
@@ -368,6 +470,7 @@ export function TripPage() {
                 near={near}
                 readOnly={readOnly}
                 currency={state.meta.currency ?? "CAD"}
+                searchContext={state.meta.destination}
                 countryCode={state.meta.countryCode}
                 chips={s.kind === "day" ? dayChips(state.reservations, s.date!) : []}
                 legs={legsBySection.get(s.key)}
@@ -409,6 +512,7 @@ export function TripPage() {
           </p>
           </>)}
         </div>
+        </div>
       </aside>
 
       {/* Map */}
@@ -426,6 +530,14 @@ export function TripPage() {
         </Suspense>
       </main>
 
+      {pickingCover && (
+        <ImagePicker
+          initialQuery={state.meta.destination || state.meta.title}
+          current={state.meta.cover}
+          onPick={(cover) => (cover ? updateMeta(doc, { cover }) : edit(doc, () => doc.getMap("meta").delete("cover")))}
+          onClose={() => setPickingCover(false)}
+        />
+      )}
       {editingRes && <ReservationForm doc={doc} state={state} initial={editingRes} onClose={() => setEditingRes(null)} />}
       {sharing && id && <ShareDialog tripId={id} onClose={() => setSharing(false)} />}
 

@@ -25,6 +25,15 @@ export const RES_LABEL: Record<ReservationType, string> = {
   other: "Other",
 };
 
+export const RES_SINGULAR: Record<ReservationType, string> = {
+  flight: "Flight",
+  lodging: "Lodging",
+  car: "Rental car",
+  train: "Train / bus",
+  restaurant: "Restaurant",
+  other: "Other",
+};
+
 /** Field labels per type; a missing label hides that field. */
 const FIELDS: Record<ReservationType, Partial<Record<"title" | "from" | "to" | "address" | "start" | "end", string>>> = {
   flight: { title: "Flight (e.g. AC1 Air Canada)", from: "From (airport)", to: "To (airport)", start: "Departs", end: "Arrives" },
@@ -55,7 +64,7 @@ export function ReservationsPanel({ doc, state, readOnly }: { doc: Y.Doc; state:
             >
               <Plus className="size-3.5" />
               {RES_ICON[t]}
-              {RES_LABEL[t].replace(/s$/, "").replace(/ & buses$/, " / bus")}
+              {RES_SINGULAR[t]}
             </button>
           ))}
         </div>
@@ -186,7 +195,7 @@ export function ReservationForm({ doc, state, initial, onClose }: { doc: Y.Doc; 
         <div className="flex items-center justify-between">
           <h2 className="flex items-center gap-2 font-display text-2xl">
             <span className="text-muted">{RES_ICON[type]}</span>
-            {initial.id ? "Edit" : "Add"} {RES_LABEL[type].toLowerCase().replace(/s$/, "").replace(/ & buses$/, " / bus")}
+            {initial.id ? "Edit" : "Add"} {RES_SINGULAR[type].toLowerCase()}
           </h2>
           <button type="button" onClick={onClose} className="text-muted hover:text-fg" aria-label="Close">
             <X className="size-5" />

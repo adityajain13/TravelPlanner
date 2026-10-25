@@ -16,6 +16,8 @@ export interface Pin {
   lng: number;
   color: string;
   label: string;
+  name?: string;
+  image?: string; // thumbnail URL for the popup
 }
 
 export interface Route {
@@ -118,13 +120,35 @@ export function TripMap({ pins, routes, selectedId, onSelect, theme, fitKey, fal
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fitKey, pins.length > 0]);
 
-  // Follow selection
+  // Follow selection, with a small photo card above the pin (like Wanderlog's map popups)
+  const popup = useRef<maplibregl.Popup | null>(null);
   useEffect(() => {
     const map = mapRef.current;
     const p = pins.find((x) => x.id === selectedId);
-    if (map && p) map.easeTo({ center: [p.lng, p.lat], zoom: Math.max(map.getZoom(), 14), duration: 500 });
+    popup.current?.remove();
+    popup.current = null;
+    if (!map || !p) return;
+    map.easeTo({ center: [p.lng, p.lat], zoom: Math.max(map.getZoom(), 14), duration: 500 });
+    if (p.name) {
+      const el = document.createElement("div");
+      el.className = "tp-popup";
+      if (p.image) {
+        const img = document.createElement("img");
+        img.src = p.image;
+        img.referrerPolicy = "no-referrer";
+        img.alt = "";
+        el.append(img);
+      }
+      const t = document.createElement("p");
+      t.textContent = p.name; // textContent: names come from user/OSM data
+      el.append(t);
+      popup.current = new maplibregl.Popup({ closeButton: false, closeOnClick: false, offset: [0, -38], maxWidth: "220px", className: "tp-popup-wrap" })
+        .setLngLat([p.lng, p.lat])
+        .setDOMContent(el)
+        .addTo(map);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedId]);
+  }, [selectedId, pins.find((x) => x.id === selectedId)?.image]);
 
   if (!PROTOMAPS_KEY) {
     return (
@@ -191,30 +215,53 @@ function addOverlay(map: maplibregl.Map) {
   routeLayer("solid", { "line-width": 3.5 });
   routeLayer("dotted", { "line-width": 3, "line-dasharray": [0.1, 2] });
   routeLayer("dashed", { "line-width": 2, "line-opacity": 0.6, "line-dasharray": [1.5, 1.5] });
+  if (!map.hasImage("tp-pin")) map.addImage("tp-pin", pinImage(), { sdf: true, pixelRatio: 2 });
+  // Wanderlog-style teardrop pins: SDF icon tinted per day, number on the head, selected one larger
   map.addLayer({
     id: "trip-pins",
-    type: "circle",
-    source: "trip-pins",
-    paint: {
-      "circle-color": ["get", "color"],
-      "circle-radius": ["case", ["get", "selected"], 13, 10],
-      "circle-stroke-color": ["case", ["get", "selected"], "#ffffff", "#0e1110"],
-      "circle-stroke-width": ["case", ["get", "selected"], 3, 2],
-    },
-  });
-  map.addLayer({
-    id: "trip-pin-labels",
     type: "symbol",
     source: "trip-pins",
     layout: {
+      "icon-image": "tp-pin",
+      "icon-anchor": "bottom",
+      "icon-size": ["case", ["get", "selected"], 1.2, 0.95],
+      "icon-allow-overlap": true,
+      "icon-ignore-placement": true,
+      "symbol-sort-key": ["case", ["get", "selected"], 2, 1],
       "text-field": ["get", "label"],
       "text-font": ["Noto Sans Medium"],
-      "text-size": 11,
+      "text-size": ["case", ["get", "selected"], 13, 11],
+      "text-anchor": "center",
+      "text-offset": ["case", ["get", "selected"], ["literal", [0, -1.62]], ["literal", [0, -1.66]]],
       "text-allow-overlap": true,
       "text-ignore-placement": true,
     },
-    paint: { "text-color": "#0e1110" },
+    paint: {
+      "icon-color": ["get", "color"],
+      "icon-halo-color": "rgba(0,0,0,0.55)",
+      "icon-halo-width": 1,
+      "text-color": "#0e1110",
+    },
   });
+}
+
+/** White teardrop on a transparent canvas; used as an SDF so MapLibre can colour it per pin. */
+function pinImage() {
+  const w = 56;
+  const h = 68;
+  const c = document.createElement("canvas");
+  c.width = w;
+  c.height = h;
+  const g = c.getContext("2d")!;
+  g.fillStyle = "#fff";
+  g.beginPath();
+  g.moveTo(28, 66);
+  g.bezierCurveTo(26, 59, 21, 54, 15, 48);
+  g.arc(28, 27, 24, Math.PI * 0.8, Math.PI * 0.2);
+  g.bezierCurveTo(35, 54, 30, 59, 28, 66);
+  g.closePath();
+  g.fill();
+  return g.getImageData(0, 0, w, h);
 }
 
 function pushData(map: maplibregl.Map, d: Pick<Props, "pins" | "routes" | "selectedId">) {

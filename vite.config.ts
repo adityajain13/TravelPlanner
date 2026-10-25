@@ -55,6 +55,16 @@ export default defineConfig({
         maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
         runtimeCaching: [
           {
+            // Place photos (Wikipedia / Commons / Openverse thumbnails) stay available offline
+            urlPattern: ({ url }) => url.hostname === "upload.wikimedia.org" || (url.hostname === "api.openverse.org" && url.pathname.endsWith("/thumb/")),
+            handler: "CacheFirst",
+            options: {
+              cacheName: "place-photos",
+              expiration: { maxEntries: 1500, maxAgeSeconds: 60 * 60 * 24 * 365 },
+              cacheableResponse: { statuses: [0, 200] },
+            },
+          },
+          {
             // Vector basemap tiles: anything you've looked at online stays available offline
             urlPattern: ({ url }) => url.hostname === "api.protomaps.com",
             handler: "CacheFirst",

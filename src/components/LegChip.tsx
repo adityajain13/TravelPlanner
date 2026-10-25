@@ -12,7 +12,9 @@ export const MODE_ICON: Record<TravelMode | "flight", React.ReactNode> = {
 export const MODE_LABEL: Record<TravelMode, string> = { drive: "Drive", walk: "Walk", bike: "Bike", transit: "Transit" };
 
 /** The travel row between two stops: "🚗 21 min · 8.7 km". Tap to change how you get there. */
-export function LegChip({ mode, state, readOnly, onMode }: { mode: TravelMode; state?: LegState; readOnly?: boolean; onMode: (m: TravelMode) => void }) {
+const GMAPS_MODE: Record<TravelMode, string> = { drive: "driving", walk: "walking", bike: "bicycling", transit: "transit" };
+
+export function LegChip({ mode, state, readOnly, onMode, from, to }: { mode: TravelMode; state?: LegState; readOnly?: boolean; onMode: (m: TravelMode) => void; from?: [number, number]; to?: [number, number] }) {
   const [open, setOpen] = useState(false);
   const res = typeof state === "object" ? state : null;
   const shownMode = res?.mode ?? mode;
@@ -39,6 +41,16 @@ export function LegChip({ mode, state, readOnly, onMode }: { mode: TravelMode; s
         {state === "loading" ? <Loader2 className="size-3.5 animate-spin" /> : MODE_ICON[shownMode]}
         {text}
       </button>
+      {from && to && shownMode !== "flight" && (
+        <a
+          href={`https://www.google.com/maps/dir/?api=1&origin=${from[1]},${from[0]}&destination=${to[1]},${to[0]}&travelmode=${GMAPS_MODE[mode]}`}
+          target="_blank"
+          rel="noreferrer"
+          className="shrink-0 text-muted/80 underline-offset-2 hover:text-fg hover:underline"
+        >
+          Directions
+        </a>
+      )}
       {steps && steps.length > 0 && (
         <span className="truncate text-muted/80">
           {steps.map((s) => (s.mode === "WALK" ? `walk ${s.minutes}m` : `${s.name ?? s.mode.toLowerCase()} ${s.minutes}m`)).join(" → ")}
