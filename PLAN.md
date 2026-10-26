@@ -118,3 +118,4 @@ Hosted at **adityajain.ca/travelplanner** by the `travelplanner` Cloudflare Work
 - ChipScroller: day chip row scrolls with the mouse wheel, drag, and arrow buttons; edge fades.
 - Hide itinerary: PanelLeft toggle at the map's top-left (desktop) hides contents + plan for a full-width map; remembered (tp-plan-hidden); map resizes via ResizeObserver.
 - Oct 25: day chips frame the map on that day's pins (75% rule); chip-row arrows centred on the chips.
+- Oct 25: AMOLED black theme (toggle cycles dark → black → light; black map background too).
