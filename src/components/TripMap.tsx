@@ -9,6 +9,7 @@ import workerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?url";
 import { Layers, Map as MapIcon, Satellite } from "lucide-react";
 import { buildStyle, MAPTILER_KEY, PROTOMAPS_KEY, type MapMode } from "../lib/mapStyle";
 import type { Theme } from "../lib/theme";
+import { drawPin, PIN, type Glyph } from "../lib/pinArt";
 
 export interface Pin {
   id: string;
@@ -20,7 +21,7 @@ export interface Pin {
   image?: string; // thumbnail URL for the popup
   unsplash?: { name: string; author?: string }; // photographer credit for Unsplash photos
   /** Draw an icon on the pin's head instead of the label text. */
-  glyph?: "plane";
+  glyph?: Glyph;
 }
 
 export interface Route {
@@ -224,7 +225,7 @@ export function TripMap({ pins, routes, selectedId, onSelect, theme, fitKey, fal
         c.style.cssText = "display:block;font-size:10px;opacity:.7;margin-top:2px";
         el.append(c);
       }
-      popup.current = new maplibregl.Popup({ closeButton: false, closeOnClick: false, offset: [0, -38], maxWidth: "220px", className: "tp-popup-wrap" })
+      popup.current = new maplibregl.Popup({ closeButton: false, closeOnClick: false, offset: [0, -44], maxWidth: "220px", className: "tp-popup-wrap" })
         .setLngLat([p.lng, p.lat])
         .setDOMContent(el)
         .addTo(map);
@@ -308,6 +309,7 @@ function addOverlay(map: maplibregl.Map) {
     layout: {
       "icon-image": ["concat", "tp-pin|", ["get", "color"], "|", ["get", "label"], "|", ["get", "glyph"]],
       "icon-anchor": "bottom",
+      "icon-offset": [0, PIN.h - PIN.tipY], // the tip, not the shadow under it, sits on the spot
       "icon-size": ["case", ["get", "selected"], 1.2, 0.95],
       "icon-allow-overlap": true,
       "icon-ignore-placement": true,
@@ -321,50 +323,12 @@ function onMissingImage(map: maplibregl.Map) {
   map.on("styleimagemissing", (e: { id: string }) => {
     if (!e.id.startsWith("tp-pin|") || map.hasImage(e.id)) return;
     const [, color, label, glyph] = e.id.split("|");
-    map.addImage(e.id, pinImage(color, label, glyph), { pixelRatio: 2 });
+    map.addImage(e.id, pinImage(color, label, glyph), { pixelRatio: 3 });
   });
 }
 
-/** A teardrop in the pin's colour with a dark outline and its number (or a plane) on the head. */
-function pinImage(color = "#5fd68b", label = "", glyph = "") {
-  const w = 56;
-  const h = 68;
-  const c = document.createElement("canvas");
-  c.width = w;
-  c.height = h;
-  const g = c.getContext("2d")!;
-  g.beginPath();
-  g.moveTo(28, 66);
-  g.bezierCurveTo(26, 59, 21, 54, 15, 48);
-  g.arc(28, 27, 24, Math.PI * 0.8, Math.PI * 0.2);
-  g.bezierCurveTo(35, 54, 30, 59, 28, 66);
-  g.closePath();
-  g.fillStyle = color;
-  g.fill();
-  g.lineWidth = 2;
-  g.strokeStyle = "rgba(0,0,0,0.55)";
-  g.stroke();
-  if (glyph === "plane") {
-    g.save();
-    g.translate(14, 13);
-    g.scale(28 / 24, 28 / 24);
-    g.strokeStyle = "#0e1110";
-    g.lineWidth = 2;
-    g.lineJoin = "round";
-    g.lineCap = "round";
-    g.stroke(new Path2D(PLANE));
-    g.restore();
-  } else if (label) {
-    g.fillStyle = "#0e1110";
-    g.font = `600 ${label.length > 2 ? 18 : 23}px "Source Sans 3 Variable", "Source Sans 3", system-ui, sans-serif`;
-    g.textAlign = "center";
-    g.textBaseline = "middle";
-    g.fillText(label, 28, 28.5);
-  }
-  return g.getImageData(0, 0, w, h);
-}
-
-const PLANE = "M17.8 19.2 16 11l3.5-3.5C21 6 21.5 4 21 3c-1-.5-3 0-4.5 1.5L13 8 4.8 6.2c-.5-.1-.9.1-1.1.5l-.3.5c-.2.5-.1 1 .3 1.3L9 12l-2 3H4l-1 1 3 2 2 3 1-1v-3l3-2 3.5 5.3c.3.4.8.5 1.3.3l.5-.2c.4-.3.6-.7.5-1.2z";
+// Drawn at 3x so the enlarged selected pin stays sharp on retina screens
+const pinImage = (color: string, label: string, glyph: string) => drawPin(color, label, glyph, 3);
 
 function pushData(map: maplibregl.Map, d: Pick<Props, "pins" | "routes" | "selectedId">) {
   const pinSrc = map.getSource("trip-pins") as GeoJSONSource | undefined;
@@ -373,7 +337,7 @@ function pushData(map: maplibregl.Map, d: Pick<Props, "pins" | "routes" | "selec
   // Make each pin's image before the data needs it (styleimagemissing alone left them blank)
   for (const p of d.pins) {
     const id = `tp-pin|${p.color}|${p.glyph ? "" : p.label}|${p.glyph ?? ""}`;
-    if (!map.hasImage(id)) map.addImage(id, pinImage(p.color, p.glyph ? "" : p.label, p.glyph ?? ""), { pixelRatio: 2 });
+    if (!map.hasImage(id)) map.addImage(id, pinImage(p.color, p.glyph ? "" : p.label, p.glyph ?? ""), { pixelRatio: 3 });
   }
   pinSrc.setData({
     type: "FeatureCollection",
