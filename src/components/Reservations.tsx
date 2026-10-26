@@ -1,4 +1,4 @@
-import { airportsNow, flightAirports, flightInstant, localToUtc } from "../lib/airports";
+import { airportsNow, flightAirports, localToUtc, travelInstant } from "../lib/airports";
 import { useState } from "react";
 import { CurrencySelect } from "./CurrencySelect";
 import { DateField } from "./DatePicker";
@@ -433,12 +433,13 @@ export function dayChips(reservations: Reservation[], date: string) {
   const inst = new Map<(typeof chips)[number], number>();
   let dayZone: { tz?: string; lng: number } | undefined;
   for (const c of chips) {
-    if (c.r.type !== "flight" || !db) continue;
-    const dep = c.r.startDate === date && c.label.includes(" departs");
-    const ms = flightInstant(c.r, dep ? "dep" : "arr");
+    if (!["flight", "train", "car"].includes(c.r.type)) continue;
+    const dep = c.r.startDate === date && !/ arrives| Drop off/.test(" " + c.label);
+    const ms = travelInstant(c.r, dep ? "dep" : "arr");
     if (ms != null) inst.set(c, ms);
-    const ends = flightAirports(c.r, db);
-    if (ends && !dayZone) dayZone = ends[dep ? 0 : 1];
+    const ends = c.r.type === "flight" && db ? flightAirports(c.r, db) : null;
+    const here = ends ? ends[dep ? 0 : 1] : dep ? c.r.fromAt : c.r.toAt;
+    if (here && !dayZone) dayZone = here;
   }
   if (dayZone) for (const c of chips) if (!inst.has(c) && !/^[!~]/.test(c.at)) inst.set(c, localToUtc(date, c.time ?? c.at, dayZone));
   const rank = (c: (typeof chips)[number]) => (c.at.startsWith("!") ? 0 : c.at.startsWith("~") ? 2 : 1);

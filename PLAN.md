@@ -134,3 +134,4 @@ Hosted at **adityajain.ca/travelplanner** by the `travelplanner` Cloudflare Work
 - Oct 26: photo picker shows the place's Google Maps photos first (googlePhotos in images.ts); pasted links preview and need 'Use image', with an error if it isn't an image.
 - Oct 26: a stop's new photo is applied to every stop at the same place (samePlace: Google/OSM id or same name within 150 m); new duplicates reuse it.
 - Oct 26: flights ordered by real instants using each airport's IANA time zone (airports.json now carries tz); day chips, reservation list and airport legs use it.
+- Oct 26: trains/buses/cars: from/to geocoded in the background with their IANA zone (@photostructure/tz-lookup, lazy chunk), saved as fromAt/toAt; sorting uses travelInstant for all of them.

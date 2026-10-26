@@ -133,3 +133,26 @@ export function flightInstant(r: Reservation, which: "dep" | "arr") {
   if (!ends || !date) return undefined;
   return localToUtc(date, which === "dep" ? r.startTime : r.endTime, ends[which === "dep" ? 0 : 1]);
 }
+
+/**
+ * Real instant of any booking's start/end that crosses time zones: flights by their airports,
+ * trains/buses/cars by their looked-up stations (fromAt/toAt). Undefined when not known.
+ */
+export function travelInstant(r: Reservation, which: "dep" | "arr") {
+  if (r.type === "flight") return flightInstant(r, which);
+  const end = which === "dep" ? r.fromAt : r.toAt;
+  const text = which === "dep" ? r.from : r.to;
+  const date = which === "dep" ? r.startDate : (r.endDate ?? r.startDate);
+  if (!end || !date || end.q !== (text ?? "").trim()) return undefined;
+  return localToUtc(date, which === "dep" ? r.startTime : r.endTime, end);
+}
+
+/** IANA time zone at a point (the lookup table loads on first use). */
+export async function zoneAt(lat: number, lng: number): Promise<string | undefined> {
+  try {
+    const { default: tzlookup } = await import("@photostructure/tz-lookup");
+    return tzlookup(lat, lng);
+  } catch {
+    return undefined;
+  }
+}
