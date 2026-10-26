@@ -60,7 +60,7 @@ import {
 } from "../lib/trips";
 import { dayColor, LIST_COLOR } from "../lib/colors";
 import { RES_GLYPH } from "../lib/pinArt";
-import { flightAirports, flightArc, loadAirports, type Airport, type AirportDb } from "../lib/airports";
+import { flightAirports, flightArc, flightInstant, loadAirports, type Airport, type AirportDb } from "../lib/airports";
 import type { Pin, Route } from "../components/TripMap";
 // MapLibre is the heaviest dependency; load it after the plan panel is on screen.
 const TripMap = lazy(() => import("../components/TripMap").then((m) => ({ default: m.TripMap })));
@@ -255,14 +255,14 @@ export function TripPage() {
       // connection, not where the day continues; likewise that onward flight isn't "leaving" from a stop.
       const todayOut = s.kind === "day" ? flightsOn.filter((f) => f.r.startDate === s.date) : [];
       const todayIn = s.kind === "day" ? flightsOn.filter((f) => f.arrDate === s.date) : [];
-      const connects = (inb: Flight, out: Flight) => inb !== out && out.dep.code === inb.arr.code && (timeOf(out.r.startTime) ?? "99") >= (timeOf(inb.r.endTime) ?? "00");
+      const connects = (inb: Flight, out: Flight) => inb !== out && out.dep.code === inb.arr.code && (flightInstant(out.r, "dep") ?? 0) >= (flightInstant(inb.r, "arr") ?? 0);
       const landing = todayIn
         .filter((f) => !todayOut.some((o) => connects(f, o)))
-        .sort((a, b) => (timeOf(a.r.endTime) ?? "").localeCompare(timeOf(b.r.endTime) ?? ""))
+        .sort((a, b) => (flightInstant(a.r, "arr") ?? 0) - (flightInstant(b.r, "arr") ?? 0))
         .at(-1);
       const leaving = todayOut
         .filter((o) => !todayIn.some((f) => connects(f, o)))
-        .sort((a, b) => (timeOf(a.r.startTime) ?? "").localeCompare(timeOf(b.r.startTime) ?? ""))[0];
+        .sort((a, b) => (flightInstant(a.r, "dep") ?? 0) - (flightInstant(b.r, "dep") ?? 0))[0];
       const landed = landing ? timeOf(landing.r.endTime) : undefined;
       if (leaving && s.kind === "day") {
         // To the departure airport: from the last stop before take-off, else from where you slept

@@ -1,3 +1,4 @@
+import { flightInstant } from "./airports";
 import * as Y from "yjs";
 import { IndexeddbPersistence } from "y-indexeddb";
 import { generateKeyBetween } from "fractional-indexing";
@@ -110,12 +111,14 @@ export interface Reservation extends CostSplit {
   createdAt: number;
 }
 
-/** By date and time; the same flight/booking stays together, one row per traveller (A→Z). */
+/** By date and time (flights by real departure instant); the same flight/booking stays together, one row per traveller (A–Z). */
 export function sortReservations(list: Reservation[]): Reservation[] {
   const k = (r: Reservation) => `${r.startDate ?? "9999-99-99"} ${r.startTime ?? "99:99"}`;
+  // Flights compare by when they really leave (each airport's time zone), once airports are loaded
+  const when = new Map(list.map((r) => [r, flightInstant(r, "dep")]));
   return [...list].sort(
     (a, b) =>
-      k(a).localeCompare(k(b)) ||
+      (when.get(a) != null && when.get(b) != null ? when.get(a)! - when.get(b)! : k(a).localeCompare(k(b))) ||
       a.title.localeCompare(b.title, undefined, { sensitivity: "base" }) ||
       (a.traveler ?? "").localeCompare(b.traveler ?? "", undefined, { sensitivity: "base" }) ||
       a.createdAt - b.createdAt,
