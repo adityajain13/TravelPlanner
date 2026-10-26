@@ -21,7 +21,7 @@ import { ArrowLeft, Camera, Redo2, Undo2, Copy, FolderInput, Trash2, X, Cloud, C
 import { Contents, type Tab } from "../components/Contents";
 import { useConverter } from "../lib/fx";
 import { budgetLines, lineForItem, totals, travelersOf } from "../lib/budget";
-import { bestImage, coverFor, firstPhoto } from "../lib/images";
+import { bestImage, coverFor, firstPhoto, googlePhotos, sameSubject } from "../lib/images";
 import { setShareToken } from "../lib/shareToken";
 import { ImagePicker } from "../components/ImagePicker";
 import { Photo } from "../components/Photo";
@@ -427,6 +427,25 @@ export function TripPage() {
         if (!cur) continue;
         const far = hit && (cur.lat == null || cur.lng == null || distanceKm([cur.lng, cur.lat], [hit.lng, hit.lat]) > 0.5);
         updateItem(doc, it.id, far ? { lat: hit!.lat, lng: hit!.lng, googlePlaceId: hit!.googlePlaceId, osmId: hit!.osmId, located: true } : { located: true });
+      }
+    })();
+  }, [doc, state, readOnly]);
+
+  // Photos auto-picked from a Wikipedia article about something else (the district a shop is
+  // named after): swap for the place's own Google photo, else a fresh pick, else none
+  const photoChecked = useRef(new Set<string>());
+  useEffect(() => {
+    if (!doc || !state || readOnly || !navigator.onLine) return;
+    const bad = state.items.filter((i) => i.image?.source === "wikipedia" && !i.image.manual && i.image.title && !sameSubject(i.name, i.image.title) && !photoChecked.current.has(i.id));
+    if (!bad.length) return;
+    bad.forEach((i) => photoChecked.current.add(i.id));
+    (async () => {
+      for (const it of bad) {
+        const coords: [number, number] | undefined = it.lat != null && it.lng != null ? [it.lng, it.lat] : undefined;
+        const g = it.googlePlaceId ? (await googlePhotos({ placeId: it.googlePlaceId, name: it.name }).catch(() => []))[0] : undefined;
+        const next = g ?? (await firstPhoto(it.name, coords, state.meta.destination).catch(() => null));
+        const cur = readTrip(doc).items.find((x) => x.id === it.id);
+        if (cur?.image?.url === it.image!.url) setItemImage(doc, it.id, next ?? undefined);
       }
     })();
   }, [doc, state, readOnly]);
