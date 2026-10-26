@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
-import { ArrowLeft, Check, Copy, Loader2, Mail, X } from "lucide-react";
-import { fetchInboxHistory, type InboxItem } from "../lib/inbox";
+import { ArrowLeft, Check, Copy, Loader2, Mail, Trash2, X } from "lucide-react";
+import { deleteInbox, fetchInboxHistory, type InboxItem } from "../lib/inbox";
 import { BOOKING_ICON } from "./InboxPanel";
 
 export const INBOX_ADDRESS = "trips@adityajain.ca";
@@ -15,11 +15,38 @@ const STATUS: Record<NonNullable<InboxItem["status"]>, { label: string; cls: str
 };
 
 /** Wanderlog's "Forward your confirmation" sheet, plus the list of everything forwarded so far. */
-export function ForwardDialog({ tripId, tripTitles, initialView = "forward", onClose }: { tripId?: string; tripTitles?: Record<string, string>; initialView?: "forward" | "history"; onClose: () => void }) {
+export function ForwardDialog({
+  tripId,
+  initialView = "forward",
+  onClose,
+  onDeleteEmail,
+}: {
+  tripId?: string;
+  tripTitles?: Record<string, string>;
+  initialView?: "forward" | "history";
+  onClose: () => void;
+  /** Remove what these inbox rows added to the trip; returns how many things were removed. */
+  onDeleteEmail?: (rows: InboxItem[]) => number;
+}) {
   const [view, setView] = useState(initialView);
   const [copied, setCopied] = useState(false);
   const [items, setItems] = useState<InboxItem[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState<string | null>(null);
+  const remove = async (g: EmailGroup) => {
+    const added = g.rows.filter((r) => r.status === "added").length;
+    if (!confirm(`Delete "${g.subject || "this email"}"${added ? ` and the ${added} booking${added > 1 ? "s" : ""} it added` : ""}?`)) return;
+    setDeleting(g.key);
+    try {
+      onDeleteEmail?.(g.rows);
+      await Promise.all(g.rows.map((r) => deleteInbox(r.id)));
+      setItems((xs) => xs?.filter((x) => !g.rows.some((r) => r.id === x.id)) ?? null);
+    } catch {
+      setError(navigator.onLine ? "Couldn't delete that email." : "You're offline.");
+    } finally {
+      setDeleting(null);
+    }
+  };
   // Per trip by default: this trip's emails plus any that didn't match a trip; old trips stay out
   const scope: "trip" | "all" = tripId ? "trip" : "all";
 
@@ -105,26 +132,43 @@ export function ForwardDialog({ tripId, tripTitles, initialView = "forward", onC
                 </p>
               ) : (
                 <ul className="space-y-2.5">
-                  {shown!.map((it) => {
-                    const st = STATUS[it.status ?? "pending"];
-                    const here = tripId && it.trip_id === tripId;
-                    return (
-                      <li key={it.id} className={`rounded-2xl border p-4 ${here ? "border-accent/40 bg-accent/5" : "border-line bg-bg"}`}>
-                        <div className="flex items-start gap-3">
-                          <span className="mt-0.5 text-muted [&>svg]:size-5">{BOOKING_ICON[it.booking.type] ?? BOOKING_ICON.other}</span>
-                          <div className="min-w-0 flex-1">
-                            <p className="truncate text-[16px] font-bold">{it.booking.title}</p>
-                            <p className="truncate text-[13px] text-muted">{it.subject}</p>
-                            <p className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[12px] text-muted">
-                              <span className={`rounded-full px-2 py-0.5 font-semibold ${st.cls}`}>{st.label}</span>
-                              <span>{it.trip_id ? (here ? "This trip" : (tripTitles?.[it.trip_id] ?? "Another trip")) : "No trip matched"}</span>
-                              <span>· received {when(it.created_at)}</span>
-                            </p>
-                          </div>
+                  {groupEmails(shown!).map((g) => (
+                    <li key={g.key} className="rounded-2xl border border-line bg-bg p-4">
+                      <div className="flex items-start gap-3">
+                        <Mail className="mt-0.5 size-5 shrink-0 text-muted" />
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-[15px] font-bold">{g.subject || "(no subject)"}</p>
+                          <p className="text-[12px] text-muted">Received {when(g.created)}</p>
                         </div>
-                      </li>
-                    );
-                  })}
+                        {onDeleteEmail && (
+                          <button
+                            disabled={deleting === g.key}
+                            onClick={() => remove(g)}
+                            className="grid size-8 shrink-0 place-items-center rounded-full text-muted hover:bg-surface-2 hover:text-danger disabled:opacity-50"
+                            title="Delete this email and what it added"
+                            aria-label="Delete email"
+                          >
+                            {deleting === g.key ? <Loader2 className="size-4 animate-spin" /> : <Trash2 className="size-4" />}
+                          </button>
+                        )}
+                      </div>
+                      <ul className="mt-2.5 space-y-1.5 border-t border-line pt-2.5">
+                        {g.rows.map((it) => {
+                          const st = STATUS[it.status ?? "pending"];
+                          return (
+                            <li key={it.id} className="flex items-center gap-2.5 text-[14px]">
+                              <span className="text-muted [&>svg]:size-4">{BOOKING_ICON[it.booking.type] ?? BOOKING_ICON.other}</span>
+                              <span className="min-w-0 flex-1 truncate">
+                                {it.booking.title}
+                                {it.booking.traveler && <span className="text-muted"> · {it.booking.traveler}</span>}
+                              </span>
+                              <span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold ${st.cls}`}>{st.label}</span>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    </li>
+                  ))}
                 </ul>
               )}
             </div>
@@ -134,4 +178,21 @@ export function ForwardDialog({ tripId, tripTitles, initialView = "forward", onC
     </div>,
     document.body,
   );
+}
+
+interface EmailGroup {
+  key: string;
+  subject: string;
+  created: number;
+  rows: InboxItem[];
+}
+
+/** Bookings from one forwarded email arrive as several rows with the same subject and time. */
+function groupEmails(rows: InboxItem[]): EmailGroup[] {
+  const m = new Map<string, EmailGroup>();
+  for (const r of rows) {
+    const key = `${r.subject}|${r.created_at}`;
+    (m.get(key) ?? m.set(key, { key, subject: r.subject, created: r.created_at, rows: [] }).get(key)!).rows.push(r);
+  }
+  return [...m.values()].sort((a, b) => b.created - a.created);
 }

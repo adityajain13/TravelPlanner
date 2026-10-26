@@ -5,6 +5,7 @@ import { API, error, json, type Env } from "./util";
  *   GET   /api/inbox          pending bookings imported from email
  *   GET   /api/inbox?all=1    every forwarded booking (any status), for the "imported emails" list
  *   PATCH /api/inbox/:id      {status?: "added" | "dismissed" | "pending", trip_id?: string | null}
+ *   DELETE /api/inbox/:id     forget a forwarded booking entirely
  */
 export async function handleInbox(req: Request, env: Env, url: URL): Promise<Response | null> {
   if (!url.pathname.startsWith(`${API}/inbox`)) return null;
@@ -34,6 +35,11 @@ export async function handleInbox(req: Request, env: Env, url: URL): Promise<Res
     )
       .bind(body.status ?? null, "trip_id" in body ? 1 : 0, body.trip_id ?? null, id, session.email)
       .run();
+    if (!r.meta.changes) return error(404, "Not found");
+    return json({ ok: true });
+  }
+  if (id && req.method === "DELETE") {
+    const r = await env.DB.prepare("DELETE FROM inbox WHERE id = ? AND owner = ?").bind(id, session.email).run();
     if (!r.meta.changes) return error(404, "Not found");
     return json({ ok: true });
   }

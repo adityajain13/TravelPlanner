@@ -30,6 +30,8 @@ export interface InboxItem {
   status?: "pending" | "added" | "dismissed";
 }
 
+export const deleteInbox = (id: string) => api(`/inbox/${id}`, { method: "DELETE" });
+
 /** Every forwarded booking, newest first, whatever happened to it. */
 export const fetchInboxHistory = () => api<{ items: InboxItem[] }>("/inbox?all=1").then((r) => r.items);
 
