@@ -94,6 +94,7 @@ export function Home() {
 }
 
 function TripGroup({ title, trips }: { title: string; trips: TripIndexRow[] }) {
+  const { email } = useSession();
   if (trips.length === 0) return null;
   return (
     <section className="mb-10">
@@ -113,10 +114,11 @@ function TripGroup({ title, trips }: { title: string; trips: TripIndexRow[] }) {
                     <CalendarDays className="size-3.5" />
                     {formatRange(t.startDate, t.endDate)}
                   </span>
-                  {t.shareToken && (
+                  {(t.shareToken || t.owner) && (
                     <span className="flex items-center gap-1.5 text-accent">
                       <Users className="size-3.5" />
-                      Shared with you{t.role === "view" ? " · view only" : ""}
+                      {t.owner ? `Shared by ${t.owner}` : "Shared with you"}
+                      {t.role === "view" ? " · view only" : ""}
                     </span>
                   )}
                 </p>
@@ -124,8 +126,12 @@ function TripGroup({ title, trips }: { title: string; trips: TripIndexRow[] }) {
             </Link>
             <button
               onClick={() => {
-                const msg = t.shareToken ? `Remove "${t.title}" from this device?` : `Delete "${t.title}" everywhere? This can't be undone.`;
-                if (confirm(msg)) deleteTrip(t.id, { server: !t.shareToken }).catch((e) => alert((e as Error).message));
+                const msg = t.shareToken
+                  ? `Remove "${t.title}" from this device?`
+                  : t.owner
+                    ? `Leave "${t.title}"? ${t.owner} can add you back.`
+                    : `Delete "${t.title}" everywhere? This can't be undone.`;
+                if (confirm(msg)) deleteTrip(t.id, { server: !t.shareToken && !t.owner, leave: t.owner && email ? email : undefined }).catch((e) => alert((e as Error).message));
               }}
               className="mx-4 grid size-10 shrink-0 place-items-center rounded-full text-muted opacity-0 transition hover:bg-surface hover:text-danger group-hover:opacity-100 focus:opacity-100 max-md:opacity-100"
               aria-label={`Delete ${t.title}`}

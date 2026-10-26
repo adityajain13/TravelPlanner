@@ -92,6 +92,9 @@ export interface ServerTrip {
   start_date: string | null;
   end_date: string | null;
   updated_at: number;
+  /** Present on trips someone shared with your account. */
+  owner?: string;
+  role?: "view" | "edit";
 }
 
 export const shareUrl = (token: string) => `${location.origin}/travelplanner/s/${token}`;

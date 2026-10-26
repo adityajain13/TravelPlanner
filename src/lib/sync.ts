@@ -60,20 +60,21 @@ export async function reconcileTrips() {
   const localIds = new Set(local.map((t) => t.id));
   const remoteIds = new Set(remote.map((t) => t.id));
 
-  await db.trips.bulkPut(
-    remote
-      .filter((t) => !localIds.has(t.id))
-      .map((t) => ({
+  const row = (t: ServerTrip) => ({
         id: t.id,
         title: t.title,
         destination: t.destination ?? "",
         startDate: t.start_date ?? "",
         endDate: t.end_date ?? "",
         updatedAt: t.updated_at,
-      })),
-  );
+        ...(t.owner ? { owner: t.owner, role: t.role } : {}),
+      });
+  await db.trips.bulkPut(remote.filter((t) => !localIds.has(t.id)).map(row));
+  // Shared-with-me trips: keep role/owner current; drop ones you were removed from
+  for (const t of remote.filter((t) => t.owner && localIds.has(t.id))) await db.trips.update(t.id, { owner: t.owner, role: t.role });
+  for (const t of local.filter((t) => t.owner && !remoteIds.has(t.id))) await db.trips.delete(t.id);
 
-  const toPush = local.filter((t) => !t.shareToken && !remoteIds.has(t.id));
+  const toPush = local.filter((t) => !t.shareToken && !t.owner && !remoteIds.has(t.id));
   for (const t of toPush) {
     const { doc, ready } = openTrip(t.id);
     await ready;

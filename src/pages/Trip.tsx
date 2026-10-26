@@ -158,7 +158,9 @@ export function TripPage() {
   const { status: auth } = useSession();
   const shareToken = row !== LOADING ? row?.shareToken : undefined;
   const readOnly = row !== LOADING && row?.role === "view";
-  const isOwner = row !== LOADING && !shareToken && auth === "in";
+  const isOwner = row !== LOADING && !shareToken && !row?.owner && auth === "in";
+  // Owner, or an editor on someone else's trip with their own login: sees forwarded bookings
+  const canReview = isOwner || (row !== LOADING && !!row?.owner && row.role === "edit" && auth === "in");
   const canSync = row !== LOADING && (!!shareToken || auth === "in");
   setShareToken(shareToken);
   const { status: syncStatus, synced } = useSync(id, doc, { shareToken, enabled: canSync });
@@ -171,11 +173,11 @@ export function TripPage() {
   // Bookings forwarded to trips@ that matched this trip
   const [inbox, setInbox] = useState<InboxItem[]>([]);
   useEffect(() => {
-    if (!isOwner || !id || !navigator.onLine) return;
+    if (!canReview || !id || !navigator.onLine) return;
     fetchInbox()
       .then((items) => setInbox(items.filter((i) => i.trip_id === id)))
       .catch(() => undefined);
-  }, [isOwner, id]);
+  }, [canReview, id]);
   useEffect(() => {
     setWaited(false);
     const t = setTimeout(() => setWaited(true), 8000);
@@ -635,7 +637,7 @@ export function TripPage() {
           )}
         </div>
         <div className="px-3">
-          {tab === "bookings" && <ReservationsPanel doc={doc} state={state} readOnly={readOnly} tripId={id} canForward={isOwner} />}
+          {tab === "bookings" && <ReservationsPanel doc={doc} state={state} readOnly={readOnly} tripId={id} canForward={canReview} />}
           {tab === "budget" && <BudgetPanel doc={doc} state={state} readOnly={readOnly} />}
           {tab === "plan" && (<>
           {unpinned.length > 0 && (
@@ -705,7 +707,7 @@ export function TripPage() {
               </button>
             )}
           </div>
-          {isOwner && <InboxPanel items={inbox} doc={doc} state={state} onDone={(itemId) => setInbox((xs) => xs.filter((x) => x.id !== itemId))} />}
+          {canReview && <InboxPanel items={inbox} doc={doc} state={state} onDone={(itemId) => setInbox((xs) => xs.filter((x) => x.id !== itemId))} />}
           <DndContext sensors={readOnly ? [] : sensors} collisionDetection={closestCorners} onDragStart={onDragStart} onDragEnd={onDragEnd}>
             {view.sections.map((s, si) => (
               <Fragment key={s.key}>

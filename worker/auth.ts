@@ -5,6 +5,7 @@ import { API, BASE, error, json, parseCookies, randomToken, safeEqual, sendMail,
  *   POST /api/auth/request {email}     → emails a 6-digit code + one-tap link (if the email is allowed)
  *   POST /api/auth/verify {email,code} → session cookie
  *   GET  /api/auth/link?e=&t=          → session cookie, redirect to the app
+ *   GET  /api/auth/invite?t=           → one-time invite link from a trip owner: session cookie, open the trip
  *   GET  /api/auth/me                  → {email} (also rolls the session forward)
  *   POST /api/auth/logout
  * Sessions last a year and roll forward on use, so you effectively stay logged in.
@@ -22,6 +23,13 @@ const allowed = (env: Env) =>
       .map((e) => e.trim().toLowerCase())
       .filter(Boolean),
   );
+
+/** The owner(s) from ALLOWED_EMAILS, plus anyone a trip has been shared with. */
+export async function canLogin(env: Env, email: string) {
+  if (allowed(env).has(email)) return true;
+  return !!(await env.DB.prepare("SELECT 1 FROM trip_members WHERE email = ? LIMIT 1").bind(email).first());
+}
+export const isOwnerEmail = (env: Env, email: string) => allowed(env).has(email);
 
 const normEmail = (e: unknown) => (typeof e === "string" ? e.trim().toLowerCase() : "");
 
@@ -42,8 +50,8 @@ export async function getSession(req: Request, env: Env): Promise<Session | null
   const idHash = await sha256(token);
   const row = await env.DB.prepare("SELECT email, expires_at FROM sessions WHERE id_hash = ?").bind(idHash).first<{ email: string; expires_at: number }>();
   if (!row || row.expires_at < Date.now()) return null;
-  // Allow-list removal revokes access immediately
-  if (!allowed(env).has(row.email)) return null;
+  // Allow-list removal (or being removed from every shared trip) revokes access immediately
+  if (!(await canLogin(env, row.email))) return null;
   const s: Session = { email: row.email };
   if (row.expires_at - Date.now() < 335 * 24 * 3600 * 1000) {
     await env.DB.prepare("UPDATE sessions SET expires_at = ? WHERE id_hash = ?").bind(Date.now() + YEAR * 1000, idHash).run();
@@ -70,7 +78,7 @@ export async function handleAuth(req: Request, env: Env, url: URL): Promise<Resp
     const email = normEmail(raw);
     if (!email.includes("@")) return error(400, "Enter a valid email");
     // Same response either way, so the endpoint doesn't reveal who's allowed
-    if (!allowed(env).has(email)) return json({ ok: true });
+    if (!(await canLogin(env, email))) return json({ ok: true });
 
     const prev = await env.DB.prepare("SELECT created_at FROM login_codes WHERE email = ?").bind(email).first<{ created_at: number }>();
     if (prev && Date.now() - prev.created_at < RESEND_AFTER) return error(429, "Code just sent — check your inbox");
@@ -98,7 +106,8 @@ export async function handleAuth(req: Request, env: Env, url: URL): Promise<Resp
       });
     } catch (e) {
       console.error("send failed", e);
-      return error(502, "Couldn't send the email");
+      // Email Routing only delivers to verified addresses; members can still use an invite link
+      return error(502, allowed(env).has(email) ? "Couldn't send the email" : "Couldn't email this address. Ask the trip owner for a sign-in link.");
     }
     return json({ ok: true });
   }
@@ -130,10 +139,21 @@ export async function handleAuth(req: Request, env: Env, url: URL): Promise<Resp
     return new Response(null, { status: 302, headers: { Location: `${BASE}/`, "Set-Cookie": cookie } });
   }
 
+  if (path === "/invite" && req.method === "GET") {
+    const t = url.searchParams.get("t") ?? "";
+    const h = await sha256(t);
+    const row = await env.DB.prepare("SELECT email, trip_id, expires_at FROM invites WHERE token_hash = ?").bind(h).first<{ email: string; trip_id: string; expires_at: number }>();
+    const member = row && (await env.DB.prepare("SELECT 1 FROM trip_members WHERE trip_id = ? AND email = ?").bind(row.trip_id, row.email).first());
+    if (!row || row.expires_at < Date.now() || !member) return Response.redirect(`${url.origin}${BASE}/login?expired=1`, 302);
+    await env.DB.prepare("DELETE FROM invites WHERE token_hash = ?").bind(h).run(); // single use
+    const cookie = await createSession(req, env, row.email);
+    return new Response(null, { status: 302, headers: { Location: `${BASE}/`, "Set-Cookie": cookie } });
+  }
+
   if (path === "/me" && req.method === "GET") {
     const s = await getSession(req, env);
     if (!s) return error(401, "Not logged in");
-    return json({ email: s.email }, { headers: s.refreshCookie ? { "Set-Cookie": s.refreshCookie } : {} });
+    return json({ email: s.email, owner: allowed(env).has(s.email) }, { headers: s.refreshCookie ? { "Set-Cookie": s.refreshCookie } : {} });
   }
 
   if (path === "/logout" && req.method === "POST") {
