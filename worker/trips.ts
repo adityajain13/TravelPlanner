@@ -5,6 +5,8 @@ import { API, b64url, b64urlDecode, error, hmac, isValidTripId, json, safeEqual,
  *   GET    /api/trips                  your trips (for listing on a new device)
  *   POST   /api/trips/:id/share        {role} → share link token (stable until reset)
  *   DELETE /api/trips/:id/share        reset: revokes every existing link
+ *   GET    /api/trips/:id/senders      who else may forward emails to trips+<id>@
+ *   PUT    /api/trips/:id/senders      {emails} replace that list (owner only)
  *   DELETE /api/trips/:id              delete the trip everywhere
  *   GET    /api/share/:token           resolve a link → {tripId, role, title}
  *   GET    /api/sync/:id  (WebSocket)  Yjs sync, via session (owner) or ?share=token
@@ -101,9 +103,30 @@ export async function handleTrips(req: Request, env: Env, url: URL): Promise<Res
     if (row && row.owner !== session.email) return error(403, "Not your trip");
     if (row) {
       await env.TRIP_ROOM.get(env.TRIP_ROOM.idFromName(id)).fetch("https://room/", { headers: { "X-Action": "destroy" } });
-      await env.DB.prepare("DELETE FROM trips WHERE id = ?").bind(id).run();
+      await env.DB.batch([env.DB.prepare("DELETE FROM trips WHERE id = ?").bind(id), env.DB.prepare("DELETE FROM trip_senders WHERE trip_id = ?").bind(id)]);
     }
     return json({ ok: true });
+  }
+
+  if (parts[2] === "senders") {
+    const row = await ownTrip(env, session, id);
+    if (row instanceof Response) return row;
+    if (req.method === "PUT") {
+      const { emails } = (await req.json().catch(() => ({}))) as { emails?: unknown };
+      if (!Array.isArray(emails)) return error(400, "emails must be a list");
+      const clean = [...new Set(emails.map((e) => String(e).trim().toLowerCase()))].filter((e) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e) && e !== session.email);
+      if (clean.length > 20) return error(400, "At most 20 people");
+      const now = Date.now();
+      await env.DB.batch([
+        env.DB.prepare("DELETE FROM trip_senders WHERE trip_id = ?").bind(id),
+        ...clean.map((e) => env.DB.prepare("INSERT INTO trip_senders (trip_id, email, added_at) VALUES (?, ?, ?)").bind(id, e, now)),
+      ]);
+      return json({ emails: clean });
+    }
+    if (req.method === "GET") {
+      const { results } = await env.DB.prepare("SELECT email FROM trip_senders WHERE trip_id = ? ORDER BY added_at, email").bind(id).all<{ email: string }>();
+      return json({ emails: results.map((r) => r.email) });
+    }
   }
 
   if (parts[2] === "share") {

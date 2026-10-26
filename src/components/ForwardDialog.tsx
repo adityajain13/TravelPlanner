@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
-import { ArrowLeft, Check, Copy, Loader2, Mail, Trash2, X } from "lucide-react";
-import { deleteInbox, fetchInboxHistory, type InboxItem } from "../lib/inbox";
+import { ArrowLeft, Check, Copy, Loader2, Mail, Plus, Trash2, UserPlus, X } from "lucide-react";
+import { deleteInbox, fetchInboxHistory, fetchSenders, saveSenders, type InboxItem } from "../lib/inbox";
 import { BOOKING_ICON } from "./InboxPanel";
 
 export const INBOX_ADDRESS = "trips@adityajain.ca";
@@ -104,6 +104,7 @@ export function ForwardDialog({
                 Not sure which trip? Plain <span className="text-fg">{INBOX_ADDRESS}</span> works too and matches by dates.
               </p>
             )}
+            {tripId && onDeleteEmail && <Senders tripId={tripId} />}
             <button onClick={() => setView("history")} className="mt-5 rounded-full border border-accent/50 px-5 py-2.5 text-[15px] font-bold text-accent hover:bg-accent/10">
               Check imported emails
             </button>
@@ -161,6 +162,7 @@ export function ForwardDialog({
                               <span className="min-w-0 flex-1 truncate">
                                 {it.booking.title}
                                 {it.booking.traveler && <span className="text-muted"> · {it.booking.traveler}</span>}
+                                {it.booking.forwarded_by && <span className="text-muted"> · from {it.booking.forwarded_by}</span>}
                               </span>
                               <span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold ${st.cls}`}>{st.label}</span>
                             </li>
@@ -195,4 +197,74 @@ function groupEmails(rows: InboxItem[]): EmailGroup[] {
     (m.get(key) ?? m.set(key, { key, subject: r.subject, created: r.created_at, rows: [] }).get(key)!).rows.push(r);
   }
   return [...m.values()].sort((a, b) => b.created - a.created);
+}
+
+/** Friends on the trip who can forward their own confirmations to this trip's address. */
+function Senders({ tripId }: { tripId: string }) {
+  const [emails, setEmails] = useState<string[] | null>(null);
+  const [draft, setDraft] = useState("");
+  const [err, setErr] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [hidden, setHidden] = useState(false);
+
+  useEffect(() => {
+    fetchSenders(tripId)
+      .then(setEmails)
+      .catch((e) => (e?.status === 401 || e?.status === 403 ? setHidden(true) : setErr(navigator.onLine ? "Couldn't load who can forward." : "You're offline.")));
+  }, [tripId]);
+  if (hidden) return null; // only the trip's owner manages this
+
+  const save = async (next: string[]) => {
+    setBusy(true);
+    setErr(null);
+    try {
+      setEmails(await saveSenders(tripId, next));
+      setDraft("");
+    } catch {
+      setErr(navigator.onLine ? "Couldn't save that." : "You're offline.");
+    } finally {
+      setBusy(false);
+    }
+  };
+  const add = () => {
+    const e = draft.trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e)) return setErr("That doesn't look like an email address.");
+    if (emails?.includes(e)) return setDraft("");
+    void save([...(emails ?? []), e]);
+  };
+
+  return (
+    <div className="mt-6 rounded-2xl border border-line bg-bg p-4 text-left">
+      <p className="flex items-center gap-2 text-[15px] font-bold">
+        <UserPlus className="size-4 text-muted" /> Who else can forward
+      </p>
+      <p className="mt-1 text-[13px] text-muted">Travel companions added here can send their confirmations to this trip's address. You still review everything.</p>
+      {emails && emails.length > 0 && (
+        <ul className="mt-3 flex flex-wrap gap-1.5">
+          {emails.map((e) => (
+            <li key={e} className="flex items-center gap-1.5 rounded-full bg-surface-2 py-1 pr-1.5 pl-3 text-[13px]">
+              {e}
+              <button disabled={busy} onClick={() => save(emails.filter((x) => x !== e))} className="grid size-5 place-items-center rounded-full text-muted hover:text-danger" aria-label={`Remove ${e}`}>
+                <X className="size-3.5" />
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      <form onSubmit={(ev) => (ev.preventDefault(), add())} className="mt-3 flex items-center gap-2 rounded-xl border border-line bg-surface px-3 py-1.5 focus-within:border-accent">
+        <input
+          type="email"
+          value={draft}
+          onChange={(e) => (setDraft(e.target.value), setErr(null))}
+          placeholder="friend@example.com"
+          disabled={emails === null && !err}
+          className="min-w-0 flex-1 bg-transparent py-1 text-[15px] outline-none placeholder:text-muted/60"
+        />
+        <button disabled={busy || !draft.trim()} className="flex items-center gap-1 rounded-lg px-2 py-1 text-[14px] font-bold text-accent disabled:opacity-40">
+          {busy ? <Loader2 className="size-4 animate-spin" /> : <Plus className="size-4" />} Add
+        </button>
+      </form>
+      {err && <p className="mt-1.5 text-[12px] text-danger">{err}</p>}
+    </div>
+  );
 }
