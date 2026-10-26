@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { ArrowLeft, Check, Copy, Loader2, Mail, Plus, Trash2, UserPlus, X } from "lucide-react";
 import { deleteInbox, fetchInboxHistory, fetchSenders, saveSenders, type InboxItem } from "../lib/inbox";
 import { BOOKING_ICON } from "./InboxPanel";
+import { askConfirm } from "./ConfirmDialog";
 
 export const INBOX_ADDRESS = "trips@adityajain.ca";
 /** This trip's own address: mail to trips+<id>@ goes straight to the trip (needs Email Routing subaddressing). */
@@ -35,7 +36,7 @@ export function ForwardDialog({
   const [deleting, setDeleting] = useState<string | null>(null);
   const remove = async (g: EmailGroup) => {
     const added = g.rows.filter((r) => r.status === "added").length;
-    if (!confirm(`Delete "${g.subject || "this email"}"${added ? ` and the ${added} booking${added > 1 ? "s" : ""} it added` : ""}?`)) return;
+    if (!(await askConfirm({ title: `Delete "${g.subject || "this email"}"?`, body: added ? `The ${added} booking${added > 1 ? "s" : ""} it added ${added > 1 ? "are" : "is"} removed from the trip too.` : undefined }))) return;
     setDeleting(g.key);
     try {
       onDeleteEmail?.(g.rows);

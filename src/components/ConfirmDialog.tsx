@@ -66,3 +66,51 @@ export function ConfirmDialog({
     document.body,
   );
 }
+
+/*
+ * askConfirm(): a promise-based stand-in for window.confirm, rendered by <ConfirmHost/>
+ * (mounted once at the app root): `if (!(await askConfirm({ title: "Delete it?" }))) return;`
+ */
+interface Ask {
+  title: string;
+  body?: ReactNode;
+  confirmLabel?: string;
+  danger?: boolean;
+  icon?: ReactNode;
+}
+let show: ((a: Ask & { resolve: (ok: boolean) => void }) => void) | null = null;
+
+export const askConfirm = (a: Ask) =>
+  new Promise<boolean>((resolve) => {
+    if (!show) return resolve(false);
+    show({ ...a, resolve });
+  });
+
+export function ConfirmHost() {
+  const [ask, setAsk] = useState<(Ask & { resolve: (ok: boolean) => void }) | null>(null);
+  useEffect(() => {
+    show = setAsk;
+    return () => {
+      show = null;
+    };
+  }, []);
+  if (!ask) return null;
+  let answered = false;
+  const answer = (ok: boolean) => {
+    if (answered) return;
+    answered = true;
+    ask.resolve(ok);
+  };
+  return (
+    <ConfirmDialog
+      title={ask.title}
+      icon={ask.icon}
+      danger={ask.danger ?? true}
+      confirmLabel={ask.confirmLabel ?? "Delete"}
+      onConfirm={() => answer(true)}
+      onClose={() => (answer(false), setAsk(null))}
+    >
+      {ask.body}
+    </ConfirmDialog>
+  );
+}

@@ -13,6 +13,7 @@ import { PlaceSearch } from "./PlaceSearch";
 import type { SectionTarget } from "./SectionPicker";
 import { Popover } from "./DatePicker";
 import { DAY_SWATCHES } from "../lib/colors";
+import { HexColorInput, HexColorPicker } from "react-colorful";
 
 export interface SectionInfo {
   key: string;
@@ -320,6 +321,10 @@ function Subheading({ value, onSave, editing, setEditing }: { value?: string; on
 function ColorDot({ color, onPick }: { color: string; onPick: (hex: string | undefined) => void }) {
   const ref = useRef<HTMLButtonElement>(null);
   const [open, setOpen] = useState(false);
+  const [custom, setCustom] = useState<string | null>(null); // themed picker instead of the OS colour dialog
+  useEffect(() => {
+    if (!open) setCustom(null);
+  }, [open]);
   return (
     <>
       <button
@@ -346,11 +351,29 @@ function ColorDot({ color, onPick }: { color: string; onPick: (hex: string | und
                 />
               ))}
             </div>
+            {custom !== null && (
+              <div className="tp-colorful mt-3 space-y-2.5 border-t border-line pt-3">
+                <HexColorPicker color={custom} onChange={setCustom} />
+                <div className="flex items-center gap-2">
+                  <span className="size-7 shrink-0 rounded-full" style={{ background: custom }} />
+                  <HexColorInput
+                    color={custom}
+                    onChange={setCustom}
+                    prefixed
+                    className="min-w-0 flex-1 rounded-lg border border-line bg-bg px-2.5 py-1.5 font-mono text-[13px] uppercase outline-none focus:border-accent"
+                    aria-label="Hex colour"
+                  />
+                  <button onClick={() => (onPick(custom), setOpen(false))} className="rounded-full bg-accent px-3 py-1.5 text-[13px] font-bold text-on-accent">
+                    Use
+                  </button>
+                </div>
+              </div>
+            )}
             <div className="mt-3 flex items-center justify-between gap-2 border-t border-line pt-2.5 text-[13px] font-semibold">
-              <label className="flex cursor-pointer items-center gap-2 text-muted hover:text-fg">
-                <input type="color" value={color} onChange={(e) => onPick(e.target.value)} className="size-6 cursor-pointer rounded border-0 bg-transparent p-0" />
+              <button onClick={() => setCustom((c) => (c === null ? color : null))} className={`flex items-center gap-2 ${custom !== null ? "text-fg" : "text-muted hover:text-fg"}`}>
+                <span className="size-4 rounded-full" style={{ background: "conic-gradient(#f06b8b, #e8d25a, #5fd68b, #6aa8ff, #c58cff, #f06b8b)" }} />
                 Custom
-              </label>
+              </button>
               <button onClick={() => (onPick(undefined), setOpen(false))} className="text-muted hover:text-fg">
                 Reset
               </button>

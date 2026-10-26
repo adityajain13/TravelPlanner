@@ -170,3 +170,22 @@ input[type="number"]::-webkit-outer-spin-button {
   -webkit-appearance: none;
   margin: 0;
 }
+
+/* react-colorful (day colour picker), themed */
+.tp-colorful .react-colorful {
+  width: 100%;
+  height: 150px;
+}
+.tp-colorful .react-colorful__saturation {
+  border-radius: 12px 12px 0 0;
+  border-bottom: none;
+}
+.tp-colorful .react-colorful__hue {
+  height: 14px;
+  border-radius: 0 0 12px 12px;
+}
+.tp-colorful .react-colorful__pointer {
+  width: 20px;
+  height: 20px;
+  border-width: 3px;
+}

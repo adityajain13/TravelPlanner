@@ -7,6 +7,7 @@ import type * as Y from "yjs";
 import { BedDouble, Car, ChevronDown, Inbox, Loader2, Mail, PenLine, Pencil, Plane, Plus, Ticket, TrainFront, Trash2, Utensils, X } from "lucide-react";
 import { PlaceSearch } from "./PlaceSearch";
 import { ForwardDialog } from "./ForwardDialog";
+import { askConfirm } from "./ConfirmDialog";
 import { useLiveQuery } from "dexie-react-hooks";
 import { db } from "../lib/db";
 import type { PlaceResult } from "../lib/photon";
@@ -123,7 +124,7 @@ export function ReservationsPanel({ doc, state, readOnly, tripId, canForward }: 
               <>
                 <ul className="mt-5 space-y-4">
                   {list.map((r) => (
-                    <ReservationCard key={r.id} r={r} currency={currency} readOnly={readOnly} onEdit={() => setEditing(r)} onDelete={() => confirm(`Delete "${r.title}"?`) && removeReservation(doc, r.id)} />
+                    <ReservationCard key={r.id} r={r} currency={currency} readOnly={readOnly} onEdit={() => setEditing(r)} onDelete={async () => (await askConfirm({ title: `Delete ${r.title}?`, body: "Its cost leaves the budget too." })) && removeReservation(doc, r.id)} />
                   ))}
                 </ul>
                 {!readOnly && (
