@@ -105,6 +105,7 @@ export function TripMap({ pins, routes, selectedId, onSelect, theme, fitKey, fal
       const b = coreBounds(latest.current.pins);
       if (b && !latest.current.selectedId) map.fitBounds(b, { ...FIT, duration: 0 });
     });
+    onMissingImage(map);
     map.on("style.load", () => {
       addOverlay(map);
       pushData(map, latest.current);
@@ -297,90 +298,83 @@ function addOverlay(map: maplibregl.Map) {
   routeLayer("dotted", { "line-width": 3, "line-dasharray": [0.1, 2] });
   routeLayer("dashed", { "line-width": 2, "line-opacity": 0.6, "line-dasharray": [1.5, 1.5] });
   routeLayer("arc", { "line-width": 2, "line-opacity": 0.75, "line-dasharray": [2, 2] });
-  if (!map.hasImage("tp-pin")) map.addImage("tp-pin", pinImage(), { sdf: true, pixelRatio: 2 });
-  // Wanderlog-style teardrop pins: SDF icon tinted per day, number on the head, selected one larger
+  // Each pin is one image with its number (or plane) drawn in, made on first use. With the number
+  // as separate text, MapLibre draws all text above all icons, so numbers of pins underneath
+  // showed through the pin on top.
   map.addLayer({
     id: "trip-pins",
     type: "symbol",
     source: "trip-pins",
     layout: {
-      "icon-image": "tp-pin",
+      "icon-image": ["concat", "tp-pin|", ["get", "color"], "|", ["get", "label"], "|", ["get", "glyph"]],
       "icon-anchor": "bottom",
       "icon-size": ["case", ["get", "selected"], 1.2, 0.95],
       "icon-allow-overlap": true,
       "icon-ignore-placement": true,
       "symbol-sort-key": ["case", ["get", "selected"], 2, 1],
-      "text-field": ["get", "label"],
-      "text-font": ["Noto Sans Medium"],
-      "text-size": ["case", ["get", "selected"], 13, 11],
-      "text-anchor": "center",
-      "text-offset": ["case", ["get", "selected"], ["literal", [0, -1.62]], ["literal", [0, -1.66]]],
-      "text-allow-overlap": true,
-      "text-ignore-placement": true,
-    },
-    paint: {
-      "icon-color": ["get", "color"],
-      "icon-halo-color": "rgba(0,0,0,0.55)",
-      "icon-halo-width": 1,
-      "text-color": "#0e1110",
-    },
-  });
-  if (!map.hasImage("tp-plane")) map.addImage("tp-plane", planeImage(), { pixelRatio: 2 });
-  map.addLayer({
-    id: "trip-pin-glyphs",
-    type: "symbol",
-    source: "trip-pins",
-    filter: ["==", ["get", "glyph"], "plane"],
-    layout: {
-      "icon-image": "tp-plane",
-      "icon-anchor": "center",
-      "icon-size": ["case", ["get", "selected"], 1.2, 0.95],
-      "icon-offset": [0, -21.6],
-      "icon-allow-overlap": true,
-      "icon-ignore-placement": true,
     },
   });
 }
 
-/** Lucide's plane, dark on transparent, for airport pins (the map font has no ✈). */
-function planeImage() {
-  const s = 26;
-  const c = document.createElement("canvas");
-  c.width = s;
-  c.height = s;
-  const g = c.getContext("2d")!;
-  g.scale(s / 24, s / 24);
-  g.strokeStyle = "#0e1110";
-  g.lineWidth = 2.2;
-  g.lineJoin = "round";
-  g.lineCap = "round";
-  g.stroke(new Path2D("M17.8 19.2 16 11l3.5-3.5C21 6 21.5 4 21 3c-1-.5-3 0-4.5 1.5L13 8 4.8 6.2c-.5-.1-.9.1-1.1.5l-.3.5c-.2.5-.1 1 .3 1.3L9 12l-2 3H4l-1 1 3 2 2 3 1-1v-3l3-2 3.5 5.3c.3.4.8.5 1.3.3l.5-.2c.4-.3.6-.7.5-1.2z"));
-  return g.getImageData(0, 0, s, s);
+/** Builds "tp-pin|<color>|<label>|<glyph>" images on demand. */
+function onMissingImage(map: maplibregl.Map) {
+  map.on("styleimagemissing", (e: { id: string }) => {
+    if (!e.id.startsWith("tp-pin|") || map.hasImage(e.id)) return;
+    const [, color, label, glyph] = e.id.split("|");
+    map.addImage(e.id, pinImage(color, label, glyph), { pixelRatio: 2 });
+  });
 }
 
-/** White teardrop on a transparent canvas; used as an SDF so MapLibre can colour it per pin. */
-function pinImage() {
+/** A teardrop in the pin's colour with a dark outline and its number (or a plane) on the head. */
+function pinImage(color = "#5fd68b", label = "", glyph = "") {
   const w = 56;
   const h = 68;
   const c = document.createElement("canvas");
   c.width = w;
   c.height = h;
   const g = c.getContext("2d")!;
-  g.fillStyle = "#fff";
   g.beginPath();
   g.moveTo(28, 66);
   g.bezierCurveTo(26, 59, 21, 54, 15, 48);
   g.arc(28, 27, 24, Math.PI * 0.8, Math.PI * 0.2);
   g.bezierCurveTo(35, 54, 30, 59, 28, 66);
   g.closePath();
+  g.fillStyle = color;
   g.fill();
+  g.lineWidth = 2;
+  g.strokeStyle = "rgba(0,0,0,0.55)";
+  g.stroke();
+  if (glyph === "plane") {
+    g.save();
+    g.translate(14, 13);
+    g.scale(28 / 24, 28 / 24);
+    g.strokeStyle = "#0e1110";
+    g.lineWidth = 2;
+    g.lineJoin = "round";
+    g.lineCap = "round";
+    g.stroke(new Path2D(PLANE));
+    g.restore();
+  } else if (label) {
+    g.fillStyle = "#0e1110";
+    g.font = `600 ${label.length > 2 ? 18 : 23}px "Source Sans 3 Variable", "Source Sans 3", system-ui, sans-serif`;
+    g.textAlign = "center";
+    g.textBaseline = "middle";
+    g.fillText(label, 28, 28.5);
+  }
   return g.getImageData(0, 0, w, h);
 }
+
+const PLANE = "M17.8 19.2 16 11l3.5-3.5C21 6 21.5 4 21 3c-1-.5-3 0-4.5 1.5L13 8 4.8 6.2c-.5-.1-.9.1-1.1.5l-.3.5c-.2.5-.1 1 .3 1.3L9 12l-2 3H4l-1 1 3 2 2 3 1-1v-3l3-2 3.5 5.3c.3.4.8.5 1.3.3l.5-.2c.4-.3.6-.7.5-1.2z";
 
 function pushData(map: maplibregl.Map, d: Pick<Props, "pins" | "routes" | "selectedId">) {
   const pinSrc = map.getSource("trip-pins") as GeoJSONSource | undefined;
   const routeSrc = map.getSource("trip-routes") as GeoJSONSource | undefined;
   if (!pinSrc || !routeSrc) return;
+  // Make each pin's image before the data needs it (styleimagemissing alone left them blank)
+  for (const p of d.pins) {
+    const id = `tp-pin|${p.color}|${p.glyph ? "" : p.label}|${p.glyph ?? ""}`;
+    if (!map.hasImage(id)) map.addImage(id, pinImage(p.color, p.glyph ? "" : p.label, p.glyph ?? ""), { pixelRatio: 2 });
+  }
   pinSrc.setData({
     type: "FeatureCollection",
     features: d.pins.map((p) => ({
