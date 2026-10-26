@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { CurrencySelect } from "./CurrencySelect";
+import { BudgetCharts, CsvButton, exportBudgetCsv } from "./BudgetCharts";
 import { createPortal } from "react-dom";
 import { DateField } from "./DatePicker";
 import type * as Y from "yjs";
@@ -46,7 +47,7 @@ export function BudgetPanel({ doc, state, readOnly }: { doc: Y.Doc; state: TripS
   const fx = useConverter(currency);
   const travelers = travelersOf(state);
   const lines = useMemo(() => budgetLines(state, fx.convert), [state, fx]);
-  const { total, byCategory, unconverted } = totals(lines);
+  const { total, unconverted } = totals(lines);
   const settle = useMemo(() => settleUp(lines, travelers), [lines, travelers]);
   const [editing, setEditing] = useState<Partial<Expense> | null>(null);
   const [linked, setLinked] = useState<Line | null>(null);
@@ -89,24 +90,14 @@ export function BudgetPanel({ doc, state, readOnly }: { doc: Y.Doc; state: TripS
             </p>
           </div>
         ) : null}
-        {byCategory.length > 0 && (
-          <ul className="mt-4 space-y-1.5">
-            {byCategory.map(([cat, amt]) => (
-              <li key={cat} className="flex items-center gap-2 text-sm">
-                <span className="size-2.5 shrink-0 rounded-full" style={{ background: CAT_COLOR[cat] }} />
-                <span className="flex-1">{CATEGORY_LABEL[cat]}</span>
-                <span className="w-24 text-right tabular-nums">{formatMoney(amt, currency)}</span>
-                <span className="w-10 text-right text-xs text-muted tabular-nums">{Math.round((amt / total) * 100)}%</span>
-              </li>
-            ))}
-          </ul>
-        )}
         {unconverted > 0 && (
           <p className="mt-3 text-xs text-muted">
             {unconverted} expense{unconverted > 1 ? "s" : ""} not counted: no exchange rate yet (go online once).
           </p>
         )}
       </section>
+
+      <BudgetCharts lines={lines} state={state} currency={currency} />
 
       {/* Travelers + settle up */}
       <section>
@@ -159,6 +150,8 @@ export function BudgetPanel({ doc, state, readOnly }: { doc: Y.Doc; state: TripS
       <section>
         <div className="mb-2 flex items-center justify-between">
           <h3 className="font-display text-lg">Expenses</h3>
+          <div className="ml-auto flex items-center gap-2">
+          {lines.length > 0 && <CsvButton onClick={() => exportBudgetCsv(lines, state, currency)} />}
           {!readOnly && (
             <button
               onClick={() => setEditing({ currency, category: "food", date: todayISO() >= state.meta.startDate && todayISO() <= state.meta.endDate ? todayISO() : state.meta.startDate, paidBy: travelers[0] })}
@@ -167,6 +160,7 @@ export function BudgetPanel({ doc, state, readOnly }: { doc: Y.Doc; state: TripS
               <Plus className="size-3.5" /> Add expense
             </button>
           )}
+          </div>
         </div>
         {lines.length === 0 ? (
           <p className="rounded-xl border border-dashed border-line p-6 text-center text-sm text-muted">No expenses yet. Reservation costs show up here automatically.</p>
