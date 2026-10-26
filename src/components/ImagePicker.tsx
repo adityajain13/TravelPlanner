@@ -37,6 +37,7 @@ export function ImagePicker({
   // Pasted link: previewed first, used only once it actually loads
   const linkUrl = /^https?:\/\/\S+$/.test(link.trim()) ? link.trim() : "";
   const [linkState, setLinkState] = useState<"idle" | "loading" | "ok" | "bad">("idle");
+  const [using, setUsing] = useState(false);
   useEffect(() => setLinkState(linkUrl ? "loading" : "idle"), [linkUrl]);
 
   useEffect(() => {
@@ -135,7 +136,10 @@ export function ImagePicker({
           <form
             onSubmit={(e) => {
               e.preventDefault();
-              if (linkUrl && linkState === "ok") pick({ url: linkUrl, thumb: linkUrl, source: "link", link: linkUrl });
+              if (!linkUrl || linkState !== "ok" || using) return;
+              // Show it took, then close
+              setUsing(true);
+              setTimeout(() => pick({ url: linkUrl, thumb: linkUrl, source: "link", link: linkUrl }), 350);
             }}
             className="flex min-w-0 flex-1 items-center gap-2"
           >
@@ -162,10 +166,12 @@ export function ImagePicker({
             </div>
             {linkUrl && (
               <button
-                disabled={linkState !== "ok"}
-                className="flex shrink-0 items-center gap-1.5 rounded-lg bg-accent px-3 py-2 text-sm font-bold text-on-accent disabled:opacity-40"
+                disabled={linkState !== "ok" || using}
+                className={`flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-bold text-on-accent transition-all duration-150 enabled:cursor-pointer enabled:hover:brightness-110 enabled:active:scale-95 enabled:active:brightness-90 disabled:opacity-40 ${
+                  using ? "scale-95 bg-accent !opacity-100 ring-4 ring-accent/30" : "bg-accent"
+                }`}
               >
-                <Check className="size-4" /> Use image
+                {using ? <Loader2 className="size-4 animate-spin" /> : <Check className="size-4" />} {using ? "Adding…" : "Use image"}
               </button>
             )}
           </form>
