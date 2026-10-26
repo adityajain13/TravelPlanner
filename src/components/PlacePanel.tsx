@@ -97,7 +97,6 @@ export function PlacePanel(p: Props) {
     </div>
   );
   const iconBtn = "grid size-8 place-items-center rounded-full text-muted hover:bg-surface-2 hover:text-fg";
-  const subtitle = [item.category, item.address?.split(",").slice(0, 3).join(",")].filter(Boolean).join(" · ");
 
   if (mode === "compact") {
     return (
@@ -115,7 +114,13 @@ export function PlacePanel(p: Props) {
               {item.kind === "place" && <PinMarker color={p.color} label={p.number} size={18} />}
               <p className="min-w-0 flex-1 truncate text-[16px] leading-tight font-bold">{item.name}</p>
             </div>
-            {subtitle && <p className="mt-0.5 truncate text-[13px] text-muted">{subtitle}</p>}
+            {/* Same category pill as the full card, then the address */}
+            {(item.category || item.address) && (
+              <div className="mt-1 flex min-w-0 items-center gap-1.5">
+                {item.category && <span className="shrink-0 rounded-full bg-surface-2 px-2 py-0.5 text-[12px] text-muted capitalize">{item.category}</span>}
+                {item.address && <span className="min-w-0 truncate text-[13px] text-muted">{item.address.split(",").slice(0, 3).join(",")}</span>}
+              </div>
+            )}
             <div className="mt-1.5 flex items-center justify-between gap-2">
               {nav}
               <div className="flex">
