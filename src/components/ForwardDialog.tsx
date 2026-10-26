@@ -113,7 +113,7 @@ export function ForwardDialog({ tripId, tripTitles, initialView = "forward", onC
                 </div>
               ) : shown!.length === 0 ? (
                 <p className="py-10 text-center text-muted">
-                  {scope === "trip" && items.length ? "No emails for this trip yet." : "Nothing forwarded yet."} Send confirmations to <span className="text-fg">{INBOX_ADDRESS}</span>.
+                  {scope === "trip" && items.length ? "No emails for this trip yet." : "Nothing forwarded yet."} Send confirmations to <span className="break-all text-fg">{tripAddress(scope === "trip" ? tripId : undefined)}</span>.
                 </p>
               ) : (
                 <ul className="space-y-2.5">
