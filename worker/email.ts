@@ -193,7 +193,8 @@ export async function handleEmail(message: ForwardableEmailMessage, env: Env) {
 
   // Account mail for the sending address itself (e.g. Google verifying trips@ so it can have a
   // profile photo in Gmail) goes to the owner's inbox instead of being read as a booking
-  if (/@(accounts\.)?google\.com$/.test(sender) && allowed[0]) {
+  // (Google's envelope sender is a bounce address like …@gaia.bounces.google.com, so match any google.com subdomain)
+  if (/@([a-z0-9-]+\.)*google\.com$/.test(sender) && allowed[0]) {
     await message.forward(allowed[0]);
     return;
   }
