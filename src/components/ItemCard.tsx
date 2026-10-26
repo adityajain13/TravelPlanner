@@ -294,6 +294,8 @@ function ItemCardView({
           initialQuery={[item.name, searchContext].filter(Boolean).join(" ")}
           name={item.name}
           coords={item.lat != null && item.lng != null ? [item.lng, item.lat] : undefined}
+          googlePlaceId={item.googlePlaceId}
+          address={item.address}
           current={item.image}
           onPick={(image) => onChange({ image })}
           onClose={() => setPicking(false)}

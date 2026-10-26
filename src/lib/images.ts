@@ -260,3 +260,23 @@ export async function firstPhoto(name: string, coords?: [number, number], contex
   trackPick(un[0]);
   return forStorage(un[0]);
 }
+
+/**
+ * Google Maps photos of a place (or of whatever a search names, e.g. "Osaka"): the place's own
+ * Google ID when known, else the best text match near the pin. [] without a Google key.
+ */
+export async function googlePhotos(q: { placeId?: string; name: string; address?: string; coords?: [number, number] }): Promise<PlaceImage[]> {
+  const { GOOGLE_KEY, findPlaceId, getDetails, photoUrl } = await import("./google");
+  if (!GOOGLE_KEY || !navigator.onLine) return [];
+  const id = q.placeId ?? (await findPlaceId({ name: q.name, address: q.address, lat: q.coords?.[1], lng: q.coords?.[0] }));
+  if (!id) return [];
+  const d = await getDetails(id);
+  return d.photos.slice(0, 10).map((ph) => ({
+    url: photoUrl(ph.name, 1600),
+    thumb: photoUrl(ph.name, 600),
+    source: "google" as const,
+    credit: ph.attributions.map((a) => a.displayName).join(", ") || "Google",
+    link: ph.attributions[0]?.uri,
+    title: d.name,
+  }));
+}
