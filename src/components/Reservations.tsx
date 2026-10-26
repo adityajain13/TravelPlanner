@@ -2,6 +2,7 @@ import { useState } from "react";
 import { CurrencySelect } from "./CurrencySelect";
 import { DateField } from "./DatePicker";
 import { TimeField } from "./TimeField";
+import { AddressSearch } from "./AddressSearch";
 import type * as Y from "yjs";
 import { BedDouble, Car, ChevronDown, Inbox, Loader2, Mail, PenLine, Pencil, Plane, Plus, Ticket, TrainFront, Trash2, Utensils, X } from "lucide-react";
 import { PlaceSearch } from "./PlaceSearch";
@@ -274,13 +275,16 @@ export function ReservationForm({ doc, state, initial, onClose }: { doc: Y.Doc; 
   const f = FIELDS[type];
   const set = (patch: Partial<Reservation>) => setR((x) => ({ ...x, ...patch }));
 
+  const [picked, setPicked] = useState(false);
+
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     if (!r.title?.trim()) return;
     setBusy(true);
     let geo: Partial<Reservation> = {};
     const addressChanged = r.address !== initial.address || r.title !== initial.title;
-    if (GEOCODE.includes(type) && (r.address || r.title) && (addressChanged || r.lat == null)) {
+    // A result picked from the address search is already pinned exactly
+    if (!picked && GEOCODE.includes(type) && (r.address || r.title) && (addressChanged || r.lat == null)) {
       try {
         const [hit] = await searchPlaces([r.title, r.address].filter(Boolean).join(", "), state.meta.center);
         if (hit) geo = { lat: hit.lat, lng: hit.lng, address: r.address || hit.address };
@@ -332,7 +336,19 @@ export function ReservationForm({ doc, state, initial, onClose }: { doc: Y.Doc; 
         </label>
         {f.from && text(f.from, "from")}
         {f.to && text(f.to, "to")}
-        {f.address && text(f.address, "address")}
+        {f.address && (
+          <div className="block space-y-1">
+            <span className="text-xs text-muted">{f.address}</span>
+            <AddressSearch
+              value={r.address}
+              pinned={r.lat != null}
+              near={state.meta.center}
+              className={inputCls}
+              onType={(address) => (set({ address, lat: undefined, lng: undefined }), setPicked(false))}
+              onPick={(p) => (set({ address: p.address, lat: p.lat, lng: p.lng, ...(r.title?.trim() ? {} : { title: p.name }) }), setPicked(true))}
+            />
+          </div>
+        )}
         {f.start && date(f.start, "startDate", "startTime")}
         {f.end && date(f.end, "endDate", "endTime")}
         {text("Confirmation #", "confirmation")}

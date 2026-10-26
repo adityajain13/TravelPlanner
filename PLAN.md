@@ -112,3 +112,4 @@ Hosted at **adityajain.ca/travelplanner** by the `travelplanner` Cloudflare Work
 - Reservations: traveler field (form + email extraction), sortReservations = date/time → booking → traveler A–Z; day chips sorted and merged per booking ("· 2 people").
 - Delete imported email: Imported emails grouped per email (subject+time) with a delete button; DELETE /api/inbox/:id; removeFromEmail removes reservations/stops tagged inboxId (new adds are tagged) or, for older ones, same title+date.
 - Hotels/restaurants without a pin are located in the background on trip open (Google first, then Photon by name+address, then address), so hotel legs and pins appear.
+- Booking address is a place search (AddressSearch: OSM + Google) that pins the reservation; Pinned / No pin badge.
