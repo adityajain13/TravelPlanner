@@ -139,3 +139,4 @@ Hosted at **adityajain.ca/travelplanner** by the `travelplanner` Cloudflare Work
 - Oct 26: load speed: cached Intl formatters (src/lib/intl.ts), place-copy groups memoised, airports fetched as .json after first paint, Trip + map chunks fetched in parallel, calendar lazy-loaded, map keys split from basemap style. ~35% faster to first stop at 4x CPU throttle.
 - Oct 26: Japan: Google returns no transit (licensing), so skip it there; rough transit estimates now follow the OSRM road route (dashed) at ~25 km/h + 10 min, and short hops (<1.3 km) use a real walking route.
 - Oct 26: Japan transit via NAVITIME Route(totalnavi) on RapidAPI (Worker /api/routes/japan, secret NAVITIME_RAPIDAPI_KEY), with shared 30-day edge cache + 30-day device cache to stay inside the free quota.
+- Oct 26: imported bookings located via locateBooking (Google text search → OSM name match ≥0.8 → address); older imported stops re-checked once and moved if >500 m off (Item.located).

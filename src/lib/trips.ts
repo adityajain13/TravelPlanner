@@ -54,6 +54,8 @@ export interface Item extends CostSplit {
   travelMode?: import("./routing").TravelMode;
   /** The forwarded email (inbox row) this came from. */
   inboxId?: string;
+  /** Imported stop whose pin came from the careful booking lookup (older imports get re-checked once). */
+  located?: boolean;
   /** Checklist rows (kind "checklist"); the item's name is the checklist title. */
   checks?: CheckItem[];
   createdAt: number;
