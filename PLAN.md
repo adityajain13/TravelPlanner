@@ -129,3 +129,4 @@ Hosted at **adityajain.ca/travelplanner** by the `travelplanner` Cloudflare Work
 - Oct 26: no native dialogs: askConfirm()/ConfirmHost replaces every confirm(); shared Menu replaces <select>; themed react-colorful custom day colour picker.
 - Oct 26: legs to/from airports on flight days (hotel/stops → departure airport, arrival airport → first stop or hotel); map no longer moves when the place panel is resized; traveler chips replace datalist.
 - Oct 26: collapsing the contents column moves logo + undo/redo into a bar atop the itinerary (with a show-contents button); time ranges no longer auto-fill an end (end-only allowed).
+- Oct 26: booking chips slot between stops by time (stop time = start, else end); flight connections ignored for legs; leg to the departure airport shown before its flight chip (mode stored as hotelLegModes['<day>|dep']).

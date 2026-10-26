@@ -32,7 +32,7 @@ interface Props {
   focused: boolean;
   readOnly?: boolean;
   currency?: string;
-  chips?: { r: Reservation; label: string; at?: string }[];
+  chips?: { r: Reservation; label: string; at?: string; time?: string }[];
   /** Incoming leg per item id (days only). */
   legs?: Map<string, { mode: TravelMode; state?: LegState; from: [number, number]; to: [number, number]; label?: string }>;
   searchContext?: string;
@@ -78,6 +78,29 @@ export function Section(p: Props) {
   }
   const dayTravel = secs > 0 ? `${formatDuration(secs)} · ${formatDistance(metres)}` : null;
   let n = 0;
+  const chipsAt = placeChips(p.chips ?? [], info.items);
+  const chipRow = (cs: NonNullable<Props["chips"]>) => (
+    <div className="flex flex-col items-start gap-1.5 pl-9">
+      {cs.map((c, i) => {
+        // The trip to the airport sits right before the flight it's for
+        const depKey = c.r.type === "flight" && c.r.startDate === info.date ? `dep:${c.r.title}|${c.r.startDate}` : "";
+        const dep = depKey ? p.legs?.get(depKey) : undefined;
+        return (
+          <div key={`${c.r.id}-${i}`} className="flex flex-col items-start gap-1.5">
+            {dep && (
+              <div className="-ml-6">
+                <LegChip mode={dep.mode} state={dep.state} readOnly={p.readOnly} onMode={(m) => p.onLegMode?.(depKey, m)} from={dep.from} to={dep.to} label={dep.label} />
+              </div>
+            )}
+            <button onClick={() => p.onChipClick?.(c.r)} className="flex items-center gap-1.5 rounded-full bg-surface-2 px-2.5 py-1 text-xs text-muted hover:text-fg">
+              <span className="[&>svg]:size-3.5">{RES_ICON[c.r.type]}</span>
+              {c.label}
+            </button>
+          </div>
+        );
+      })}
+    </div>
+  );
 
   return (
     <section
@@ -137,25 +160,13 @@ export function Section(p: Props) {
         </button>
       </div>
 
-      {p.chips && p.chips.length > 0 && (
-        <div className="mt-2 flex flex-col items-start gap-1.5 pl-9">
-          {p.chips.map((c, i) => (
-            <button
-              key={`${c.r.id}-${i}`}
-              onClick={() => p.onChipClick?.(c.r)}
-              className="flex items-center gap-1.5 rounded-full bg-surface-2 px-2.5 py-1 text-xs text-muted hover:text-fg"
-            >
-              <span className="[&>svg]:size-3.5">{RES_ICON[c.r.type]}</span>
-              {c.label}
-            </button>
-          ))}
-        </div>
-      )}
+      {chipsAt.get(0) && <div className="mt-2">{chipRow(chipsAt.get(0)!)}</div>}
       {open && (
         <div className="mt-2 space-y-0.5 pl-3">
           <SortableContext items={info.items.map((i) => i.id)} strategy={verticalListSortingStrategy}>
             {info.items.map((it, idx) => (
               <div key={it.id}>
+              {idx > 0 && chipsAt.get(idx) && <div className="pt-2 pb-1">{chipRow(chipsAt.get(idx)!)}</div>}
               {insertAt === idx ? (
                 <div className="py-1.5 pr-1 pl-9" data-popover>
                   <PlaceSearch
@@ -246,6 +257,7 @@ export function Section(p: Props) {
               label={p.legs.get("end")!.label}
             />
           )}
+          {chipsAt.get(info.items.length) && info.items.length > 0 && <div className="py-1.5">{chipRow(chipsAt.get(info.items.length)!)}</div>}
           {info.key !== "orphan" && !p.readOnly && (
             <div className="flex items-center gap-2 pt-1.5 pr-1 pl-6">
               <PlaceSearch near={p.near} countryCode={p.countryCode} onPick={p.onAddPlace} onNote={p.onAddNote} />
@@ -383,4 +395,36 @@ function ColorDot({ color, onPick }: { color: string; onPick: (hex: string | und
       )}
     </>
   );
+}
+
+const hhmm = (t?: string) => (t && /^\d{1,2}:\d{2}/.test(t) ? t.padStart(5, "0").slice(0, 5) : undefined);
+/** A stop's place in the day: its start time, else its end ("until 3:00"). */
+export const stopTime = (it: Item) => hhmm(it.startTime) ?? hhmm(it.endTime);
+
+/**
+ * Where each booking chip sits among the day's stops (index = before that stop; items.length =
+ * after the last). Timed bookings go after the last stop at or before their time, so a 07:30
+ * flight follows a stop you leave at 03:00. "Staying at"/check-outs open the day, check-ins close
+ * it, and with no timed stops at all everything stays at the top as before.
+ */
+export function placeChips(chips: NonNullable<Props["chips"]>, items: Item[]) {
+  const at = new Map<number, NonNullable<Props["chips"]>>();
+  const add = (i: number, c: NonNullable<Props["chips"]>[number]) => at.set(i, [...(at.get(i) ?? []), c]);
+  const times = items.map(stopTime);
+  const anyTimed = times.some(Boolean);
+  for (const c of chips) {
+    const t = hhmm(c.time);
+    if (c.at?.startsWith("~") && items.length) add(items.length, c);
+    else if (!t || !anyTimed || c.at?.startsWith("!")) add(0, c);
+    else {
+      let i = 0;
+      times.forEach((x, k) => x && x <= t && (i = k + 1));
+      if (i === 0) {
+        const next = times.findIndex((x) => x && x > t);
+        i = next < 0 ? items.length : next;
+      }
+      add(i, c);
+    }
+  }
+  return at;
 }

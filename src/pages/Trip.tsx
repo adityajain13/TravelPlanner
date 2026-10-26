@@ -61,7 +61,7 @@ import { flightAirports, flightArc, loadAirports, type Airport, type AirportDb }
 import type { Pin, Route } from "../components/TripMap";
 // MapLibre is the heaviest dependency; load it after the plan panel is on screen.
 const TripMap = lazy(() => import("../components/TripMap").then((m) => ({ default: m.TripMap })));
-import { Section, type SectionInfo } from "../components/Section";
+import { Section, stopTime, type SectionInfo } from "../components/Section";
 import { ItemCardDragPreview } from "../components/ItemCard";
 import { OfflineMapButton } from "../components/OfflineMapButton";
 import { HeroPill } from "../components/HeroPill";
@@ -248,26 +248,35 @@ export function TripPage() {
       let n = 0;
       let prev: Item | null = null;
       let first = true;
-      // Today's flights: the last one landing starts the day; the first one leaving ends the morning
-      const landing = s.kind === "day" ? flightsOn.filter((f) => f.arrDate === s.date).sort((a, b) => (timeOf(a.r.endTime) ?? "").localeCompare(timeOf(b.r.endTime) ?? "")).at(-1) : undefined;
-      const leaving = s.kind === "day" ? flightsOn.filter((f) => f.r.startDate === s.date).sort((a, b) => (timeOf(a.r.startTime) ?? "").localeCompare(timeOf(b.r.startTime) ?? ""))[0] : undefined;
+      // Today's flights. A landing followed by another flight out of the same airport is a
+      // connection, not where the day continues; likewise that onward flight isn't "leaving" from a stop.
+      const todayOut = s.kind === "day" ? flightsOn.filter((f) => f.r.startDate === s.date) : [];
+      const todayIn = s.kind === "day" ? flightsOn.filter((f) => f.arrDate === s.date) : [];
+      const connects = (inb: Flight, out: Flight) => inb !== out && out.dep.code === inb.arr.code && (timeOf(out.r.startTime) ?? "99") >= (timeOf(inb.r.endTime) ?? "00");
+      const landing = todayIn
+        .filter((f) => !todayOut.some((o) => connects(f, o)))
+        .sort((a, b) => (timeOf(a.r.endTime) ?? "").localeCompare(timeOf(b.r.endTime) ?? ""))
+        .at(-1);
+      const leaving = todayOut
+        .filter((o) => !todayIn.some((f) => connects(f, o)))
+        .sort((a, b) => (timeOf(a.r.startTime) ?? "").localeCompare(timeOf(b.r.startTime) ?? ""))[0];
       const landed = landing ? timeOf(landing.r.endTime) : undefined;
       if (leaving && s.kind === "day") {
         // To the departure airport: from the last stop before take-off, else from where you slept
         const depAt = timeOf(leaving.r.startTime);
         const placed = s.items.filter((i) => i.kind === "place" && i.lat != null);
-        const timed = placed.some((i) => timeOf(i.startTime));
+        const timed = placed.some((i) => stopTime(i));
         // Untimed stops on a day you fly out (and don't also land): the flight comes after them
-        const before = timed || leaving === landing ? placed.filter((i) => depAt && timeOf(i.startTime) && timeOf(i.startTime)! < depAt).at(-1) : placed.at(-1);
+        const before = timed || leaving === landing ? placed.filter((i) => depAt && stopTime(i) && stopTime(i)! < depAt).at(-1) : placed.at(-1);
         const from = before ? ([before.lng!, before.lat!] as [number, number]) : morningHotel(s.date!) ? ll({ lat: morningHotel(s.date!)!.lat!, lng: morningHotel(s.date!)!.lng! }) : undefined;
-        if (from) pushLeg(s, `dep:${leaving.r.id}`, `To ${leaving.dep.name} (${leaving.dep.code})`, from, ll(leaving.dep), depAt ? `${String(Math.max(0, +depAt.slice(0, 2) - 3)).padStart(2, "0")}${depAt.slice(2)}` : undefined);
+        if (from) pushLeg(s, `dep:${leaving.r.title}|${leaving.r.startDate}`, `To ${leaving.dep.name} (${leaving.dep.code})`, from, ll(leaving.dep), depAt ? `${String(Math.max(0, +depAt.slice(0, 2) - 3)).padStart(2, "0")}${depAt.slice(2)}` : undefined, state.meta.hotelLegModes?.[`${s.key}|dep`]);
       }
       for (const it of s.items) {
         if (it.kind !== "place") continue;
         n++;
         if (it.lat == null || it.lng == null) continue;
         if (!focus || s.key === focus) pins.push({ id: it.id, lat: it.lat, lng: it.lng, color: s.color, label: String(n), name: it.name, image: it.image?.thumb, unsplash: it.image?.source === "unsplash" ? { name: it.image.authorName ?? "Unknown", author: it.image.author } : undefined });
-        if (s.kind === "day" && first && landing && !(landed && timeOf(it.startTime) && timeOf(it.startTime)! < landed)) {
+        if (s.kind === "day" && first && landing && !(landed && stopTime(it) && stopTime(it)! < landed)) {
           // First stop after landing: from the arrival airport instead of a hotel
           first = false;
           pushLeg(s, it.id, `From ${landing.arr.name} (${landing.arr.code})`, ll(landing.arr), [it.lng, it.lat], landed, it.travelMode);
@@ -293,12 +302,12 @@ export function TripPage() {
         prev = it;
       }
       // Landed with no stops after: straight from the airport to tonight's hotel
-      if (s.kind === "day" && landing && (!prev || (landed && timeOf(prev.startTime) && timeOf(prev.startTime)! < landed))) {
+      if (s.kind === "day" && landing && (!prev || (landed && stopTime(prev) && stopTime(prev)! < landed))) {
         const h = eveningHotel(s.date!);
         if (h) pushLeg(s, "end", `${landing.arr.code} to ${h.title}`, ll(landing.arr), [h.lng!, h.lat!], landed, state.meta.hotelLegModes?.[s.key]);
       }
       // …and back to tonight's hotel after the last stop
-      const night = s.kind === "day" && prev && !(landing && landed && timeOf(prev.startTime) && timeOf(prev.startTime)! < landed) ? eveningHotel(s.date!) : undefined;
+      const night = s.kind === "day" && prev && !(landing && landed && stopTime(prev) && stopTime(prev)! < landed) ? eveningHotel(s.date!) : undefined;
       if (night && prev) {
         const mode = state.meta.hotelLegModes?.[s.key] ?? defaultMode;
         const from: [number, number] = [prev.lng!, prev.lat!];
@@ -813,8 +822,8 @@ export function TripPage() {
                 chips={s.kind === "day" ? dayChips(state.reservations, s.date!) : []}
                 legs={legsBySection.get(s.key)}
                 onLegMode={(itemId, m) =>
-                  itemId === "end"
-                    ? updateMeta(doc, { hotelLegModes: { ...(state.meta.hotelLegModes ?? {}), [s.key]: m } })
+                  itemId === "end" || itemId.startsWith("dep:")
+                    ? updateMeta(doc, { hotelLegModes: { ...(state.meta.hotelLegModes ?? {}), [itemId === "end" ? s.key : `${s.key}|dep`]: m } })
                     : updateItem(doc, itemId, { travelMode: m === (state.meta.travelMode ?? "drive") ? undefined : m })
                 }
                 onChipClick={(r) => !readOnly && setEditingRes(r)}
