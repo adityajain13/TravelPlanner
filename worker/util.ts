@@ -13,6 +13,8 @@ export interface Env {
   UNSPLASH_ACCESS_KEY?: string;
   /** optional server-side key for Google Routes; else the app's own key is forwarded */
   GOOGLE_ROUTES_KEY?: string;
+  /** RapidAPI key subscribed to NAVITIME Route (totalnavi): Japanese train routes. */
+  NAVITIME_RAPIDAPI_KEY?: string;
 }
 
 export const BASE = "/travelplanner";

@@ -11,6 +11,7 @@ const FIELDS =
   "routes.duration,routes.distanceMeters,routes.polyline.encodedPolyline,routes.legs.steps.travelMode,routes.legs.steps.staticDuration,routes.legs.steps.transitDetails.transitLine.nameShort,routes.legs.steps.transitDetails.transitLine.name,routes.legs.steps.transitDetails.transitLine.vehicle.type";
 
 export async function handleRoutes(req: Request, env: Env, url: URL): Promise<Response | null> {
+  if (url.pathname === `${API}/routes/japan`) return japan(req, env, url);
   if (url.pathname !== `${API}/routes/transit`) return null;
   if (req.method !== "POST") return error(405, "POST only");
   const share = url.searchParams.get("share");
@@ -29,4 +30,88 @@ export async function handleRoutes(req: Request, env: Env, url: URL): Promise<Re
     }),
   });
   return new Response(await res.text(), { status: res.status, headers: { "content-type": "application/json" } });
+}
+
+/*
+ * Japan: Google has no transit there, so trains come from NAVITIME (via RapidAPI; the free plan
+ * is a few hundred searches a month, and the app caches every answer). Returns the same shape
+ * the app uses for any transit leg.
+ */
+type NaviSection = {
+  type?: string;
+  move?: string;
+  line_name?: string;
+  time?: number;
+  distance?: number;
+  transport?: { name?: string; type?: string };
+};
+type NaviItem = {
+  summary?: { move?: { time?: number; distance?: number; transit_count?: number } };
+  sections?: NaviSection[];
+  shapes?: { features?: { geometry?: { type?: string; coordinates?: unknown } }[] } | { type?: string; coordinates?: unknown };
+};
+
+async function japan(req: Request, env: Env, url: URL): Promise<Response> {
+  if (req.method !== "POST") return error(405, "POST only");
+  const share = url.searchParams.get("share");
+  if (!(await getSession(req, env)) && !(share && (await verifyShareToken(env, share)))) return error(401, "Sign in");
+  if (!env.NAVITIME_RAPIDAPI_KEY) return error(501, "Japan transit isn't set up (NAVITIME_RAPIDAPI_KEY)");
+  const body = (await req.json().catch(() => null)) as { from?: [number, number]; to?: [number, number]; when?: string } | null;
+  if (!body?.from || !body?.to) return error(400, "Missing from/to");
+
+  const call = async (withTime: boolean) => {
+    const q = new URLSearchParams({
+      start: `${body.from![1]},${body.from![0]}`,
+      goal: `${body.to![1]},${body.to![0]}`,
+      shape: "true",
+      limit: "1",
+    });
+    // Local Japan time, without the offset
+    if (withTime && body.when) q.set("start_time", body.when.slice(0, 19));
+    return fetch(`https://navitime-route-totalnavi.p.rapidapi.com/route_transit?${q}`, {
+      headers: { "x-rapidapi-key": env.NAVITIME_RAPIDAPI_KEY!, "x-rapidapi-host": "navitime-route-totalnavi.p.rapidapi.com" },
+    });
+  };
+  // Shared cache (all devices, 30 days): the same hop at the same hour isn't searched twice
+  const cacheKey = new Request(`https://cache.travelplanner/japan?${new URLSearchParams({ f: body.from.map((v) => v.toFixed(4)).join(","), t: body.to.map((v) => v.toFixed(4)).join(","), w: (body.when ?? "").slice(0, 13) })}`);
+  const hit = await caches.default.match(cacheKey);
+  if (hit) return new Response(hit.body, { headers: { "content-type": "application/json" } });
+
+  let res = await call(true);
+  if (!res.ok && body.when && res.status !== 429 && res.status !== 403) res = await call(false); // e.g. a date outside the timetable
+  if (!res.ok) return error(res.status === 429 ? 429 : 502, res.status === 429 ? "NAVITIME monthly limit reached" : `NAVITIME ${res.status}: ${(await res.text()).slice(0, 120)}`);
+  const j = (await res.json()) as { items?: NaviItem[] };
+  const it = j.items?.[0];
+  const keep = async (r: Response) => {
+    const text = await r.text();
+    await caches.default.put(cacheKey, new Response(text, { headers: { "content-type": "application/json", "cache-control": "max-age=2592000" } })).catch(() => undefined);
+    return new Response(text, { headers: { "content-type": "application/json" } });
+  };
+  if (!it?.summary?.move?.time) return keep(Response.json({ route: null }));
+
+  const steps: { mode: string; name?: string; minutes: number }[] = [];
+  for (const s of it.sections ?? []) {
+    if (s.type !== "move") continue;
+    const walk = s.move === "walk";
+    const prev = steps.at(-1);
+    if (walk && prev?.mode === "WALK") prev.minutes += s.time ?? 0;
+    else steps.push({ mode: walk ? "WALK" : (s.move ?? "TRAIN").toUpperCase(), name: walk ? undefined : (s.line_name ?? s.transport?.name), minutes: s.time ?? 0 });
+  }
+  // shapes: GeoJSON (FeatureCollection of LineStrings, [lon, lat])
+  const coords: [number, number][] = [];
+  const feats = it.shapes && "features" in it.shapes ? (it.shapes.features ?? []) : it.shapes ? [{ geometry: it.shapes as { type?: string; coordinates?: unknown } }] : [];
+  for (const f of feats) {
+    const g = f.geometry;
+    if (g?.type === "LineString") coords.push(...(g.coordinates as [number, number][]));
+    else if (g?.type === "MultiLineString") for (const line of g.coordinates as [number, number][][]) coords.push(...line);
+  }
+  return keep(Response.json({
+    route: {
+      duration: it.summary.move.time * 60,
+      distance: it.summary.move.distance ?? 0,
+      transfers: it.summary.move.transit_count ?? Math.max(0, steps.filter((x) => x.mode !== "WALK").length - 1),
+      steps,
+      coords,
+    },
+  }));
 }
