@@ -29,7 +29,7 @@ interface Props {
   focused: boolean;
   readOnly?: boolean;
   currency?: string;
-  chips?: { r: Reservation; label: string }[];
+  chips?: { r: Reservation; label: string; at?: string }[];
   /** Incoming leg per item id (days only). */
   legs?: Map<string, { mode: TravelMode; state?: LegState; from: [number, number]; to: [number, number]; label?: string }>;
   searchContext?: string;
@@ -129,7 +129,7 @@ export function Section(p: Props) {
       </div>
 
       {p.chips && p.chips.length > 0 && (
-        <div className="mt-2 flex flex-wrap gap-1.5 pl-9">
+        <div className="mt-2 flex flex-col items-start gap-1.5 pl-9">
           {p.chips.map((c, i) => (
             <button
               key={`${c.r.id}-${i}`}
