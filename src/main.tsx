@@ -15,7 +15,10 @@ window.addEventListener("vite:preloadError", (e) => {
   if (reloadOnce()) e.preventDefault();
 });
 
-const TripPage = lazy(() => import("./pages/Trip").then((m) => ({ default: m.TripPage })));
+const tripChunk = () => import("./pages/Trip");
+const TripPage = lazy(() => tripChunk().then((m) => ({ default: m.TripPage })));
+// Opening a trip straight from a link/reload: fetch its page chunk alongside the app shell
+if (/\/trip\//.test(location.pathname)) void tripChunk();
 
 const router = createBrowserRouter(
   [

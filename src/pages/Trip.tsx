@@ -1,3 +1,4 @@
+import { dtf } from "../lib/intl";
 import { Fragment, Suspense, lazy, useEffect, useMemo, useRef, useState } from "react";
 import { DateRangeField } from "../components/DatePicker";
 import { Link, Navigate, useParams } from "react-router-dom";
@@ -63,7 +64,10 @@ import { RES_GLYPH } from "../lib/pinArt";
 import { flightAirports, flightArc, flightInstant, loadAirports, zoneAt, type Airport, type AirportDb } from "../lib/airports";
 import type { Pin, Route } from "../components/TripMap";
 // MapLibre is the heaviest dependency; load it after the plan panel is on screen.
-const TripMap = lazy(() => import("../components/TripMap").then((m) => ({ default: m.TripMap })));
+// Start fetching the (large) map chunk as soon as the trip page loads, in parallel with the
+// trip's own data, instead of only once the page has rendered
+const tripMapChunk = import("../components/TripMap");
+const TripMap = lazy(() => tripMapChunk.then((m) => ({ default: m.TripMap })));
 import { Section, stopTime, type SectionInfo } from "../components/Section";
 import { ItemCardDragPreview } from "../components/ItemCard";
 import { OfflineMapButton } from "../components/OfflineMapButton";
@@ -85,7 +89,7 @@ import { askConfirm } from "../components/ConfirmDialog";
 
 const ORPHAN = "orphan";
 const formatChip = (d: string) =>
-  new Intl.DateTimeFormat(undefined, { weekday: "short", month: "short", day: "numeric", timeZone: "UTC" }).format(parseISODate(d));
+  dtf(undefined, { weekday: "short", month: "short", day: "numeric", timeZone: "UTC" }).format(parseISODate(d));
 const LOADING = "loading" as const;
 
 export function TripPage() {
@@ -199,7 +203,12 @@ export function TripPage() {
   const hasFlights = !!state?.reservations.some((r) => r.type === "flight");
   const [airportDb, setAirportDb] = useState<AirportDb | null>(null);
   useEffect(() => {
-    if (hasFlights && !airportDb) loadAirports().then(setAirportDb).catch(() => undefined);
+    if (!hasFlights || airportDb) return;
+    // After the itinerary has painted: the airport table is big and only adds pins/legs
+    const go = () => loadAirports().then(setAirportDb).catch(() => undefined);
+    const idle = (window as unknown as { requestIdleCallback?: (f: () => void, o?: { timeout: number }) => number }).requestIdleCallback;
+    if (idle) idle(go, { timeout: 1500 });
+    else setTimeout(go, 300);
   }, [hasFlights, airportDb]);
   const view = useMemo(() => {
     if (!state) return null;
@@ -454,6 +463,24 @@ export function TripPage() {
     setTimeout(() => setPhotoFill(null), 2500);
   }
 
+  // Worked out once per change (not per card per render): items grouped by name, then matched
+  const copyGroups = useMemo(() => {
+    const byName = new Map<string, Item[]>();
+    for (const it of state?.items ?? []) {
+      if (it.kind !== "place") continue;
+      const k = it.name.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "");
+      (byName.get(k) ?? byName.set(k, []).get(k)!).push(it);
+    }
+    const out = new Map<string, Item[]>();
+    for (const it of state?.items ?? []) {
+      if (it.kind !== "place") continue;
+      const same = (byName.get(it.name.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "")) ?? []).filter((x) => x.id === it.id || samePlace(it, x));
+      // Same Google/OSM place under another name
+      for (const x of state!.items) if (x.kind === "place" && !same.includes(x) && ((it.googlePlaceId && x.googlePlaceId === it.googlePlaceId) || (it.osmId && x.osmId === it.osmId))) same.push(x);
+      out.set(it.id, same);
+    }
+    return out;
+  }, [state?.items]);
   if (row !== LOADING && !shareToken && auth === "out") return <Navigate to="/login" replace />;
   if (!ready || row === LOADING) return <div className="grid h-full place-items-center text-muted">Loading…</div>;
   if (!state || !doc || !view) {
@@ -493,10 +520,7 @@ export function TripPage() {
   }
 
   // A place can sit on several days/lists (as copies); the day menu ticks and toggles them
-  const copiesOf = (itemId: string) => {
-    const me = state?.items.find((i) => i.id === itemId);
-    return me ? (state?.items ?? []).filter((x) => x.id === itemId || samePlace(me, x)) : [];
-  };
+  const copiesOf = (itemId: string) => copyGroups.get(itemId) ?? [];
   const sectionsOf = (itemId: string) => [...new Set(copiesOf(itemId).map((x) => x.section))];
   const toggleSection = (itemId: string, key: string) => {
     if (!doc) return;

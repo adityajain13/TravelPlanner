@@ -1,3 +1,4 @@
+import { dtf } from "./intl";
 import type { Reservation } from "./trips";
 
 /*
@@ -9,7 +10,12 @@ export type AirportDb = Record<string, AirportRow>;
 
 let cache: Promise<AirportDb> | null = null;
 let loaded: AirportDb | null = null;
-export const loadAirports = () => (cache ??= import("../data/airports.json").then((m) => (loaded = m.default as unknown as AirportDb)));
+// Fetched as a plain .json file: JSON.parse is far faster than evaluating the same data as a JS module
+export const loadAirports = () =>
+  (cache ??= import("../data/airports.json?url")
+    .then((m) => fetch(m.default))
+    .then((r) => r.json() as Promise<AirportDb>)
+    .then((db) => (loaded = db)));
 /** The airport table if it has been loaded (the trip page loads it when a trip has flights). */
 export const airportsNow = () => loaded;
 
@@ -100,7 +106,7 @@ export function flightArc(a: { lat: number; lng: number }, b: { lat: number; lng
 /** Minutes a zone is ahead of UTC at a given instant. */
 function zoneOffset(ms: number, tz: string) {
   const p = Object.fromEntries(
-    new Intl.DateTimeFormat("en-US", { timeZone: tz, hourCycle: "h23", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })
+    dtf("en-US", { timeZone: tz, hourCycle: "h23", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })
       .formatToParts(ms)
       .map((x) => [x.type, x.value]),
   );

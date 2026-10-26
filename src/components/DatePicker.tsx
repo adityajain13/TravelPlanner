@@ -1,6 +1,11 @@
+import { dtf } from "../lib/intl";
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { DayPicker, type DateRange } from "react-day-picker";
+import { lazy, Suspense } from "react";
+import type { DateRange } from "react-day-picker";
+// The calendar (react-day-picker + date-fns) loads the first time a date picker opens, not with the app
+const DayPicker = lazy(() => import("react-day-picker").then((m) => ({ default: m.DayPicker })));
+const CalendarLoading = () => <div className="grid h-72 w-72 place-items-center text-muted">…</div>;
 import { CalendarDays, ChevronLeft, ChevronRight } from "lucide-react";
 
 /*
@@ -15,7 +20,7 @@ export const fromISO = (s?: string) => {
 };
 export const toISO = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 const fmt = (d?: Date, withYear = true) =>
-  d ? new Intl.DateTimeFormat(undefined, { weekday: "short", month: "short", day: "numeric", ...(withYear ? { year: "numeric" } : {}) }).format(d) : "";
+  d ? dtf(undefined, { weekday: "short", month: "short", day: "numeric", ...(withYear ? { year: "numeric" } : {}) }).format(d) : "";
 
 const classNames = {
   root: "relative p-3 text-[14px] select-none",
@@ -134,6 +139,7 @@ export function DateField({ value, onChange, min, max, placeholder = "Pick a dat
       </button>
       {open && btn.current && (
         <Popover anchor={btn.current} onClose={() => setOpen(false)}>
+          <Suspense fallback={<CalendarLoading />}>
           <DayPicker
             mode="single"
             selected={selected}
@@ -155,6 +161,7 @@ export function DateField({ value, onChange, min, max, placeholder = "Pick a dat
               ) : undefined
             }
           />
+          </Suspense>
         </Popover>
       )}
     </>
@@ -183,7 +190,7 @@ export function DateRangeField({
   const sameYear = from && to && from.getFullYear() === to.getFullYear();
   const label =
     from && to
-      ? `${new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", ...(sameYear ? {} : { year: "numeric" }) }).format(from)} – ${new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", year: "numeric" }).format(to)}`
+      ? `${dtf(undefined, { month: "short", day: "numeric", ...(sameYear ? {} : { year: "numeric" }) }).format(from)} – ${dtf(undefined, { month: "short", day: "numeric", year: "numeric" }).format(to)}`
       : "Pick dates";
   const nights = from && to ? Math.round((to.getTime() - from.getTime()) / 86400000) : 0;
   const wide = typeof window !== "undefined" && window.innerWidth >= 720;
@@ -206,6 +213,7 @@ export function DateRangeField({
       </button>
       {open && btn.current && (
         <Popover anchor={btn.current} onClose={() => setOpen(false)}>
+          <Suspense fallback={<CalendarLoading />}>
           <DayPicker
             mode="range"
             selected={draft}
@@ -227,6 +235,7 @@ export function DateRangeField({
               <p className="px-1 text-[12px] text-muted">{draft?.from && !draft.to ? "Now pick the last day" : "Pick the first day, then the last"}</p>
             }
           />
+          </Suspense>
         </Popover>
       )}
     </>

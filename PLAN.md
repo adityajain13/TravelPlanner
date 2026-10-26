@@ -136,3 +136,4 @@ Hosted at **adityajain.ca/travelplanner** by the `travelplanner` Cloudflare Work
 - Oct 26: flights ordered by real instants using each airport's IANA time zone (airports.json now carries tz); day chips, reservation list and airport legs use it.
 - Oct 26: trains/buses/cars: from/to geocoded in the background with their IANA zone (@photostructure/tz-lookup, lazy chunk), saved as fromAt/toAt; sorting uses travelInstant for all of them.
 - Oct 26: day menu on stop cards and the place panel is multi-select: tick days/lists to put the place on them (copies), untick to remove (keeps at least one); samePlace also matches unpinned copies by name+address.
+- Oct 26: load speed: cached Intl formatters (src/lib/intl.ts), place-copy groups memoised, airports fetched as .json after first paint, Trip + map chunks fetched in parallel, calendar lazy-loaded, map keys split from basemap style. ~35% faster to first stop at 4x CPU throttle.

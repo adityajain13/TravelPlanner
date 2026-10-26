@@ -1,5 +1,5 @@
 import { db, type RegionRow } from "./db";
-import { PROTOMAPS_KEY } from "./mapStyle";
+import { PROTOMAPS_KEY } from "./mapKeys";
 import type { TripState } from "./trips";
 
 /*

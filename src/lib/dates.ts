@@ -1,3 +1,4 @@
+import { dtf } from "./intl";
 // Dates are stored as plain "YYYY-MM-DD" strings and handled in UTC so a trip's days
 // never shift with the device's time zone (important when you land in Japan).
 
@@ -29,7 +30,7 @@ export function daysBetween(start: string, end: string): string[] {
 }
 
 const fmt = (opts: Intl.DateTimeFormatOptions) =>
-  new Intl.DateTimeFormat(undefined, { ...opts, timeZone: "UTC" });
+  dtf(undefined, { ...opts, timeZone: "UTC" });
 
 export const formatDayHeading = (s: string) =>
   fmt({ weekday: "long", month: "long", day: "numeric" }).format(parseISODate(s));
