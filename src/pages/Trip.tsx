@@ -16,7 +16,7 @@ import {
 } from "@dnd-kit/core";
 import { sortableKeyboardCoordinates } from "@dnd-kit/sortable";
 import { ArrowLeft, Camera, Redo2, Undo2, Copy, FolderInput, Trash2, X, Cloud, CloudOff, Eye, ImagePlus, List, Loader2, Map as MapIcon, PanelLeft, Share2 } from "lucide-react";
-import { Contents, ContentsRail, type Tab } from "../components/Contents";
+import { Contents, type Tab } from "../components/Contents";
 import { useConverter } from "../lib/fx";
 import { budgetLines, lineForItem, totals, travelersOf } from "../lib/budget";
 import { bestImage, coverFor, firstPhoto } from "../lib/images";
@@ -548,14 +548,10 @@ export function TripPage() {
   return (
     <div className="flex h-full flex-col md:flex-row">
       {/* Contents column (wide screens); a drawer below that */}
-      <div className={`hidden shrink-0 border-r border-line bg-bg ${planHidden ? "" : "lg:block"}`}>
-        {contentsHidden ? (
-          <ContentsRail onShow={() => hideContents(false)} />
-        ) : (
-          <div className="h-full w-[250px] xl:w-[280px]">
-            <Contents {...contentsProps} variant="column" header={undoBar} onHide={() => hideContents(true)} />
-          </div>
-        )}
+      <div className={`hidden shrink-0 border-r border-line bg-bg ${planHidden || contentsHidden ? "" : "lg:block"}`}>
+        <div className="h-full w-[250px] xl:w-[280px]">
+          <Contents {...contentsProps} variant="column" header={undoBar} onHide={() => hideContents(true)} />
+        </div>
       </div>
       {contentsDrawer && (
         <div className="fixed inset-0 z-[90] lg:hidden" onClick={() => setContentsDrawer(false)}>
@@ -571,6 +567,30 @@ export function TripPage() {
           mobileView === "map" ? "max-md:hidden" : "flex-1 md:flex-none"
         }`}
       >
+        {/* Contents collapsed (or no room for it): logo, undo/redo and a way back move here */}
+        <div className={`shrink-0 items-center gap-1 border-b border-line px-3 py-2 ${contentsHidden ? "hidden md:flex" : "hidden md:flex lg:hidden"}`}>
+          <button
+            onClick={() => (window.matchMedia("(min-width: 1024px)").matches ? hideContents(false) : setContentsDrawer(true))}
+            title="Show contents"
+            aria-label="Show contents"
+            className="grid size-9 place-items-center rounded-full text-muted hover:bg-surface-2 hover:text-fg"
+          >
+            <PanelLeft className="size-[18px]" />
+          </button>
+          <Link to="/" title="All trips" className="mr-1 shrink-0">
+            <LogoMark size={26} />
+          </Link>
+          {!readOnly && (
+            <>
+              <button onClick={history.undo} disabled={!history.canUndo} title={`Undo (${mod}Z)`} className="flex items-center gap-2 rounded-full px-3 py-1.5 text-[14px] font-semibold text-muted hover:bg-surface-2 hover:text-fg disabled:opacity-40 disabled:hover:bg-transparent">
+                <Undo2 className="size-4" /> Undo
+              </button>
+              <button onClick={history.redo} disabled={!history.canRedo} title={`Redo (${mod}⇧Z)`} className="flex items-center gap-2 rounded-full px-3 py-1.5 text-[14px] font-semibold text-muted hover:bg-surface-2 hover:text-fg disabled:opacity-40 disabled:hover:bg-transparent">
+                <Redo2 className="size-4" /> Redo
+              </button>
+            </>
+          )}
+        </div>
         <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto pb-28 md:pb-10">
         <header ref={headerRef} className="relative">
           <div className="relative h-80 overflow-hidden bg-surface-2">

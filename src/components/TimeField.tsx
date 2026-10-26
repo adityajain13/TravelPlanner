@@ -175,13 +175,10 @@ export function TimeRangeField({
     if (active === "start") {
       setS(v);
       setText((t) => ({ ...t, start: fmtTime(v) }));
-      // keep the same length if there was an end, else default 1 hour later
-      if (!e || e <= v) {
-        const [h, m] = v.split(":").map(Number);
-        const nh = Math.min(23, h + 1);
-        const ne = `${String(nh).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
-        setE(ne);
-        setText((t) => ({ ...t, end: fmtTime(ne) }));
+      // No made-up end time; only drop an end that the new start has passed
+      if (e && e <= v) {
+        setE(undefined);
+        setText((t) => ({ ...t, end: "" }));
       }
       setActive("end");
     } else {
@@ -190,7 +187,7 @@ export function TimeRangeField({
     }
   };
   const save = () => {
-    onChange(s, s ? e : undefined);
+    onChange(s, e); // either can be set on its own
     setOpen(false);
   };
 
@@ -228,6 +225,8 @@ export function TimeRangeField({
             <Clock className="size-3.5 shrink-0 opacity-70" />
             {start ? (
               `${fmtTime(start)}${end ? ` – ${fmtTime(end)}` : ""}`
+            ) : end ? (
+              `Until ${fmtTime(end)}`
             ) : (
               <span className="text-muted/70">Add time</span>
             )}
