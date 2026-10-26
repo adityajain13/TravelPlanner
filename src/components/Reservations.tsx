@@ -379,33 +379,41 @@ export function ReservationForm({ doc, state, initial, onClose }: { doc: Y.Doc; 
 }
 
 /** Small chips shown under a day heading for bookings touching that date. */
+/**
+ * Chips for the bookings touching a day, in the order they happen: by the time of *that* event
+ * (a flight's arrival uses its arrival time). Check-outs open the day and check-ins close it
+ * (you check in after the travel that gets you there), "staying at" comes first.
+ */
 export function dayChips(reservations: Reservation[], date: string) {
-  const chips: { r: Reservation; label: string }[] = [];
+  const chips: { r: Reservation; label: string; at: string }[] = [];
   for (const r of sortReservations(reservations)) {
     const s = r.startDate;
     const e = r.endDate;
     const t = (x?: string) => (x ? ` ${x}` : "");
+    const at = (x?: string, fallback = "12:00") => x ?? fallback;
     switch (r.type) {
       case "flight":
       case "train":
-        if (s === date) chips.push({ r, label: `${r.title} departs${t(r.startTime)}` });
-        if (e === date && e !== s) chips.push({ r, label: `${r.title} arrives${t(r.endTime)}` });
+        if (s === date) chips.push({ r, label: `${r.title} departs${t(r.startTime)}`, at: at(r.startTime) });
+        if (e === date && e !== s) chips.push({ r, label: `${r.title} arrives${t(r.endTime)}`, at: at(r.endTime) });
         break;
       case "lodging":
-        if (s === date) chips.push({ r, label: `Check-in ${r.title}${t(r.startTime)}` });
-        else if (e === date) chips.push({ r, label: `Check-out ${r.title}${t(r.endTime)}` });
-        else if (s && e && s < date && date < e) chips.push({ r, label: `Staying at ${r.title}` });
+        if (s === date) chips.push({ r, label: `Check-in ${r.title}${t(r.startTime)}`, at: "~2" + at(r.startTime) });
+        else if (e === date) chips.push({ r, label: `Check-out ${r.title}${t(r.endTime)}`, at: "!" + at(r.endTime, "10:00") });
+        else if (s && e && s < date && date < e) chips.push({ r, label: `Staying at ${r.title}`, at: "!" });
         break;
       case "car":
-        if (s === date) chips.push({ r, label: `Pick up ${r.title}${t(r.startTime)}` });
-        if (e === date && e !== s) chips.push({ r, label: `Drop off ${r.title}${t(r.endTime)}` });
+        if (s === date) chips.push({ r, label: `Pick up ${r.title}${t(r.startTime)}`, at: at(r.startTime) });
+        if (e === date && e !== s) chips.push({ r, label: `Drop off ${r.title}${t(r.endTime)}`, at: at(r.endTime) });
         break;
       default:
-        if (s === date) chips.push({ r, label: `${r.title}${t(r.startTime)}` });
+        if (s === date) chips.push({ r, label: `${r.title}${t(r.startTime)}`, at: at(r.startTime) });
     }
   }
+  // "!" sorts before digits (morning hotel), "~" after them (evening check-in)
+  chips.sort((a, b) => (a.at < b.at ? -1 : a.at > b.at ? 1 : 0)); // plain code-point order (localeCompare ignores "!"/"~")
   // One chip per booking when several travellers each have their own copy
-  const merged: { r: Reservation; label: string }[] = [];
+  const merged: { r: Reservation; label: string; at: string }[] = [];
   const count = new Map<string, number>();
   for (const c of chips) count.set(c.label, (count.get(c.label) ?? 0) + 1);
   const seen = new Set<string>();
