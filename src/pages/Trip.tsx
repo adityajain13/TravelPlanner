@@ -120,6 +120,21 @@ export function TripPage() {
     }
   });
   const [contentsDrawer, setContentsDrawer] = useState(false);
+  const [planHidden, setPlanHidden] = useState(() => {
+    try {
+      return localStorage.getItem("tp-plan-hidden") === "1";
+    } catch {
+      return false;
+    }
+  });
+  const togglePlan = (hidden: boolean) => {
+    setPlanHidden(hidden);
+    try {
+      localStorage.setItem("tp-plan-hidden", hidden ? "1" : "0");
+    } catch {
+      /* private mode */
+    }
+  };
   const headerRef = useRef<HTMLElement>(null);
   const fx = useConverter(state?.meta.currency ?? "CAD");
   const [editingRes, setEditingRes] = useState<Partial<Reservation> | null>(null);
@@ -460,7 +475,7 @@ export function TripPage() {
   return (
     <div className="flex h-full flex-col md:flex-row">
       {/* Contents column (wide screens); a drawer below that */}
-      <div className="hidden shrink-0 border-r border-line bg-bg lg:block">
+      <div className={`hidden shrink-0 border-r border-line bg-bg ${planHidden ? "" : "lg:block"}`}>
         {contentsHidden ? (
           <ContentsRail onShow={() => hideContents(false)} />
         ) : (
@@ -479,7 +494,7 @@ export function TripPage() {
       )}
       {/* Plan panel */}
       <aside
-        className={`flex min-h-0 flex-col border-line bg-bg md:w-[480px] md:shrink-0 md:border-r lg:w-[540px] xl:w-[620px] 2xl:w-[680px] ${
+        className={`flex min-h-0 flex-col border-line bg-bg md:w-[480px] md:shrink-0 md:border-r lg:w-[540px] xl:w-[620px] 2xl:w-[680px] ${planHidden ? "md:hidden" : ""} ${
           mobileView === "map" ? "max-md:hidden" : "flex-1 md:flex-none"
         }`}
       >
@@ -783,6 +798,16 @@ export function TripPage() {
 
       {/* Map */}
       <main className={`relative min-h-0 flex-1 ${mobileView === "plan" ? "max-md:hidden" : ""}`}>
+        {/* Hide / show the itinerary (desktop) for a full-width map */}
+        <button
+          onClick={() => togglePlan(!planHidden)}
+          className="absolute top-3 left-3 z-30 flex h-9 items-center gap-2 rounded-full border border-line bg-surface/90 px-3 text-[13px] font-semibold text-muted shadow-lg backdrop-blur hover:text-fg max-md:hidden"
+          title={planHidden ? "Show itinerary" : "Hide itinerary (full map)"}
+          aria-label={planHidden ? "Show itinerary" : "Hide itinerary"}
+        >
+          <PanelLeft className="size-4" />
+          {planHidden && <span>Itinerary</span>}
+        </button>
         <Suspense fallback={<div className="h-full w-full bg-surface-2" />}>
         <TripMap
           pins={view.pins}
