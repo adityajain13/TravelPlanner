@@ -72,7 +72,7 @@ export function BudgetCharts({ lines, state, currency }: { lines: Line[]; state:
         {rows.map((r) => {
           const pct = total ? (r.amount / total) * 100 : 0;
           const on = hover === r.key;
-          const top = [...r.parts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5);
+          const top = [...r.parts.entries()].sort((a, b) => b[1] - a[1]); // biggest first, in the bar and the hover card
           return (
             <li
               key={r.key}
@@ -94,7 +94,7 @@ export function BudgetCharts({ lines, state, currency }: { lines: Line[]; state:
                 >
                   {tab === "day" &&
                     r.amount > 0 &&
-                    CATEGORIES.filter((c) => r.parts.get(c)).map((c, i) => (
+                    top.map(([c], i) => (
                       <span
                         key={c}
                         title={`${CATEGORY_LABEL[c]}: ${formatMoney(r.parts.get(c)!, currency)}`}
@@ -117,7 +117,7 @@ export function BudgetCharts({ lines, state, currency }: { lines: Line[]; state:
                   </p>
                   {tab === "day" && (
                     <ul className="mt-1.5 space-y-0.5">
-                      {top.map(([c, v]) => (
+                      {top.slice(0, 5).map(([c, v]) => (
                         <li key={c} className="flex justify-between gap-2">
                           <span className="flex items-center gap-1.5">
                             <span className="size-2 rounded-full" style={{ background: c === "other" ? (r.color ?? CAT_COLOR.other) : CAT_COLOR[c] }} />
