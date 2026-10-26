@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useDroppable } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
-import { ChevronDown, Eye, Heading2, ListChecks, MapPin, Pencil, Plus, StickyNote } from "lucide-react";
+import { ChevronDown, Eye, PenLine, ListChecks, MapPin, Pencil, Plus, StickyNote } from "lucide-react";
 import type { Item, Reservation } from "../lib/trips";
 import { RES_ICON } from "./Reservations";
 import { LegChip } from "./LegChip";
@@ -137,27 +137,31 @@ export function Section(p: Props) {
           )}
           <Subheading value={p.subtitle} onSave={p.readOnly ? undefined : p.onSubtitle} editing={subEditing} setEditing={setSubEditing} />
         </div>
-        {dayTravel && <span className="mt-2 text-xs text-muted tabular-nums max-sm:hidden">{dayTravel}</span>}
-        {placeCount > 0 && <span className="mt-2 text-xs text-muted tabular-nums">{placeCount}</span>}
-        {!p.subtitle && !p.readOnly && p.onSubtitle && !subEditing && (
+        {/* One row, centred on the 28px buttons, level with the title's first line */}
+        <div className="flex h-8 shrink-0 items-center gap-1.5 text-xs text-muted tabular-nums">
+          {dayTravel && <span className="max-sm:hidden">{dayTravel}</span>}
+          {dayTravel && placeCount > 0 && <span className="max-sm:hidden">·</span>}
+          {placeCount > 0 && <span className="mr-1">{placeCount} {placeCount === 1 ? "pin" : "pins"}</span>}
+          {!p.subtitle && !p.readOnly && p.onSubtitle && !subEditing && (
+            <button
+              onClick={() => setSubEditing(true)}
+              className="grid size-7 place-items-center rounded-md text-muted opacity-0 transition-opacity group-hover/section:opacity-100 hover:bg-surface-2 hover:text-fg focus-visible:opacity-100 max-md:opacity-60"
+              title="Add a subheading (e.g. the city)"
+              aria-label="Add a subheading"
+            >
+              <PenLine className="size-3.5" />
+            </button>
+          )}
           <button
-            onClick={() => setSubEditing(true)}
-            className="grid size-7 place-items-center rounded-md text-muted opacity-0 transition-opacity group-hover/section:opacity-100 hover:bg-surface-2 hover:text-fg focus-visible:opacity-100 max-md:opacity-60"
-            title="Add a subheading"
-            aria-label="Add a subheading"
+            onClick={p.onFocus}
+            className={`grid size-7 place-items-center rounded-md transition-colors ${
+              p.focused ? "bg-accent/15 text-accent" : "text-muted hover:bg-surface-2 hover:text-fg"
+            }`}
+            title={p.focused ? "Show all on map" : "Show only this on map"}
           >
-            <Heading2 className="size-3.5" />
+            <Eye className="size-3.5" />
           </button>
-        )}
-        <button
-          onClick={p.onFocus}
-          className={`grid size-7 place-items-center rounded-md transition-colors ${
-            p.focused ? "bg-accent/15 text-accent" : "text-muted hover:bg-surface-2 hover:text-fg"
-          }`}
-          title={p.focused ? "Show all on map" : "Show only this on map"}
-        >
-          <Eye className="size-3.5" />
-        </button>
+        </div>
       </div>
 
       {chipsAt.get(0) && <div className="mt-2">{chipRow(chipsAt.get(0)!)}</div>}
