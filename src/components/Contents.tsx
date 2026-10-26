@@ -96,12 +96,14 @@ export function Contents(p: Props) {
                 <>
                   <span className="mr-1.5 inline-block size-2 rounded-full align-middle" style={{ background: s.color }} />
                   {dayLabel(s.date!)}
-                  {p.subtitles?.[s.key] && <span className="text-muted"> · {p.subtitles[s.key]}</span>}
                 </>,
-                s.items
-                  .filter((i) => i.kind === "place")
-                  .map((i) => i.name)
-                  .join(" • ") || undefined,
+                // The day's subheading ("Land in Osaka") when it has one, else its stops
+                p.subtitles?.[s.key] ||
+                  s.items
+                    .filter((i) => i.kind === "place")
+                    .map((i) => i.name)
+                    .join(" • ") ||
+                  undefined,
               ),
             ),
           )}
