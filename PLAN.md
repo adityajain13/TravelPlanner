@@ -115,3 +115,4 @@ Hosted at **adityajain.ca/travelplanner** by the `travelplanner` Cloudflare Work
 - Booking address is a place search (AddressSearch: OSM + Google) that pins the reservation; Pinned / No pin badge.
 - Google transit goes through the Worker (/api/routes/transit, forwards the app key with the site Referer; optional GOOGLE_ROUTES_KEY secret) since browser CORS to routes.googleapis.com is unreliable; tried right after Transitous fails; failure reason shown inline on rough-estimate legs.
 - Day chips: one per line, ordered by each event's own time (arrivals by arrival time); check-outs/staying first, check-ins last.
+- ChipScroller: day chip row scrolls with the mouse wheel, drag, and arrow buttons; edge fades.
