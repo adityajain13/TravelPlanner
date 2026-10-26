@@ -2,8 +2,9 @@ import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { Photo } from "./Photo";
 import { PhotoCredit } from "./PhotoCredit";
-import { ImageOff, Link2, Loader2, Search, Trash2, X } from "lucide-react";
-import { searchImages, type PlaceImage, trackPick, forStorage, unsplashIssue } from "../lib/images";
+import { Check, ImageOff, Link2, Loader2, Search, Trash2, X } from "lucide-react";
+import { googlePhotos, searchImages, type PlaceImage, trackPick, forStorage, unsplashIssue } from "../lib/images";
+import { GOOGLE_KEY } from "../lib/google";
 import { inputCls } from "./NewTripDialog";
 
 /** Pick a photo for a place (or the trip cover) from Wikipedia, Commons and Openverse, or paste a link. */
@@ -11,6 +12,8 @@ export function ImagePicker({
   initialQuery,
   name,
   coords,
+  googlePlaceId,
+  address,
   current,
   onPick,
   onClose,
@@ -18,6 +21,9 @@ export function ImagePicker({
   initialQuery: string;
   name?: string;
   coords?: [number, number];
+  /** The stop's Google place, for its Google Maps photos. */
+  googlePlaceId?: string;
+  address?: string;
   current?: PlaceImage;
   onPick: (img: PlaceImage | undefined) => void;
   onClose: () => void;
@@ -27,6 +33,24 @@ export function ImagePicker({
   const [results, setResults] = useState<PlaceImage[] | null>(null);
   const [link, setLink] = useState("");
   const [broken, setBroken] = useState<Set<string>>(new Set());
+  const [google, setGoogle] = useState<PlaceImage[] | null>(null);
+  // Pasted link: previewed first, used only once it actually loads
+  const linkUrl = /^https?:\/\/\S+$/.test(link.trim()) ? link.trim() : "";
+  const [linkState, setLinkState] = useState<"idle" | "loading" | "ok" | "bad">("idle");
+  useEffect(() => setLinkState(linkUrl ? "loading" : "idle"), [linkUrl]);
+
+  useEffect(() => {
+    if (!GOOGLE_KEY || !term.trim()) return setGoogle([]);
+    let alive = true;
+    setGoogle(null);
+    const own = term === initialQuery;
+    googlePhotos({ placeId: own ? googlePlaceId : undefined, name: own ? (name ?? term) : term, address: own ? address : undefined, coords: own ? coords : undefined })
+      .then((g) => alive && setGoogle(g))
+      .catch(() => alive && setGoogle([]));
+    return () => {
+      alive = false;
+    };
+  }, [term, initialQuery, name, coords, googlePlaceId, address]);
 
   useEffect(() => {
     if (!term.trim()) return;
@@ -44,7 +68,7 @@ export function ImagePicker({
     onClose();
   };
 
-  const shown = results?.filter((r) => !broken.has(r.thumb)) ?? null;
+  const shown = results && google ? [...google, ...results].filter((r) => !broken.has(r.thumb)) : null;
 
   return createPortal(
     <div className="fixed inset-0 z-[100] grid place-items-center bg-black/65 p-4 backdrop-blur-sm" onClick={onClose}>
@@ -111,12 +135,39 @@ export function ImagePicker({
           <form
             onSubmit={(e) => {
               e.preventDefault();
-              if (/^https?:\/\/\S+$/.test(link.trim())) pick({ url: link.trim(), thumb: link.trim(), source: "link", link: link.trim() });
+              if (linkUrl && linkState === "ok") pick({ url: linkUrl, thumb: linkUrl, source: "link", link: linkUrl });
             }}
             className="flex min-w-0 flex-1 items-center gap-2"
           >
-            <Link2 className="size-4 shrink-0 text-muted" />
-            <input value={link} onChange={(e) => setLink(e.target.value)} placeholder="…or paste an image URL" className={`${inputCls} py-1.5`} />
+            {linkUrl ? (
+              <span className="relative grid size-10 shrink-0 place-items-center overflow-hidden rounded-lg bg-surface-2">
+                <img
+                  key={linkUrl}
+                  src={linkUrl}
+                  alt=""
+                  referrerPolicy="no-referrer"
+                  onLoad={() => setLinkState("ok")}
+                  onError={() => setLinkState("bad")}
+                  className={`size-full object-cover ${linkState === "ok" ? "" : "invisible absolute"}`}
+                />
+                {linkState === "loading" && <Loader2 className="size-4 animate-spin text-muted" />}
+                {linkState === "bad" && <ImageOff className="size-4 text-danger" />}
+              </span>
+            ) : (
+              <Link2 className="size-4 shrink-0 text-muted" />
+            )}
+            <div className="min-w-0 flex-1">
+              <input value={link} onChange={(e) => setLink(e.target.value)} placeholder="…or paste an image URL" className={`${inputCls} py-1.5`} />
+              {linkState === "bad" && <p className="mt-1 text-[12px] text-danger">That link didn't load as an image. Copy the image address itself (right-click the picture).</p>}
+            </div>
+            {linkUrl && (
+              <button
+                disabled={linkState !== "ok"}
+                className="flex shrink-0 items-center gap-1.5 rounded-lg bg-accent px-3 py-2 text-sm font-bold text-on-accent disabled:opacity-40"
+              >
+                <Check className="size-4" /> Use image
+              </button>
+            )}
           </form>
           {current && (
             <button onClick={() => pick(undefined)} className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm text-muted hover:text-danger">
@@ -124,7 +175,7 @@ export function ImagePicker({
             </button>
           )}
         </div>
-        <p className="-mt-2 text-[10px] text-muted/70">Photos from Unsplash, Wikipedia, Wikimedia Commons and Openverse, with credits kept. Check each image's license before reusing it elsewhere.</p>
+        <p className="-mt-2 text-[10px] text-muted/70">Photos from Google Maps, Unsplash, Wikipedia, Wikimedia Commons and Openverse, with credits kept. Check each image's license before reusing it elsewhere.</p>
       </div>
     </div>,
     document.body,
