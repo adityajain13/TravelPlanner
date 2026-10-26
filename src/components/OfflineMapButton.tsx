@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
-import { CloudDownload, CircleCheck, Loader2, RefreshCw, X } from "lucide-react";
+import { CloudDownload, CircleCheck, RefreshCw, X } from "lucide-react";
 import { db } from "../lib/db";
 import type { TripState } from "../lib/trips";
 import { formatBytes, planDownload, regionCovers, saveRegion, tripBBox, type Progress } from "../lib/offlineMap";
@@ -35,9 +35,13 @@ export function OfflineMapButton({ tripId, state }: { tripId: string; state: Tri
   if (progress) {
     const pct = Math.round((progress.done / Math.max(1, progress.total)) * 100);
     return (
-      <div className={`${pill} bg-surface-2 text-muted`}>
-        <Loader2 className="size-3.5 animate-spin" />
-        Saving map {pct}% · {formatBytes(progress.bytes)}
+      // One line, fixed shape: a ring that fills, the percent, and (on wider screens) the size
+      <div className={`${pill} shrink-0 whitespace-nowrap bg-surface-2 text-muted tabular-nums`} title={`Saving map · ${formatBytes(progress.bytes)}`}>
+        <svg viewBox="0 0 20 20" className="size-4 -rotate-90">
+          <circle cx="10" cy="10" r="8" fill="none" stroke="currentColor" strokeOpacity=".25" strokeWidth="2.5" />
+          <circle cx="10" cy="10" r="8" fill="none" stroke="var(--accent)" strokeWidth="2.5" strokeLinecap="round" strokeDasharray={`${(pct / 100) * 50.3} 50.3`} />
+        </svg>
+        {pct}%<span className="max-sm:hidden"> · {formatBytes(progress.bytes)}</span>
         <button onClick={() => ctrl.current?.abort()} className="ml-1 hover:text-fg" aria-label="Cancel">
           <X className="size-3.5" />
         </button>
