@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { Download } from "lucide-react";
 import type { Line } from "../lib/budget";
-import { CATEGORIES, CATEGORY_LABEL } from "../lib/budget";
+import { CATEGORIES, CATEGORY_LABEL, travelersOf } from "../lib/budget";
 import { formatMoney } from "../lib/fx";
 import { parseISODate } from "../lib/dates";
 import { SECTION_COLORS } from "../lib/colors";
@@ -18,9 +18,11 @@ const dayFmt = (d: string) => new Intl.DateTimeFormat(undefined, { weekday: "sho
  * the biggest items. "Day by day" shows every trip day, so quiet days read as gaps.
  */
 export function BudgetCharts({ lines, state, currency }: { lines: Line[]; state: TripState; currency: string }) {
-  const [tab, setTab] = useState<"category" | "day">("category");
+  const [tab, setTab] = useState<"category" | "day" | "people">("category");
   const [hover, setHover] = useState<string | null>(null);
   const counted = lines.filter((l) => l.converted != null);
+  const travelers = travelersOf(state);
+  if (tab === "people" && travelers.length < 2) setTab("category");
   const total = counted.reduce((s, l) => s + l.converted!, 0);
 
   const rows: Row[] = useMemo(() => {
@@ -35,6 +37,23 @@ export function BudgetCharts({ lines, state, currency }: { lines: Line[]; state:
       for (const l of counted) add(m, l.category, () => ({ key: l.category, label: CATEGORY_LABEL[l.category], color: CAT_COLOR[l.category], amount: 0, count: 0, parts: new Map() }), l);
       return CATEGORIES.map((c) => m.get(c)).filter((r): r is Row => !!r).sort((a, b) => b.amount - a.amount);
     }
+    if (tab === "people") {
+      // Each person's share (equal split of what they're in on), stacked by category; "paid" alongside
+      const paid = new Map<string, number>();
+      for (const t of travelers) m.set(t, { key: t, label: t, amount: 0, count: 0, parts: new Map() });
+      for (const l of counted) {
+        paid.set(l.paidBy, (paid.get(l.paidBy) ?? 0) + l.converted!);
+        const share = l.converted! / Math.max(1, l.splitWith.length);
+        for (const t of l.splitWith) {
+          const r = m.get(t) ?? m.set(t, { key: t, label: t, amount: 0, count: 0, parts: new Map() }).get(t)!;
+          r.amount += share;
+          r.count++;
+          r.parts.set(l.category, (r.parts.get(l.category) ?? 0) + share);
+        }
+      }
+      for (const r of m.values()) r.sub = `paid ${formatMoney(paid.get(r.key) ?? 0, currency)}`;
+      return [...m.values()].sort((a, b) => b.amount - a.amount);
+    }
     // every trip day in order (empty days included), then anything outside the dates / undated
     const days: string[] = [];
     for (let d = parseISODate(state.meta.startDate); d <= parseISODate(state.meta.endDate); d = new Date(d.getTime() + 86400000)) days.push(d.toISOString().slice(0, 10));
@@ -45,7 +64,7 @@ export function BudgetCharts({ lines, state, currency }: { lines: Line[]; state:
     }
     return [...days.map((d) => m.get(d)!), ...["outside", "none"].map((k) => m.get(k)).filter((r): r is Row => !!r)];
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tab, lines, state.meta.startDate, state.meta.endDate]);
+  }, [tab, lines, state.meta.startDate, state.meta.endDate, travelers.join("|"), currency]);
 
   const max = Math.max(1, ...rows.map((r) => r.amount));
   if (!counted.length) return null;
@@ -59,8 +78,11 @@ export function BudgetCharts({ lines, state, currency }: { lines: Line[]; state:
             [
               ["category", "Category"],
               ["day", "Day by day"],
+              ["people", "People"],
             ] as const
-          ).map(([k, label]) => (
+          )
+            .filter(([k]) => k !== "people" || travelers.length > 1)
+            .map(([k, label]) => (
             <button key={k} role="tab" aria-selected={tab === k} onClick={() => setTab(k)} className={`rounded-full px-3 py-1 ${tab === k ? "bg-accent text-on-accent" : "text-muted hover:text-fg"}`}>
               {label}
             </button>
@@ -92,7 +114,7 @@ export function BudgetCharts({ lines, state, currency }: { lines: Line[]; state:
                   className={`flex h-[18px] shrink-0 overflow-hidden rounded-r-[4px] transition-opacity ${r.amount ? (on ? "opacity-100" : "opacity-80") : "bg-line"}`}
                   style={{ width: r.amount ? `max(3px, ${(r.amount / max) * 72}%)` : "2px", background: r.amount && tab === "category" ? (r.color ?? "var(--muted)") : undefined }}
                 >
-                  {tab === "day" &&
+                  {tab !== "category" &&
                     r.amount > 0 &&
                     top.map(([c], i) => (
                       <span
@@ -113,9 +135,9 @@ export function BudgetCharts({ lines, state, currency }: { lines: Line[]; state:
                 <div className="pointer-events-none absolute top-full left-[7.5rem] z-10 mt-1 w-60 rounded-xl border border-line bg-surface p-3 text-[13px] shadow-2xl">
                   <p className="font-bold">{r.label}</p>
                   <p className="text-muted">
-                    {formatMoney(r.amount, currency)} · {r.count} item{r.count > 1 ? "s" : ""}
+                    {tab === "people" ? `Share ${formatMoney(r.amount, currency)} · ${r.sub}` : `${formatMoney(r.amount, currency)} · ${r.count} item${r.count > 1 ? "s" : ""}`}
                   </p>
-                  {tab === "day" && (
+                  {tab !== "category" && (
                     <ul className="mt-1.5 space-y-0.5">
                       {top.slice(0, 5).map(([c, v]) => (
                         <li key={c} className="flex justify-between gap-2">
@@ -134,12 +156,12 @@ export function BudgetCharts({ lines, state, currency }: { lines: Line[]; state:
           );
         })}
       </ul>
-      {tab === "day" && (
+      {tab !== "category" && (
         <ul className="mt-3 flex flex-wrap gap-x-4 gap-y-1 pl-[7.5rem] text-[12px] text-muted max-sm:pl-1">
           {CATEGORIES.filter((c) => counted.some((l) => l.category === c)).map((c) => (
             <li key={c} className="flex items-center gap-1.5">
-              <span className="size-2 rounded-full" style={{ background: c === "other" ? "conic-gradient(#5fd68b, #f2a65a, #6aa8ff, #c58cff, #5fd68b)" : CAT_COLOR[c] }} />
-              {c === "other" ? "Other (day colour)" : CATEGORY_LABEL[c]}
+              <span className="size-2 rounded-full" style={{ background: c === "other" && tab === "day" ? "conic-gradient(#5fd68b, #f2a65a, #6aa8ff, #c58cff, #5fd68b)" : CAT_COLOR[c] }} />
+              {c === "other" ? (tab === "day" ? "Other (day colour)" : "Other") : CATEGORY_LABEL[c]}
             </li>
           ))}
         </ul>
