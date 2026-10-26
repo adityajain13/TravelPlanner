@@ -1,5 +1,5 @@
 import { api } from "./api";
-import { searchPlaces } from "./photon";
+import { locateBooking } from "./locate";
 import type { Item, Reservation, ReservationType } from "./trips";
 
 export interface Booking {
@@ -58,11 +58,11 @@ export async function bookingToItem(b: Booking, near?: [number, number]): Promis
     b.notes,
   ].filter(Boolean);
 
-  let geo: { lat?: number; lng?: number; address?: string; osmId?: string } = {};
+  let geo: { lat?: number; lng?: number; address?: string; osmId?: string; googlePlaceId?: string } = {};
   if (PINNABLE.has(b.type) && (b.address || b.location_name)) {
     try {
-      const [hit] = await searchPlaces([b.location_name, b.address].filter(Boolean).join(", "), near);
-      if (hit) geo = { lat: hit.lat, lng: hit.lng, address: b.address || hit.address, osmId: hit.osmId };
+      const hit = await locateBooking(b.location_name ?? b.title, b.address, near);
+      if (hit) geo = hit;
     } catch {
       /* offline: add without a pin */
     }
@@ -78,6 +78,8 @@ export async function bookingToItem(b: Booking, near?: [number, number]): Promis
     lat: geo.lat,
     lng: geo.lng,
     osmId: geo.osmId,
+    googlePlaceId: geo.googlePlaceId,
+    located: true,
     cost: b.cost ?? undefined,
     costCurrency: b.cost != null ? b.currency?.toUpperCase() : undefined,
   };
@@ -100,8 +102,8 @@ export async function bookingToReservation(b: Booking, near?: [number, number]):
   let geo: { lat?: number; lng?: number; address?: string } = {};
   if ((type === "lodging" || type === "restaurant") && (b.address || b.location_name)) {
     try {
-      const [hit] = await searchPlaces([b.location_name, b.address].filter(Boolean).join(", "), near);
-      if (hit) geo = { lat: hit.lat, lng: hit.lng, address: b.address || hit.address };
+      const hit = await locateBooking(b.location_name, b.address, near);
+      if (hit) geo = { lat: hit.lat, lng: hit.lng, address: hit.address };
     } catch {
       /* offline */
     }

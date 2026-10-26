@@ -1,3 +1,4 @@
+import { locateBooking } from "../lib/locate";
 import { dtf } from "../lib/intl";
 import { Fragment, Suspense, lazy, useEffect, useMemo, useRef, useState } from "react";
 import { DateRangeField } from "../components/DatePicker";
@@ -26,7 +27,7 @@ import { ImagePicker } from "../components/ImagePicker";
 import { Photo } from "../components/Photo";
 import { PhotoCredit } from "../components/PhotoCredit";
 import { RES_ICON, RES_SINGULAR } from "../components/Reservations";
-import { GENERIC_PLACE } from "../lib/geocode";
+import { distanceKm, GENERIC_PLACE } from "../lib/geocode";
 import { autocomplete, findPlaceId, getDetails, GOOGLE_KEY, photoUrl, suggestionPlace } from "../lib/google";
 import { searchPlaces } from "../lib/photon";
 import { edit } from "../lib/trips";
@@ -406,6 +407,26 @@ export function TripPage() {
         if (!hit && r.address) hit = (await searchPlaces(r.address, state.meta.center).catch(() => []))[0] ?? null;
         const cur = readTrip(doc).reservations.find((x) => x.id === r.id);
         if (hit && cur && cur.lat == null) saveReservation(doc, { ...cur, lat: hit.lat, lng: hit.lng, address: cur.address || hit.address });
+      }
+    })();
+  }, [doc, state, readOnly]);
+
+  // Stops imported from emails before the careful lookup existed could be pinned on a namesake
+  // (a "Nintendo" shop instead of the Nintendo Museum): look each up once more, and move the pin
+  // when the better match is somewhere else
+  const relocTried = useRef(new Set<string>());
+  useEffect(() => {
+    if (!doc || !state || readOnly || !navigator.onLine) return;
+    const todo = state.items.filter((i) => i.kind === "place" && i.inboxId && !i.located && !i.googlePlaceId && !relocTried.current.has(i.id));
+    if (!todo.length) return;
+    todo.forEach((i) => relocTried.current.add(i.id));
+    (async () => {
+      for (const it of todo) {
+        const hit = await locateBooking(it.name, it.address, state.meta.center).catch(() => null);
+        const cur = readTrip(doc).items.find((x) => x.id === it.id);
+        if (!cur) continue;
+        const far = hit && (cur.lat == null || cur.lng == null || distanceKm([cur.lng, cur.lat], [hit.lng, hit.lat]) > 0.5);
+        updateItem(doc, it.id, far ? { lat: hit!.lat, lng: hit!.lng, googlePlaceId: hit!.googlePlaceId, osmId: hit!.osmId, located: true } : { located: true });
       }
     })();
   }, [doc, state, readOnly]);
