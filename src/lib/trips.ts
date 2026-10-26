@@ -99,7 +99,21 @@ export interface Reservation extends CostSplit {
   notes?: string;
   cost?: number;
   costCurrency?: string;
+  /** Who it's for (passenger / guest), when each traveller has their own booking. */
+  traveler?: string;
   createdAt: number;
+}
+
+/** By date and time; the same flight/booking stays together, one row per traveller (A→Z). */
+export function sortReservations(list: Reservation[]): Reservation[] {
+  const k = (r: Reservation) => `${r.startDate ?? "9999-99-99"} ${r.startTime ?? "99:99"}`;
+  return [...list].sort(
+    (a, b) =>
+      k(a).localeCompare(k(b)) ||
+      a.title.localeCompare(b.title, undefined, { sensitivity: "base" }) ||
+      (a.traveler ?? "").localeCompare(b.traveler ?? "", undefined, { sensitivity: "base" }) ||
+      a.createdAt - b.createdAt,
+  );
 }
 
 export type ExpenseCategory =

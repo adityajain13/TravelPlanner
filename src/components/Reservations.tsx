@@ -9,7 +9,7 @@ import { ForwardDialog } from "./ForwardDialog";
 import { useLiveQuery } from "dexie-react-hooks";
 import { db } from "../lib/db";
 import type { PlaceResult } from "../lib/photon";
-import { removeReservation, saveReservation, type Reservation, type ReservationType, type TripState } from "../lib/trips";
+import { removeReservation, saveReservation, sortReservations, type Reservation, type ReservationType, type TripState } from "../lib/trips";
 import { searchPlaces } from "../lib/photon";
 import { formatMoney } from "../lib/fx";
 import { inputCls } from "./NewTripDialog";
@@ -104,7 +104,7 @@ export function ReservationsPanel({ doc, state, readOnly, tripId, canForward }: 
       )}
 
       {types.map((t) => {
-        const list = state.reservations.filter((r) => r.type === t);
+        const list = sortReservations(state.reservations.filter((r) => r.type === t));
         if (readOnly && !list.length) return null;
         const open = !collapsed.has(t);
         return (
@@ -158,7 +158,10 @@ function ReservationCard({ r, currency, readOnly, onEdit, onDelete }: { r: Reser
       className={`group relative flex gap-5 rounded-2xl border border-line/70 bg-surface p-5 transition-colors max-sm:flex-col max-sm:gap-3 ${readOnly ? "" : "cursor-pointer hover:border-line hover:bg-surface-2/60"}`}
     >
       <div className="min-w-0 flex-1">
-        <p className="text-[18px] leading-snug font-bold">{r.title}</p>
+        <p className="text-[18px] leading-snug font-bold">
+          {r.title}
+          {r.traveler && <span className="ml-2 inline-flex translate-y-[-2px] rounded-full bg-surface-2 px-2.5 py-0.5 align-middle text-[12px] font-semibold text-muted">{r.traveler}</span>}
+        </p>
         {route && <p className="mt-0.5 text-[15px] text-muted">{route}</p>}
         {!twoStep && r.address && <p className="mt-0.5 truncate text-[14px] text-muted">{r.address}</p>}
         {twoStep ? (
@@ -310,6 +313,15 @@ export function ReservationForm({ doc, state, initial, onClose }: { doc: Y.Doc; 
           </button>
         </div>
         {f.title && text(f.title, "title", true)}
+        <label className="block space-y-1">
+          <span className="text-xs text-muted">For (passenger / guest, optional)</span>
+          <input list="tp-travelers" value={r.traveler ?? ""} onChange={(e) => set({ traveler: e.target.value || undefined })} placeholder="Everyone" className={inputCls} />
+          <datalist id="tp-travelers">
+            {(state.meta.travelers ?? []).map((t) => (
+              <option key={t} value={t} />
+            ))}
+          </datalist>
+        </label>
         {f.from && text(f.from, "from")}
         {f.to && text(f.to, "to")}
         {f.address && text(f.address, "address")}
@@ -345,7 +357,7 @@ export function ReservationForm({ doc, state, initial, onClose }: { doc: Y.Doc; 
 /** Small chips shown under a day heading for bookings touching that date. */
 export function dayChips(reservations: Reservation[], date: string) {
   const chips: { r: Reservation; label: string }[] = [];
-  for (const r of reservations) {
+  for (const r of sortReservations(reservations)) {
     const s = r.startDate;
     const e = r.endDate;
     const t = (x?: string) => (x ? ` ${x}` : "");
@@ -368,5 +380,16 @@ export function dayChips(reservations: Reservation[], date: string) {
         if (s === date) chips.push({ r, label: `${r.title}${t(r.startTime)}` });
     }
   }
-  return chips;
+  // One chip per booking when several travellers each have their own copy
+  const merged: { r: Reservation; label: string }[] = [];
+  const count = new Map<string, number>();
+  for (const c of chips) count.set(c.label, (count.get(c.label) ?? 0) + 1);
+  const seen = new Set<string>();
+  for (const c of chips) {
+    if (seen.has(c.label)) continue;
+    seen.add(c.label);
+    const n = count.get(c.label)!;
+    merged.push(n > 1 ? { ...c, label: `${c.label} · ${n} people` } : c);
+  }
+  return merged;
 }

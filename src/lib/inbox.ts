@@ -15,6 +15,7 @@ export interface Booking {
   from?: string;
   to?: string;
   notes?: string;
+  traveler?: string;
   /** Total price, when the email or an attached PDF shows one. */
   cost?: number;
   currency?: string;
@@ -110,6 +111,7 @@ export async function bookingToReservation(b: Booking, near?: [number, number]):
     lat: geo.lat,
     lng: geo.lng,
     notes: b.notes,
+    traveler: b.traveler,
     cost: b.cost ?? undefined,
     costCurrency: b.cost != null ? b.currency?.toUpperCase() : undefined,
   };
