@@ -11,6 +11,8 @@ import { formatDayHeading } from "../lib/dates";
 import { ItemCard } from "./ItemCard";
 import { PlaceSearch } from "./PlaceSearch";
 import type { SectionTarget } from "./SectionPicker";
+import { Popover } from "./DatePicker";
+import { DAY_SWATCHES } from "../lib/colors";
 
 export interface SectionInfo {
   key: string;
@@ -54,6 +56,8 @@ interface Props {
   onCostDetails?: (id: string) => void;
   subtitle?: string;
   onSubtitle?: (text: string) => void;
+  /** Days: pick this day's colour (undefined resets to the default). */
+  onColor?: (hex: string | undefined) => void;
 }
 
 export function Section(p: Props) {
@@ -85,7 +89,11 @@ export function Section(p: Props) {
         <button onClick={() => setOpen((o) => !o)} className="mt-2 text-muted hover:text-fg" aria-label={open ? "Collapse" : "Expand"}>
           <ChevronDown className={`size-4 transition-transform ${open ? "" : "-rotate-90"}`} />
         </button>
-        <span className="mt-[11px] size-2.5 shrink-0 rounded-full" style={{ background: info.color }} />
+        {p.onColor ? (
+          <ColorDot color={info.color} onPick={p.onColor} />
+        ) : (
+          <span className="mt-[11px] size-2.5 shrink-0 rounded-full" style={{ background: info.color }} />
+        )}
         <div className="min-w-0 flex-1">
           {info.kind === "day" ? (
             <h3 className="truncate font-display text-[21px]">
@@ -306,4 +314,50 @@ function Subheading({ value, onSave, editing, setEditing }: { value?: string; on
       <Pencil className="size-3.5 shrink-0 opacity-0 transition-opacity group-hover/sub:opacity-100 max-md:opacity-60" />
     </button>
   ) : null;
+}
+
+/** The day's dot doubles as its colour picker. */
+function ColorDot({ color, onPick }: { color: string; onPick: (hex: string | undefined) => void }) {
+  const ref = useRef<HTMLButtonElement>(null);
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <button
+        ref={ref}
+        onClick={() => setOpen((o) => !o)}
+        className="mt-[7px] grid size-[18px] shrink-0 place-items-center rounded-full hover:ring-2 hover:ring-line"
+        title="Change this day's colour"
+        aria-label="Change this day's colour"
+      >
+        <span className="size-2.5 rounded-full" style={{ background: color }} />
+      </button>
+      {open && ref.current && (
+        <Popover anchor={ref.current} onClose={() => setOpen(false)}>
+          <div className="w-56 p-3">
+            <p className="mb-2 text-[12px] font-bold tracking-wider text-muted uppercase">Day colour</p>
+            <div className="grid grid-cols-6 gap-2">
+              {DAY_SWATCHES.map((c) => (
+                <button
+                  key={c}
+                  onClick={() => (onPick(c), setOpen(false))}
+                  className={`size-7 rounded-full ${c.toLowerCase() === color.toLowerCase() ? "ring-2 ring-fg ring-offset-2 ring-offset-surface" : "hover:scale-110"} transition-transform`}
+                  style={{ background: c }}
+                  aria-label={c}
+                />
+              ))}
+            </div>
+            <div className="mt-3 flex items-center justify-between gap-2 border-t border-line pt-2.5 text-[13px] font-semibold">
+              <label className="flex cursor-pointer items-center gap-2 text-muted hover:text-fg">
+                <input type="color" value={color} onChange={(e) => onPick(e.target.value)} className="size-6 cursor-pointer rounded border-0 bg-transparent p-0" />
+                Custom
+              </label>
+              <button onClick={() => (onPick(undefined), setOpen(false))} className="text-muted hover:text-fg">
+                Reset
+              </button>
+            </div>
+          </div>
+        </Popover>
+      )}
+    </>
+  );
 }

@@ -4,11 +4,11 @@ import type { Line } from "../lib/budget";
 import { CATEGORIES, CATEGORY_LABEL, travelersOf } from "../lib/budget";
 import { formatMoney } from "../lib/fx";
 import { parseISODate } from "../lib/dates";
-import { SECTION_COLORS } from "../lib/colors";
+import { dayColor } from "../lib/colors";
 import { CAT_COLOR } from "./Budget";
 import type { ExpenseCategory, TripState } from "../lib/trips";
 
-type Row = { key: string; label: string; sub?: string; color?: string; amount: number; count: number; parts: Map<ExpenseCategory, number> };
+type Row = { key: string; label: string; sub?: string; color?: string; paid?: number; amount: number; count: number; parts: Map<ExpenseCategory, number> };
 
 const dayFmt = (d: string) => new Intl.DateTimeFormat(undefined, { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" }).format(parseISODate(d));
 
@@ -38,7 +38,8 @@ export function BudgetCharts({ lines, state, currency }: { lines: Line[]; state:
       return CATEGORIES.map((c) => m.get(c)).filter((r): r is Row => !!r).sort((a, b) => b.amount - a.amount);
     }
     if (tab === "people") {
-      // Each person's share (equal split of what they're in on), stacked by category; "paid" alongside
+      // Bar = each person's part of the cost (equal split of what they're in on), stacked by category;
+      // the label says whether they owe or are owed once what they actually paid is counted
       const paid = new Map<string, number>();
       for (const t of travelers) m.set(t, { key: t, label: t, amount: 0, count: 0, parts: new Map() });
       for (const l of counted) {
@@ -51,13 +52,17 @@ export function BudgetCharts({ lines, state, currency }: { lines: Line[]; state:
           r.parts.set(l.category, (r.parts.get(l.category) ?? 0) + share);
         }
       }
-      for (const r of m.values()) r.sub = `paid ${formatMoney(paid.get(r.key) ?? 0, currency)}`;
+      for (const r of m.values()) {
+        r.paid = paid.get(r.key) ?? 0;
+        const bal = r.paid - r.amount;
+        r.sub = Math.abs(bal) < 0.005 ? "settled" : bal > 0 ? `is owed ${formatMoney(bal, currency)}` : `owes ${formatMoney(-bal, currency)}`;
+      }
       return [...m.values()].sort((a, b) => b.amount - a.amount);
     }
     // every trip day in order (empty days included), then anything outside the dates / undated
     const days: string[] = [];
     for (let d = parseISODate(state.meta.startDate); d <= parseISODate(state.meta.endDate); d = new Date(d.getTime() + 86400000)) days.push(d.toISOString().slice(0, 10));
-    for (const d of days) m.set(d, { key: d, label: dayFmt(d), sub: `Day ${days.indexOf(d) + 1}`, color: SECTION_COLORS[days.indexOf(d) % SECTION_COLORS.length], amount: 0, count: 0, parts: new Map() });
+    for (const d of days) m.set(d, { key: d, label: dayFmt(d), sub: `Day ${days.indexOf(d) + 1}`, color: dayColor(days.indexOf(d), d, state.meta.dayColors), amount: 0, count: 0, parts: new Map() });
     for (const l of counted) {
       const k = l.date && m.has(l.date) ? l.date : l.date ? "outside" : "none";
       add(m, k, () => ({ key: k, label: k === "outside" ? "Other dates" : "No date", amount: 0, count: 0, parts: new Map() }), l);
@@ -135,7 +140,15 @@ export function BudgetCharts({ lines, state, currency }: { lines: Line[]; state:
                 <div className="pointer-events-none absolute top-full left-[7.5rem] z-10 mt-1 w-60 rounded-xl border border-line bg-surface p-3 text-[13px] shadow-2xl">
                   <p className="font-bold">{r.label}</p>
                   <p className="text-muted">
-                    {tab === "people" ? `Share ${formatMoney(r.amount, currency)} · ${r.sub}` : `${formatMoney(r.amount, currency)} · ${r.count} item${r.count > 1 ? "s" : ""}`}
+                    {tab === "people" ? (
+                      <>
+                        Their part of the trip <span className="text-fg tabular-nums">{formatMoney(r.amount, currency)}</span>
+                        <br />
+                        Paid out <span className="text-fg tabular-nums">{formatMoney(r.paid ?? 0, currency)}</span> · {r.sub}
+                      </>
+                    ) : (
+                      `${formatMoney(r.amount, currency)} · ${r.count} item${r.count > 1 ? "s" : ""}`
+                    )}
                   </p>
                   {tab !== "category" && (
                     <ul className="mt-1.5 space-y-0.5">

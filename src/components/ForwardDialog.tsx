@@ -91,7 +91,7 @@ export function ForwardDialog({
             <p className="mx-auto mt-2 max-w-sm text-[16px] leading-relaxed text-muted">
               {tripId
                 ? "Forward booking emails from your own address to this trip's address. They land in this trip and wait for you to review."
-                : "Forward booking emails from your own address. They're matched to a trip by dates and destination, and wait for you to review."}
+                : "Forward booking emails from your own address. They wait for you to review."}
             </p>
             <div className="mt-6 flex items-center gap-2 rounded-2xl border border-line bg-bg p-2 pl-4">
               <span className="min-w-0 flex-1 truncate text-left text-[16px] select-all">{tripAddress(tripId)}</span>
@@ -99,11 +99,6 @@ export function ForwardDialog({
                 {copied ? <Check className="size-4" /> : <Copy className="size-4" />} {copied ? "Copied" : "Copy"}
               </button>
             </div>
-            {tripId && (
-              <p className="mt-2 text-[13px] text-muted">
-                Not sure which trip? Plain <span className="text-fg">{INBOX_ADDRESS}</span> works too and matches by dates.
-              </p>
-            )}
             {tripId && onDeleteEmail && <Senders tripId={tripId} />}
             <button onClick={() => setView("history")} className="mt-5 rounded-full border border-accent/50 px-5 py-2.5 text-[15px] font-bold text-accent hover:bg-accent/10">
               Check imported emails

@@ -58,11 +58,11 @@ const TOOL = {
             end_time: { type: "string", description: "HH:MM 24h local time." },
             location_name: { type: "string", description: "Hotel/venue name, or departure airport/station." },
             address: { type: "string" },
-            from: { type: "string" },
-            to: { type: "string" },
+            from: { type: "string", description: "Departure city/station. For flights include the airport's IATA code, e.g. \"Toronto (YYZ)\"." },
+            to: { type: "string", description: "Arrival city/station. For flights include the IATA code, e.g. \"Osaka (KIX)\"." },
             notes: { type: "string", description: "Useful extras only: seats, room type, check-in time, cancellation deadline, terminal." },
             traveler: { type: "string", description: "Passenger or guest name this booking is for, as printed (e.g. \"Aditya Jain\"). One booking entry per passenger when the email lists several." },
-            cost: { type: "number", description: "Total price of this booking as a plain number (taxes and fees included), if shown anywhere in the email or attachments. For a round trip split evenly across the legs unless per-leg prices are given." },
+            cost: { type: "number", description: "Price as a plain number (taxes and fees included), if shown anywhere in the email or attachments. When one price covers several legs or segments (connections, round trips), put it on the FIRST leg only and leave cost out of the others, unless per-leg prices are printed." },
             currency: { type: "string", description: "ISO 4217 code of cost, e.g. CAD, JPY, EUR. Infer from symbols and the booking site (¥ on a Japanese site = JPY)." },
           },
           required: ["type", "title"],
@@ -126,7 +126,23 @@ ${body.slice(0, MAX_CHARS)}`;
   const out = data.content.find((c) => c.type === "tool_use")?.input as { bookings: Booking[]; trip_id: string | null; summary: string } | undefined;
   if (!out) throw new Error("No structured output");
   const valid = new Set(trips.map((t) => t.id));
+  dedupeLegCosts(out.bookings);
   return { ...out, trip_id: out.trip_id && valid.has(out.trip_id) ? out.trip_id : null };
+}
+
+/**
+ * One fare covering several legs: the model sometimes repeats the total on every leg. Keep it on
+ * the earliest leg per traveler and drop the copies, so the budget counts it once.
+ */
+function dedupeLegCosts(bookings: Booking[]) {
+  const seen = new Map<string, Booking>();
+  const order = [...bookings].sort((a, b) => `${a.start_date ?? ""}${a.start_time ?? ""}`.localeCompare(`${b.start_date ?? ""}${b.start_time ?? ""}`));
+  for (const b of order) {
+    if (b.cost == null || !["flight", "train", "bus"].includes(b.type)) continue;
+    const key = `${b.type}|${(b.traveler ?? "").toLowerCase()}|${b.cost}|${b.currency ?? ""}`;
+    if (seen.has(key)) delete b.cost;
+    else seen.set(key, b);
+  }
 }
 
 /** Up to 3 PDF attachments, 4 MB each (keeps the request small and cheap). */
