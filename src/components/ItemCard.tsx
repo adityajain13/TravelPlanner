@@ -270,17 +270,14 @@ function ItemCardView({
                   )}
                 </div>
               )}
-              {/* Google details and the photo credit share a row */}
-              <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5 [&>div.space-y-2]:basis-full">
-                {isPlace && <GoogleDetails item={item} onLink={(googlePlaceId) => onChange({ googlePlaceId })} onSnapshot={(d) => onChange({ google: { ...d, fetchedAt: Date.now() } })} />}
-                {item.image && <PhotoCredit img={item.image} className="ml-auto truncate text-[11px] text-muted" />}
-              </div>
+              {isPlace && <GoogleDetails item={item} onLink={(googlePlaceId) => onChange({ googlePlaceId })} onSnapshot={(d) => onChange({ google: { ...d, fetchedAt: Date.now() } })} />}
               {(item.notes || !readOnly) && <NotesInput disabled={readOnly} value={item.notes ?? ""} onCommit={(v) => onChange({ notes: v })} />}
             </div>
           )}
         </div>
 
         {isPlace && (item.image || (selected && !readOnly)) && (
+          <div className="flex w-[72px] shrink-0 flex-col items-stretch gap-1 sm:w-20">
           <button
             onClick={(e) => {
               e.stopPropagation();
@@ -298,6 +295,9 @@ function ItemCardView({
               </span>
             )}
           </button>
+          {/* The photo's credit sits under the photo when the card is open, using no extra row */}
+          {selected && item.image && <PhotoCredit img={item.image} className="line-clamp-3 block text-center text-[10px] leading-tight [overflow-wrap:anywhere] text-muted" />}
+          </div>
         )}
       </div>
 
