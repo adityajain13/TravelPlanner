@@ -1,3 +1,4 @@
+import { nfmt } from "./intl";
 import { useEffect, useState } from "react";
 import { db } from "./db";
 
@@ -59,7 +60,7 @@ export function useConverter(base: string) {
 
 export function formatMoney(amount: number, currency: string) {
   try {
-    return new Intl.NumberFormat(undefined, { style: "currency", currency, maximumFractionDigits: ["JPY", "KRW", "IDR", "HUF", "TWD"].includes(currency) ? 0 : 2 }).format(amount);
+    return nfmt(undefined, { style: "currency", currency, maximumFractionDigits: ["JPY", "KRW", "IDR", "HUF", "TWD"].includes(currency) ? 0 : 2 }).format(amount);
   } catch {
     return `${amount.toFixed(2)} ${currency}`;
   }

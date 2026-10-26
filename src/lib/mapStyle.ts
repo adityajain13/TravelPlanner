@@ -4,8 +4,8 @@ import type { Theme } from "./theme";
 
 export type MapMode = "map" | "satellite";
 
-export const PROTOMAPS_KEY = import.meta.env.VITE_PROTOMAPS_KEY as string | undefined;
-export const MAPTILER_KEY = import.meta.env.VITE_MAPTILER_KEY as string | undefined;
+import { MAPTILER_KEY, PROTOMAPS_KEY } from "./mapKeys";
+export { MAPTILER_KEY, PROTOMAPS_KEY };
 
 const ATTR_OSM = '<a href="https://openstreetmap.org/copyright">© OpenStreetMap</a>';
 const ATTR_PM = '<a href="https://protomaps.com">Protomaps</a>';

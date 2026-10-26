@@ -4,7 +4,7 @@ import { CloudDownload, CircleCheck, Loader2, RefreshCw, X } from "lucide-react"
 import { db } from "../lib/db";
 import type { TripState } from "../lib/trips";
 import { formatBytes, planDownload, regionCovers, saveRegion, tripBBox, type Progress } from "../lib/offlineMap";
-import { PROTOMAPS_KEY } from "../lib/mapStyle";
+import { PROTOMAPS_KEY } from "../lib/mapKeys";
 
 export function OfflineMapButton({ tripId, state }: { tripId: string; state: TripState }) {
   const region = useLiveQuery(() => db.regions.get(tripId), [tripId]);

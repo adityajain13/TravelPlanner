@@ -1,3 +1,4 @@
+import { dtf } from "../lib/intl";
 import { useEffect, useRef, useState } from "react";
 import { Clock, X } from "lucide-react";
 import { Popover } from "./DatePicker";
@@ -7,7 +8,7 @@ export function fmtTime(t?: string) {
   if (!t) return "";
   const [h, m] = t.split(":").map(Number);
   if (Number.isNaN(h)) return t;
-  return new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit", timeZone: "UTC" }).format(Date.UTC(2000, 0, 1, h, m || 0));
+  return dtf(undefined, { hour: "numeric", minute: "2-digit", timeZone: "UTC" }).format(Date.UTC(2000, 0, 1, h, m || 0));
 }
 
 /** Lenient parsing: "930", "9:30", "9.30pm", "9 pm", "21:15", "noon". */

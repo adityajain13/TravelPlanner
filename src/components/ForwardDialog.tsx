@@ -1,3 +1,4 @@
+import { dtf } from "../lib/intl";
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { ArrowLeft, Check, Copy, Loader2, Mail, Plus, Trash2, UserPlus, X } from "lucide-react";
@@ -76,7 +77,7 @@ export function ForwardDialog({
 
   // This trip only; unmatched emails are sorted out from the home screen
   const shown = items?.filter((it) => scope === "all" || it.trip_id === tripId);
-  const when = (ms: number) => new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }).format(ms);
+  const when = (ms: number) => dtf(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }).format(ms);
 
   return createPortal(
     <div className="fixed inset-0 z-[100] grid place-items-center bg-black/60 p-4 backdrop-blur-sm" onClick={onClose}>

@@ -1,3 +1,4 @@
+import { dtf } from "../lib/intl";
 import { useEffect, useState, type RefObject } from "react";
 import { ChevronDown, ChevronsLeft, ChevronsRight, PiggyBank, X } from "lucide-react";
 import type { Reservation, ReservationType } from "../lib/trips";
@@ -9,7 +10,7 @@ import { formatMoney } from "../lib/fx";
 export type Tab = "plan" | "bookings" | "budget";
 
 const dayLabel = (d: string) =>
-  new Intl.DateTimeFormat(undefined, { weekday: "short", month: "numeric", day: "numeric", timeZone: "UTC" }).format(parseISODate(d));
+  dtf(undefined, { weekday: "short", month: "numeric", day: "numeric", timeZone: "UTC" }).format(parseISODate(d));
 
 const RES_ORDER: ReservationType[] = ["flight", "lodging", "car", "train", "restaurant", "other"];
 

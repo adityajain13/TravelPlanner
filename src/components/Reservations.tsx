@@ -1,3 +1,4 @@
+import { dtf } from "../lib/intl";
 import { airportsNow, flightAirports, localToUtc, travelInstant } from "../lib/airports";
 import { useState } from "react";
 import { CurrencySelect } from "./CurrencySelect";
@@ -74,14 +75,14 @@ const ordinal = (n: number) => `${n}${n % 10 === 1 && n !== 11 ? "st" : n % 10 =
 function niceDate(d?: string) {
   if (!d) return "";
   const dt = new Date(`${d}T00:00:00Z`);
-  const wd = new Intl.DateTimeFormat("en", { weekday: "short", timeZone: "UTC" }).format(dt);
-  const mo = new Intl.DateTimeFormat("en", { month: "short", timeZone: "UTC" }).format(dt);
+  const wd = dtf("en", { weekday: "short", timeZone: "UTC" }).format(dt);
+  const mo = dtf("en", { month: "short", timeZone: "UTC" }).format(dt);
   return `${wd}, ${ordinal(dt.getUTCDate())} ${mo}`;
 }
 const niceTime = (t?: string) => {
   if (!t) return "";
   const [h, m] = t.split(":").map(Number);
-  return new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit", timeZone: "UTC" }).format(Date.UTC(2000, 0, 1, h, m));
+  return dtf(undefined, { hour: "numeric", minute: "2-digit", timeZone: "UTC" }).format(Date.UTC(2000, 0, 1, h, m));
 };
 const at = (d?: string, t?: string) => [niceDate(d), niceTime(t)].filter(Boolean).join(" • ");
 

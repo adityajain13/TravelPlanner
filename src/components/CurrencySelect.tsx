@@ -1,3 +1,4 @@
+import { nfmt } from "../lib/intl";
 import { useEffect, useRef, useState } from "react";
 import { ChevronDown, Search } from "lucide-react";
 import { CURRENCIES } from "../lib/fx";
@@ -9,7 +10,7 @@ export function currencySymbol(code: string) {
   if (!symbolCache.has(code)) {
     let sym = code;
     try {
-      sym = new Intl.NumberFormat("en", { style: "currency", currency: code, currencyDisplay: "narrowSymbol" }).formatToParts(0).find((p) => p.type === "currency")?.value ?? code;
+      sym = nfmt("en", { style: "currency", currency: code, currencyDisplay: "narrowSymbol" }).formatToParts(0).find((p) => p.type === "currency")?.value ?? code;
     } catch {
       /* unknown code */
     }

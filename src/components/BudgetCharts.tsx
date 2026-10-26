@@ -1,3 +1,4 @@
+import { dtf } from "../lib/intl";
 import { useMemo, useState } from "react";
 import { Download } from "lucide-react";
 import type { Line } from "../lib/budget";
@@ -10,7 +11,7 @@ import type { ExpenseCategory, TripState } from "../lib/trips";
 
 type Row = { key: string; label: string; sub?: string; color?: string; paid?: number; amount: number; count: number; parts: Map<ExpenseCategory, number> };
 
-const dayFmt = (d: string) => new Intl.DateTimeFormat(undefined, { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" }).format(parseISODate(d));
+const dayFmt = (d: string) => dtf(undefined, { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" }).format(parseISODate(d));
 
 /**
  * Spending breakdown, Wanderlog-style but readable: horizontal bars (each bar in its category's icon colour or
