@@ -48,7 +48,7 @@ export function LegChip({ mode, state, readOnly, onMode, from, to, label }: { mo
           </span>
         )}
         <span className="shrink-0 [&>svg]:size-3.5">{state === "loading" ? <Loader2 className="animate-spin" /> : MODE_ICON[shownMode]}</span>
-        <span className="min-w-0 truncate" title={text}>{text.replace(" (rough estimate)", " (rough)")}</span>
+        <span className="min-w-0 truncate" title={steps?.length ? `${text}\n${steps.map((st) => (st.mode === "WALK" ? `walk ${st.minutes}m` : `${st.name ?? st.mode.toLowerCase()} ${st.minutes}m`)).join(" → ")}` : text}>{text.replace(" (rough estimate)", " (rough)")}</span>
       </button>
       {from && to && shownMode !== "flight" && (
         <a
@@ -61,11 +61,6 @@ export function LegChip({ mode, state, readOnly, onMode, from, to, label }: { mo
         </a>
       )}
       {res?.rough && transitIssue && !transitIssue.includes("Japan") && <span className="truncate text-[12px] text-danger/80" title={transitIssue}>{transitIssue}</span>}
-      {steps && steps.length > 0 && (
-        <span className="truncate text-muted/80">
-          {steps.map((s) => (s.mode === "WALK" ? `walk ${s.minutes}m` : `${s.name ?? s.mode.toLowerCase()} ${s.minutes}m`)).join(" → ")}
-        </span>
-      )}
       {open && (
         <div data-popover className="absolute top-full left-0 z-30 mt-1 flex gap-1 rounded-full border border-line bg-surface p-1 shadow-xl">
           {MODES.map((m) => (
