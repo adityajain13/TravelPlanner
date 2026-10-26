@@ -112,7 +112,11 @@ export function TripMap({ pins, routes, selectedId, onSelect, theme, fitKey, fal
     map.on("mouseenter", "trip-pins", () => (map.getCanvas().style.cursor = "pointer"));
     map.on("mouseleave", "trip-pins", () => (map.getCanvas().style.cursor = ""));
     mapRef.current = map;
+    // The container changes size when the itinerary is hidden/shown: keep the canvas filling it
+    const ro = new ResizeObserver(() => map.resize());
+    ro.observe(container.current);
     return () => {
+      ro.disconnect();
       map.remove();
       mapRef.current = null;
     };
