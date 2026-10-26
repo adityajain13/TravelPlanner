@@ -75,18 +75,55 @@ Forward any booking confirmation (flights, hotels, trains, restaurants…) to **
 
 Resetting a trip's links in the app also cuts off Claude's access to that trip.
 
+## Tech stack
+
+[![React](https://img.shields.io/badge/React-19-149eca?logo=react&logoColor=white)](https://react.dev)
+[![TypeScript](https://img.shields.io/badge/TypeScript-7-3178c6?logo=typescript&logoColor=white)](https://www.typescriptlang.org)
+[![Vite](https://img.shields.io/badge/Vite-8-646cff?logo=vite&logoColor=white)](https://vite.dev)
+[![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-4-06b6d4?logo=tailwindcss&logoColor=white)](https://tailwindcss.com)
+[![Yjs](https://img.shields.io/badge/Yjs-CRDT-5fd68b)](https://yjs.dev)
+[![MapLibre](https://img.shields.io/badge/MapLibre_GL-6-396cb2?logo=maplibre&logoColor=white)](https://maplibre.org)
+[![Cloudflare Workers](https://img.shields.io/badge/Cloudflare-Workers_·_D1_·_Durable_Objects-f38020?logo=cloudflare&logoColor=white)](https://workers.cloudflare.com)
+[![Claude](https://img.shields.io/badge/Claude-MCP_·_API-d97757?logo=anthropic&logoColor=white)](https://claude.com)
+
+**Front end** (installable, offline-first PWA)
+- **React 19** + **TypeScript**, built with **Vite 8**; routing with **React Router 7**
+- **Tailwind CSS 4** with theme tokens (dark by default), **Source Sans 3**, **Lucide** icons
+- **vite-plugin-pwa / Workbox**: precached app shell, runtime caches for map tiles and photos
+- **Yjs** (one CRDT document per trip) + **y-indexeddb** for offline storage, **y-websocket** for live sync
+- **Dexie** (IndexedDB) for device-only data: trip index, offline map regions, route cache, exchange rates
+- **MapLibre GL** with **Protomaps** vector basemaps (dark/light) and **MapTiler** satellite
+- **dnd-kit** (drag and drop), **react-day-picker** (date pickers), **fractional-indexing** (stable ordering), **pdf.js** (Wanderlog PDF import)
+
+**Back end** (one Cloudflare Worker at `adityajain.ca/travelplanner*`)
+- **Workers** serving the app and the API; **D1** (SQLite) for sessions, trips index and the email inbox
+- **Durable Objects** (SQLite-backed, hibernating WebSockets): one sync room per trip
+- **Email Routing**: inbound `trips@` (plus `trips+<trip>@`) mail handled by the Worker; login codes sent with `send_email`
+- **postal-mime** for parsing forwarded emails; **Claude API** (Haiku) extracts bookings, prices and attached PDFs
+- **MCP server** (`/travelplanner/mcp`) so Claude can read and edit trips through a share link
+- **GitHub Actions** → `wrangler deploy` (with D1 migrations) on every push to `main`
+
+**Data and services**
+
+| Need | Service |
+| --- | --- |
+| Place search | Photon / Nominatim (OpenStreetMap), Google Places (New) autocomplete and details |
+| Routing | FOSSGIS OSRM (drive, walk, bike); Transitous, then Google Routes (transit) |
+| Photos | Unsplash, Wikipedia, Wikimedia Commons, Openverse, Google Places photos |
+| Exchange rates | Frankfurter (European Central Bank) |
+
 ## How it works
 
 | Piece | What it uses |
 | --- | --- |
 | App | React + Vite + Tailwind v4, PWA (`vite-plugin-pwa`), served at `/travelplanner` |
-| Trip data | One **Yjs** document per trip, stored offline in IndexedDB. Edits merge as CRDTs. |
+| Trip data | One **Yjs** document per trip, stored offline in IndexedDB. Edits merge as CRDTs, with undo/redo for your own changes. |
 | Sync | One **Cloudflare Durable Object** per trip (y-websocket protocol), with a D1 index |
 | Auth | Email code / magic link from the Worker, plus a 1-year rolling session cookie |
 | Sharing | Signed view/edit tokens; resetting bumps a version, which revokes every link |
 | Map | MapLibre + Protomaps (dark/light vector), MapTiler satellite |
-| Places | Photon → Nominatim fallback, ranked by relevance, distance and the trip's countries |
-| Routing | FOSSGIS OSRM (drive/walk/bike), Transitous (transit), cached in IndexedDB |
+| Places | Photon + Nominatim ranked by name match and distance, plus Google suggestions |
+| Routing | FOSSGIS OSRM (drive/walk/bike), Transitous then Google (transit), cached in IndexedDB |
 | Email | Cloudflare Email Routing → Worker → Claude extraction → review inbox |
 | Claude | Stateless MCP server at `/travelplanner/mcp`; the share link is the credential |
 
