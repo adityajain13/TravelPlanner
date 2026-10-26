@@ -57,7 +57,7 @@ export function TimeField({ value, onChange, placeholder = "Add time", disabled,
     const idx = Math.min(95, h * 4 + Math.floor((m || 0) / 15));
     requestAnimationFrame(() => {
       const el = list.current?.children[idx] as HTMLElement | undefined;
-      if (el && list.current) list.current.scrollTop += el.getBoundingClientRect().top - list.current.getBoundingClientRect().top - list.current.clientHeight / 2 + el.clientHeight / 2; // centre it (offsetTop counted from the popover, not the list)
+      if (el && list.current) list.current.scrollTop += el.getBoundingClientRect().top - list.current.getBoundingClientRect().top - el.clientHeight - 4; // second row: one earlier slot stays visible above it
     });
   }, [open, value, near]);
 
@@ -176,7 +176,7 @@ export function TimeRangeField({
     const idx = Math.min(95, h * 4 + Math.floor((m || 0) / 15));
     requestAnimationFrame(() => {
       const el = list.current?.children[idx] as HTMLElement | undefined;
-      if (el && list.current) list.current.scrollTop += el.getBoundingClientRect().top - list.current.getBoundingClientRect().top - list.current.clientHeight / 2 + el.clientHeight / 2; // centre it (offsetTop counted from the popover, not the list)
+      if (el && list.current) list.current.scrollTop += el.getBoundingClientRect().top - list.current.getBoundingClientRect().top - el.clientHeight - 4; // second row: one earlier slot stays visible above it
     });
   }, [open, active, focusVal]);
 
