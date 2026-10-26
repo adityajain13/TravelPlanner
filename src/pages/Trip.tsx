@@ -191,16 +191,32 @@ export function TripPage() {
 
     const pins: Pin[] = [];
     // Legs between consecutive pinned stops of each day; routed in useLegs below
-    const legs: { section: string; toId: string; color: string; req: LegRequest }[] = [];
+    const legs: { section: string; toId: string; color: string; req: LegRequest; label?: string }[] = [];
     const defaultMode: TravelMode = state.meta.travelMode ?? "drive";
+    // Where you slept / sleep: lodging bookings with a pin, for legs from and back to the hotel
+    const hotels = state.reservations.filter((r) => r.type === "lodging" && r.lat != null && r.lng != null && r.startDate);
+    const morningHotel = (d: string) => hotels.find((h) => h.startDate! < d && (h.endDate ?? h.startDate!) >= d);
+    const eveningHotel = (d: string) => hotels.find((h) => h.startDate! <= d && (h.endDate ?? h.startDate!) > d);
     for (const s of sections) {
       let n = 0;
       let prev: Item | null = null;
+      let first = true;
       for (const it of s.items) {
         if (it.kind !== "place") continue;
         n++;
         if (it.lat == null || it.lng == null) continue;
         if (!focus || s.key === focus) pins.push({ id: it.id, lat: it.lat, lng: it.lng, color: s.color, label: String(n), name: it.name, image: it.image?.thumb, unsplash: it.image?.source === "unsplash" ? { name: it.image.authorName ?? "Unknown", author: it.image.author } : undefined });
+        if (s.kind === "day" && first) {
+          first = false;
+          const h = morningHotel(s.date!);
+          if (h) {
+            const mode = it.travelMode ?? defaultMode;
+            const from: [number, number] = [h.lng!, h.lat!];
+            const to: [number, number] = [it.lng, it.lat];
+            const when = mode === "transit" ? departureTime(s.date!, it.startTime, it.lng) : undefined;
+            legs.push({ section: s.key, toId: it.id, color: s.color, label: `From ${h.title}`, req: { key: legKey(mode, from, to, when), mode, from, to, when } });
+          }
+        }
         if (s.kind === "day" && prev) {
           const mode = it.travelMode ?? defaultMode;
           const from: [number, number] = [prev.lng!, prev.lat!];
@@ -209,6 +225,17 @@ export function TripPage() {
           legs.push({ section: s.key, toId: it.id, color: s.color, req: { key: legKey(mode, from, to, when), mode, from, to, when } });
         }
         prev = it;
+      }
+      // …and back to tonight's hotel after the last stop
+      const night = s.kind === "day" && prev ? eveningHotel(s.date!) : undefined;
+      if (night && prev) {
+        const mode = state.meta.hotelLegModes?.[s.key] ?? defaultMode;
+        const from: [number, number] = [prev.lng!, prev.lat!];
+        const to: [number, number] = [night.lng!, night.lat!];
+        if (Math.abs(from[0] - to[0]) + Math.abs(from[1] - to[1]) > 0.0005) {
+          const when = mode === "transit" ? departureTime(s.date!, prev.endTime ?? prev.startTime ?? "18:00", to[0]) : undefined;
+          legs.push({ section: s.key, toId: "end", color: s.color, label: `To ${night.title}`, req: { key: legKey(mode, from, to, when), mode, from, to, when } });
+        }
       }
     }
     // Lodging and restaurant bookings with a location get their own pins
@@ -236,10 +263,10 @@ export function TripPage() {
     [view, legResults, focus],
   );
   const legsBySection = useMemo(() => {
-    const m = new Map<string, Map<string, { mode: TravelMode; state?: ReturnType<typeof legResults.get>; from: [number, number]; to: [number, number] }>>();
+    const m = new Map<string, Map<string, { mode: TravelMode; state?: ReturnType<typeof legResults.get>; from: [number, number]; to: [number, number]; label?: string }>>();
     for (const l of view?.legs ?? []) {
       if (!m.has(l.section)) m.set(l.section, new Map());
-      m.get(l.section)!.set(l.toId, { mode: l.req.mode, state: legResults.get(l.req.key), from: l.req.from, to: l.req.to });
+      m.get(l.section)!.set(l.toId, { mode: l.req.mode, state: legResults.get(l.req.key), from: l.req.from, to: l.req.to, label: l.label });
     }
     return m;
   }, [view, legResults]);
@@ -646,7 +673,11 @@ export function TripPage() {
                 countryCode={state.meta.countryCode}
                 chips={s.kind === "day" ? dayChips(state.reservations, s.date!) : []}
                 legs={legsBySection.get(s.key)}
-                onLegMode={(itemId, m) => updateItem(doc, itemId, { travelMode: m === (state.meta.travelMode ?? "drive") ? undefined : m })}
+                onLegMode={(itemId, m) =>
+                  itemId === "end"
+                    ? updateMeta(doc, { hotelLegModes: { ...(state.meta.hotelLegModes ?? {}), [s.key]: m } })
+                    : updateItem(doc, itemId, { travelMode: m === (state.meta.travelMode ?? "drive") ? undefined : m })
+                }
                 onChipClick={(r) => !readOnly && setEditingRes(r)}
                 onFocus={() => setFocus((f) => (f === s.key ? null : s.key))}
                 onSelect={(itemId) => setSelectedId((cur) => (cur === itemId ? null : itemId))}

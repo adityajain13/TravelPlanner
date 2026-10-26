@@ -75,6 +75,8 @@ export interface TripMeta {
   travelers?: string[];
   /** Custom subheading per day/list (e.g. "Osaka" under a day), keyed by section key. */
   subtitles?: Record<string, string>;
+  /** Travel mode for the leg back to the hotel, per day section. */
+  hotelLegModes?: Record<string, import("./routing").TravelMode>;
 }
 
 export type ReservationType = "flight" | "lodging" | "car" | "train" | "restaurant" | "other";
