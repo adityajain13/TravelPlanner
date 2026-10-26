@@ -654,12 +654,16 @@ export function TripPage() {
                 <HeroPill icon={<ThemeIcon theme={theme} />} label={THEME_LABEL[NEXT[theme]]} onClick={toggleTheme} />
               </div>
             </div>
-            <div className="absolute right-4 bottom-3 z-10 flex max-w-[45%] flex-col items-end gap-1.5">
-              {!readOnly && <HeroPill icon={<ImagePlus />} label="Change cover" onClick={() => setPickingCover(true)} />}
-              {state.meta.cover && (
-                <PhotoCredit img={state.meta.cover} className="max-w-full truncate text-right text-[10.5px] text-white/75 [text-shadow:0_1px_4px_rgb(0_0_0/.6)]" />
-              )}
-            </div>
+            {/* Same bottom inset as the dates row, so the cover button lines up with it */}
+            {!readOnly && (
+              <div className="absolute right-4 bottom-4 z-10">
+                <HeroPill icon={<ImagePlus />} label="Change cover" onClick={() => setPickingCover(true)} />
+              </div>
+            )}
+            {/* Credit hugs the very bottom edge of the photo */}
+            {state.meta.cover && (
+              <PhotoCredit img={state.meta.cover} className="absolute right-2 bottom-0.5 z-10 max-w-[60%] truncate text-right text-[10px] leading-tight text-white/70 [text-shadow:0_1px_3px_rgb(0_0_0/.7)]" />
+            )}
             <div className="absolute inset-x-0 bottom-0 px-5 pr-16 pb-4 text-white">
               {readOnly && (
                 <p className="mb-1.5 inline-flex items-center gap-1.5 rounded-full bg-black/35 px-3 py-1 text-xs text-white/85">
