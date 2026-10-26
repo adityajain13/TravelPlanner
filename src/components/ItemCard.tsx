@@ -23,6 +23,8 @@ interface Props {
   currency?: string;
   /** Usually the trip destination; added to photo searches ("Strokkur Iceland"). */
   searchContext?: string;
+  /** Latest time on any stop above this one that day (where an empty time picker opens). */
+  timeBefore?: string;
   onSelect: () => void;
   onChange: (patch: Partial<Item>) => void;
   onDelete: () => void;
@@ -71,6 +73,7 @@ function ItemCardView({
   readOnly,
   currency = "CAD",
   searchContext,
+  timeBefore,
   onSelect,
   onChange,
   onDelete,
@@ -185,6 +188,7 @@ function ItemCardView({
             <div className="mt-2.5 flex flex-wrap gap-1.5 text-[13px] font-semibold">
               {(item.startTime || item.endTime) && (
                 <TimeRangeField
+                    after={timeBefore}
                   disabled={readOnly}
                   start={item.startTime}
                   end={item.endTime}
@@ -235,6 +239,7 @@ function ItemCardView({
               {isPlace && (
                 <div className="flex items-center">
                   <TimeRangeField
+                    after={timeBefore}
                     disabled={readOnly}
                     start={item.startTime}
                     end={item.endTime}
