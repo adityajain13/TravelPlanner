@@ -19,6 +19,8 @@ export interface Booking {
   /** Total price, when the email or an attached PDF shows one. */
   cost?: number;
   currency?: string;
+  /** Set when someone other than the owner forwarded it (from the trip's sender list). */
+  forwarded_by?: string;
 }
 
 export interface InboxItem {
@@ -29,6 +31,11 @@ export interface InboxItem {
   created_at: number;
   status?: "pending" | "added" | "dismissed";
 }
+
+/** Who besides the owner may forward emails to this trip's address. */
+export const fetchSenders = (tripId: string) => api<{ emails: string[] }>(`/trips/${tripId}/senders`).then((r) => r.emails);
+export const saveSenders = (tripId: string, emails: string[]) =>
+  api<{ emails: string[] }>(`/trips/${tripId}/senders`, { method: "PUT", body: JSON.stringify({ emails }) }).then((r) => r.emails);
 
 export const deleteInbox = (id: string) => api(`/inbox/${id}`, { method: "DELETE" });
 

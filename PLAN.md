@@ -122,3 +122,4 @@ Hosted at **adityajain.ca/travelplanner** by the `travelplanner` Cloudflare Work
 - Oct 25: spending bars coloured by category icon colour / day pin colour.
 - Oct 25: day-by-day spending bars stacked by category (Other takes the day colour) + legend.
 - Oct 25: People tab in spending breakdown (each person's share stacked by category, paid amount alongside).
+- Oct 25: per-trip 'who else can forward' list (D1 trip_senders); guests must use trips+<id>@, bookings land in the owner's inbox tagged forwarded_by.

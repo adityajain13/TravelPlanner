@@ -171,9 +171,27 @@ async function reply(env: Env, to: string, subject: string, text: string) {
 export async function handleEmail(message: ForwardableEmailMessage, env: Env) {
   const sender = message.from.trim().toLowerCase();
   const allowed = (env.ALLOWED_EMAILS ?? "").split(",").map((e) => e.trim().toLowerCase());
+  // trips+<trip id>@… (from the trip's Forward dialog) pins the email to that trip, no guessing
+  const tag = message.to.toLowerCase().match(/^[^+@]+\+([a-z0-9_-]+)@/)?.[1];
+
+  // The owner forwards from an allow-listed address. Anyone else must be on that trip's
+  // "who can forward" list and use the trip's own address; their bookings land in the owner's trip.
+  let owner = sender;
   if (!allowed.includes(sender)) {
-    message.setReject("This address only accepts mail from its owner.");
-    return;
+    const guest = tag
+      ? await env.DB.prepare("SELECT t.owner FROM trip_senders s JOIN trips t ON t.id = s.trip_id WHERE lower(s.trip_id) = ? AND s.email = ?")
+          .bind(tag, sender)
+          .first<{ owner: string }>()
+      : null;
+    if (!guest) {
+      message.setReject(
+        tag
+          ? "You're not on this trip's list of people who can forward emails. Ask the trip owner to add your address."
+          : "This address only accepts mail from its owner. Ask the trip owner to add you, then send to the trip's own address.",
+      );
+      return;
+    }
+    owner = guest.owner;
   }
 
   const raw = await new Response(message.raw).arrayBuffer();
@@ -190,11 +208,11 @@ export async function handleEmail(message: ForwardableEmailMessage, env: Env) {
   const { results: trips } = await env.DB.prepare(
     "SELECT id, title, destination, start_date, end_date FROM trips WHERE owner = ? AND title IS NOT NULL ORDER BY start_date",
   )
-    .bind(sender)
-    .all<TripRow>();
+    .bind(owner)
+    .all<TripRow>()
+    // A guest only ever sees (and can only add to) the trip they were invited to
+    .then((r) => ({ results: owner === sender ? r.results : r.results.filter((t) => t.id.toLowerCase() === tag) }));
 
-  // trips+<trip id>@… (from the trip's Forward dialog) pins the email to that trip, no guessing
-  const tag = message.to.toLowerCase().match(/^[^+@]+\+([a-z0-9_-]+)@/)?.[1];
   const pinned = tag ? trips.find((t) => t.id.toLowerCase() === tag) : undefined;
 
   let out;
@@ -217,10 +235,10 @@ export async function handleEmail(message: ForwardableEmailMessage, env: Env) {
     out.bookings.map((b) =>
       env.DB.prepare("INSERT INTO inbox (id, owner, trip_id, status, subject, booking, created_at) VALUES (?, ?, ?, 'pending', ?, ?, ?)").bind(
         crypto.randomUUID(),
-        sender,
+        owner,
         out.trip_id,
         subject,
-        JSON.stringify(b),
+        JSON.stringify(owner === sender ? b : { ...b, forwarded_by: sender }),
         now,
       ),
     ),
@@ -232,6 +250,6 @@ export async function handleEmail(message: ForwardableEmailMessage, env: Env) {
     env,
     sender,
     `Got it: ${out.bookings.length} booking${out.bookings.length > 1 ? "s" : ""} ready to review`,
-    `${out.summary}\n\nThey're waiting ${where}:\n${out.bookings.map((b) => `• ${b.title}${b.start_date ? ` (${b.start_date}${b.start_time ? ` ${b.start_time}` : ""})` : ""}`).join("\n")}\n\nReview and add them: ${appUrl}`,
+    `${out.summary}\n\nThey're waiting ${where}:\n${out.bookings.map((b) => `• ${b.title}${b.start_date ? ` (${b.start_date}${b.start_time ? ` ${b.start_time}` : ""})` : ""}`).join("\n")}\n\n${owner === sender ? `Review and add them: ${appUrl}` : "The trip owner will review and add them."}`,
   );
 }
