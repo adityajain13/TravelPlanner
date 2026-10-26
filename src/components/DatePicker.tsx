@@ -52,26 +52,34 @@ const components = {
 /** Popover anchored to a trigger, rendered in <body> so it escapes overflow/containment. */
 export function Popover({ anchor, onClose, children }: { anchor: HTMLElement; onClose: () => void; children: ReactNode }) {
   const ref = useRef<HTMLDivElement>(null);
-  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
 
+  // Positioned by writing styles directly (not React state), so it moves in the same frame as
+  // the scroll instead of a frame behind, which read as shaking. The side (above/below) is chosen
+  // when it opens or its size changes, never mid-scroll, so it can't flip back and forth either.
+  const closeRef = useRef(onClose);
+  closeRef.current = onClose;
   useLayoutEffect(() => {
-    const place = () => {
+    const el = ref.current;
+    if (!el) return;
+    let side: "below" | "above" | null = null;
+    const place = (choose: boolean) => {
       const a = anchor.getBoundingClientRect();
-      const el = ref.current;
-      const w = el?.offsetWidth ?? 320;
-      const h = el?.offsetHeight ?? 360;
-      const below = a.bottom + 8 + h <= window.innerHeight || a.top < h + 8;
-      const top = below ? a.bottom + 8 : a.top - h - 8;
-      const left = Math.max(8, Math.min(a.left, window.innerWidth - w - 8));
-      setPos({ top: Math.max(8, top), left });
+      if (a.bottom < 0 || a.top > window.innerHeight) return closeRef.current(); // its trigger scrolled away
+      const w = el.offsetWidth;
+      const h = el.offsetHeight;
+      if (choose || !side) side = a.bottom + 8 + h <= window.innerHeight || a.top < h + 8 ? "below" : "above";
+      const top = side === "below" ? a.bottom + 8 : a.top - h - 8;
+      el.style.top = `${Math.round(Math.max(8, Math.min(top, window.innerHeight - h - 8)))}px`;
+      el.style.left = `${Math.round(Math.max(8, Math.min(a.left, window.innerWidth - w - 8)))}px`;
     };
-    place();
-    // Re-place when the content grows (e.g. the custom colour picker opening)
-    const ro = new ResizeObserver(place);
-    if (ref.current) ro.observe(ref.current);
-    window.addEventListener("resize", place);
-    window.addEventListener("scroll", place, true);
-    return () => (ro.disconnect(), window.removeEventListener("resize", place), window.removeEventListener("scroll", place, true));
+    place(true);
+    const grow = new ResizeObserver(() => place(true)); // e.g. the custom colour picker opening
+    grow.observe(el);
+    const onScroll = () => place(false);
+    const onResize = () => place(true);
+    window.addEventListener("resize", onResize);
+    window.addEventListener("scroll", onScroll, true);
+    return () => (grow.disconnect(), window.removeEventListener("resize", onResize), window.removeEventListener("scroll", onScroll, true));
   }, [anchor]);
 
   useEffect(() => {
@@ -86,7 +94,7 @@ export function Popover({ anchor, onClose, children }: { anchor: HTMLElement; on
     <div
       ref={ref}
       data-popover
-      style={{ top: pos?.top ?? -9999, left: pos?.left ?? -9999 }}
+      style={{ top: -9999, left: -9999 }}
       className="fixed z-[120] rounded-2xl border border-line bg-surface shadow-2xl"
       onClick={(e) => e.stopPropagation()}
     >
