@@ -125,3 +125,4 @@ Hosted at **adityajain.ca/travelplanner** by the `travelplanner` Cloudflare Work
 - Oct 25: per-trip 'who else can forward' list (D1 trip_senders); guests must use trips+<id>@, bookings land in the owner's inbox tagged forwarded_by.
 - Oct 25: accounts for friends: trip_members (edit/view) + one-time invite sign-in links; anyone with a login can own trips; shared trips list in Home ('Shared by'), leave instead of delete; editors see/forward bookings.
 - Oct 25: invite links open the sign-in page and redeem on a Continue press (POST), so chat link previews can't use them up.
+- Oct 26: drop plain trips@ mention; one fare on first leg only; People tab shows owes/is owed; in-app confirm dialog on Home (leave/remove/delete); distinct + editable day colours (dot = picker, meta.dayColors); airports from flight bookings as plane pins with flight arcs (OpenFlights data, lazy chunk).

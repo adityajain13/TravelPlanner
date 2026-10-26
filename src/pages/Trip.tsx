@@ -56,7 +56,8 @@ import {
   updateMeta,
   type Item,
 } from "../lib/trips";
-import { LIST_COLOR, SECTION_COLORS } from "../lib/colors";
+import { dayColor, LIST_COLOR } from "../lib/colors";
+import { flightAirports, flightArc, loadAirports, type AirportDb } from "../lib/airports";
 import type { Pin, Route } from "../components/TripMap";
 // MapLibre is the heaviest dependency; load it after the plan panel is on screen.
 const TripMap = lazy(() => import("../components/TripMap").then((m) => ({ default: m.TripMap })));
@@ -206,7 +207,7 @@ export function TripPage() {
       }
       const date = key.slice(4);
       const i = days.indexOf(date);
-      return { key, kind: "day", date, dayNumber: i + 1, color: SECTION_COLORS[i % SECTION_COLORS.length], items: bySection.get(key)! };
+      return { key, kind: "day", date, dayNumber: i + 1, color: dayColor(i, date, state.meta.dayColors), items: bySection.get(key)! };
     });
     if (orphans.length)
       sections.push({ key: ORPHAN, kind: "list", title: "Outside trip dates", color: LIST_COLOR, items: orphans, readonlyTitle: true });
@@ -267,6 +268,31 @@ export function TripPage() {
           pins.push({ id: `res:${r.id}`, lat: r.lat, lng: r.lng, color: "#e8ece9", label: r.type === "lodging" ? "H" : r.type === "restaurant" ? "R" : "•", name: r.title });
     return { sections, pins, legs };
   }, [state, focus]);
+
+  // Airports from flight bookings: a plane pin each, and an arc per flight (never routed like a leg)
+  const hasFlights = !!state?.reservations.some((r) => r.type === "flight");
+  const [airportDb, setAirportDb] = useState<AirportDb | null>(null);
+  useEffect(() => {
+    if (hasFlights && !airportDb) loadAirports().then(setAirportDb).catch(() => undefined);
+  }, [hasFlights, airportDb]);
+  const flights = useMemo(() => {
+    const pins: Pin[] = [];
+    const arcs: Route[] = [];
+    if (!airportDb || !state || !view || focus) return { pins, arcs };
+    const seenArc = new Set<string>();
+    const dayColorOf = new Map(view.sections.filter((s) => s.kind === "day").map((s) => [s.date!, s.color]));
+    for (const r of state.reservations) {
+      const ends = flightAirports(r, airportDb);
+      if (!ends) continue;
+      for (const a of ends)
+        if (!pins.some((p) => p.id === `apt:${a.code}`)) pins.push({ id: `apt:${a.code}`, lat: a.lat, lng: a.lng, color: "#e8ece9", label: a.code, glyph: "plane", name: `${a.name} (${a.code})` });
+      const key = `${ends[0].code}-${ends[1].code}-${r.startDate ?? ""}`; // one arc per flight, not per passenger
+      if (seenArc.has(key)) continue;
+      seenArc.add(key);
+      arcs.push({ color: dayColorOf.get(r.startDate ?? "") ?? "#9aa59f", coords: flightArc(ends[0], ends[1]), style: "arc" });
+    }
+    return { pins, arcs };
+  }, [airportDb, state, view, focus]);
 
   // Route every leg (cached per device); draw road/path/transit geometry, straight dashes until known
   const legResults = useLegs(view?.legs.map((l) => l.req) ?? []);
@@ -385,7 +411,7 @@ export function TripPage() {
   }
 
   const selectFromMap = (itemId: string) => {
-    if (itemId.startsWith("res:")) {
+    if (itemId.startsWith("res:") || itemId.startsWith("apt:")) {
       setTab("bookings");
       setMobileView("plan");
       return;
@@ -769,6 +795,16 @@ export function TripPage() {
                 onMoveTo={readOnly ? undefined : (itemId, k) => moveItems(doc, [itemId], k)}
                 onCostDetails={readOnly ? undefined : setCostFor}
                 subtitle={state.meta.subtitles?.[s.key]}
+                onColor={
+                  s.kind === "day" && !readOnly
+                    ? (c) => {
+                        const next = { ...(state.meta.dayColors ?? {}) };
+                        if (c) next[s.date!] = c;
+                        else delete next[s.date!];
+                        updateMeta(doc, { dayColors: next });
+                      }
+                    : undefined
+                }
                 onSubtitle={(t) => {
                   const next = { ...(state.meta.subtitles ?? {}) };
                   if (t) next[s.key] = t;
@@ -818,8 +854,8 @@ export function TripPage() {
         </button>
         <Suspense fallback={<div className="h-full w-full bg-surface-2" />}>
         <TripMap
-          pins={view.pins}
-          routes={routes}
+          pins={flights.pins.length ? [...view.pins, ...flights.pins] : view.pins}
+          routes={flights.arcs.length ? [...flights.arcs, ...routes] : routes}
           selectedId={selectedId}
           onSelect={selectFromMap}
           theme={theme}

@@ -2,7 +2,8 @@ import { Logo } from "../components/Logo";
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useLiveQuery } from "dexie-react-hooks";
-import { CalendarDays, FileUp, LogOut, MapPin, Plus, Trash2, Users } from "lucide-react";
+import { CalendarDays, DoorOpen, FileUp, LogOut, MapPin, Plus, Trash2, Users, X } from "lucide-react";
+import { ConfirmDialog } from "../components/ConfirmDialog";
 import { useSession } from "../lib/api";
 import { reconcileTrips } from "../lib/sync";
 import { fetchInbox, type InboxItem } from "../lib/inbox";
@@ -95,6 +96,7 @@ export function Home() {
 
 function TripGroup({ title, trips }: { title: string; trips: TripIndexRow[] }) {
   const { email } = useSession();
+  const [pending, setPending] = useState<TripIndexRow | null>(null);
   if (trips.length === 0) return null;
   return (
     <section className="mb-10">
@@ -124,23 +126,33 @@ function TripGroup({ title, trips }: { title: string; trips: TripIndexRow[] }) {
                 </p>
               </div>
             </Link>
+            {/* Only the trip's creator can delete it; people it's shared with leave or remove it from this device */}
             <button
-              onClick={() => {
-                const msg = t.shareToken
-                  ? `Remove "${t.title}" from this device?`
-                  : t.owner
-                    ? `Leave "${t.title}"? ${t.owner} can add you back.`
-                    : `Delete "${t.title}" everywhere? This can't be undone.`;
-                if (confirm(msg)) deleteTrip(t.id, { server: !t.shareToken && !t.owner, leave: t.owner && email ? email : undefined }).catch((e) => alert((e as Error).message));
-              }}
+              onClick={() => setPending(t)}
               className="mx-4 grid size-10 shrink-0 place-items-center rounded-full text-muted opacity-0 transition hover:bg-surface hover:text-danger group-hover:opacity-100 focus:opacity-100 max-md:opacity-100"
-              aria-label={`Delete ${t.title}`}
+              aria-label={t.owner ? `Leave ${t.title}` : t.shareToken ? `Remove ${t.title}` : `Delete ${t.title}`}
+              title={t.owner ? "Leave trip" : t.shareToken ? "Remove from this device" : "Delete trip"}
             >
-              <Trash2 className="size-4" />
+              {t.owner ? <DoorOpen className="size-4" /> : t.shareToken ? <X className="size-4" /> : <Trash2 className="size-4" />}
             </button>
           </li>
         ))}
       </ul>
+      {pending && (
+        <ConfirmDialog
+          icon={pending.owner ? <DoorOpen /> : pending.shareToken ? <X /> : <Trash2 />}
+          title={pending.owner ? `Leave ${pending.title}?` : pending.shareToken ? `Remove ${pending.title}?` : `Delete ${pending.title}?`}
+          confirmLabel={pending.owner ? "Leave" : pending.shareToken ? "Remove" : "Delete"}
+          onConfirm={() => deleteTrip(pending.id, { server: !pending.shareToken && !pending.owner, leave: pending.owner && email ? email : undefined })}
+          onClose={() => setPending(null)}
+        >
+          {pending.owner
+            ? `It disappears from your trips. ${pending.owner} can add you back.`
+            : pending.shareToken
+              ? "It's removed from this device only. The trip and its share link keep working."
+              : "The itinerary, bookings and budget are deleted for everyone it's shared with. This can't be undone."}
+        </ConfirmDialog>
+      )}
     </section>
   );
 }

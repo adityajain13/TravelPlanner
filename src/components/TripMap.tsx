@@ -19,13 +19,15 @@ export interface Pin {
   name?: string;
   image?: string; // thumbnail URL for the popup
   unsplash?: { name: string; author?: string }; // photographer credit for Unsplash photos
+  /** Draw an icon on the pin's head instead of the label text. */
+  glyph?: "plane";
 }
 
 export interface Route {
   color: string;
   coords: [number, number][];
-  /** solid = road/transit route, dotted = walking, dashed = straight line (unrouted / flight) */
-  style?: "solid" | "dotted" | "dashed";
+  /** solid = road/transit route, dotted = walking, dashed = straight line (unrouted), arc = a booked flight */
+  style?: "solid" | "dotted" | "dashed" | "arc";
 }
 
 interface Props {
@@ -286,6 +288,7 @@ function addOverlay(map: maplibregl.Map) {
   routeLayer("solid", { "line-width": 3.5 });
   routeLayer("dotted", { "line-width": 3, "line-dasharray": [0.1, 2] });
   routeLayer("dashed", { "line-width": 2, "line-opacity": 0.6, "line-dasharray": [1.5, 1.5] });
+  routeLayer("arc", { "line-width": 2, "line-opacity": 0.75, "line-dasharray": [2, 2] });
   if (!map.hasImage("tp-pin")) map.addImage("tp-pin", pinImage(), { sdf: true, pixelRatio: 2 });
   // Wanderlog-style teardrop pins: SDF icon tinted per day, number on the head, selected one larger
   map.addLayer({
@@ -314,6 +317,37 @@ function addOverlay(map: maplibregl.Map) {
       "text-color": "#0e1110",
     },
   });
+  if (!map.hasImage("tp-plane")) map.addImage("tp-plane", planeImage(), { pixelRatio: 2 });
+  map.addLayer({
+    id: "trip-pin-glyphs",
+    type: "symbol",
+    source: "trip-pins",
+    filter: ["==", ["get", "glyph"], "plane"],
+    layout: {
+      "icon-image": "tp-plane",
+      "icon-anchor": "center",
+      "icon-size": ["case", ["get", "selected"], 1.2, 0.95],
+      "icon-offset": [0, -21.6],
+      "icon-allow-overlap": true,
+      "icon-ignore-placement": true,
+    },
+  });
+}
+
+/** Lucide's plane, dark on transparent, for airport pins (the map font has no ✈). */
+function planeImage() {
+  const s = 26;
+  const c = document.createElement("canvas");
+  c.width = s;
+  c.height = s;
+  const g = c.getContext("2d")!;
+  g.scale(s / 24, s / 24);
+  g.strokeStyle = "#0e1110";
+  g.lineWidth = 2.2;
+  g.lineJoin = "round";
+  g.lineCap = "round";
+  g.stroke(new Path2D("M17.8 19.2 16 11l3.5-3.5C21 6 21.5 4 21 3c-1-.5-3 0-4.5 1.5L13 8 4.8 6.2c-.5-.1-.9.1-1.1.5l-.3.5c-.2.5-.1 1 .3 1.3L9 12l-2 3H4l-1 1 3 2 2 3 1-1v-3l3-2 3.5 5.3c.3.4.8.5 1.3.3l.5-.2c.4-.3.6-.7.5-1.2z"));
+  return g.getImageData(0, 0, s, s);
 }
 
 /** White teardrop on a transparent canvas; used as an SDF so MapLibre can colour it per pin. */
@@ -344,7 +378,7 @@ function pushData(map: maplibregl.Map, d: Pick<Props, "pins" | "routes" | "selec
     features: d.pins.map((p) => ({
       type: "Feature",
       geometry: { type: "Point", coordinates: [p.lng, p.lat] },
-      properties: { id: p.id, color: p.color, label: p.label, selected: p.id === d.selectedId },
+      properties: { id: p.id, color: p.color, label: p.glyph ? "" : p.label, glyph: p.glyph ?? "", selected: p.id === d.selectedId },
     })),
   });
   routeSrc.setData({
