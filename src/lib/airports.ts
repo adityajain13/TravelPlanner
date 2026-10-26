@@ -4,11 +4,14 @@ import type { Reservation } from "./trips";
  * Airports for flight bookings: IATA code → [lat, lng, name, city], from OpenFlights
  * (openflights.org, ODbL). ~150 KB gzipped, so it's a separate chunk loaded only for trips with flights.
  */
-export type AirportRow = [number, number, string, string];
+export type AirportRow = [number, number, string, string, string?]; // lat, lng, name, city, IANA time zone
 export type AirportDb = Record<string, AirportRow>;
 
 let cache: Promise<AirportDb> | null = null;
-export const loadAirports = () => (cache ??= import("../data/airports.json").then((m) => m.default as unknown as AirportDb));
+let loaded: AirportDb | null = null;
+export const loadAirports = () => (cache ??= import("../data/airports.json").then((m) => (loaded = m.default as unknown as AirportDb)));
+/** The airport table if it has been loaded (the trip page loads it when a trip has flights). */
+export const airportsNow = () => loaded;
 
 export interface Airport {
   code: string;
@@ -16,6 +19,7 @@ export interface Airport {
   lng: number;
   name: string;
   city: string;
+  tz?: string;
 }
 
 const codesIn = (s: string | undefined, db: AirportDb) => [...(s ?? "").matchAll(/\b([A-Z]{3})\b/g)].map((m) => m[1]).filter((c) => db[c]);
@@ -60,8 +64,8 @@ export function flightAirports(r: Reservation, db: AirportDb): [Airport, Airport
   }
   if (!from || !to || from === to) return null;
   const mk = (code: string): Airport => {
-    const [lat, lng, name, city] = db[code];
-    return { code, lat, lng, name, city };
+    const [lat, lng, name, city, tz] = db[code];
+    return { code, lat, lng, name, city, tz: tz || undefined };
   };
   return [mk(from), mk(to)];
 }
@@ -91,4 +95,41 @@ export function flightArc(a: { lat: number; lng: number }, b: { lat: number; lng
     out.push([u * u * a.lng + 2 * u * t * cx + t * t * bl, u * u * a.lat + 2 * u * t * cy + t * t * b.lat]);
   }
   return out;
+}
+
+/** Minutes a zone is ahead of UTC at a given instant. */
+function zoneOffset(ms: number, tz: string) {
+  const p = Object.fromEntries(
+    new Intl.DateTimeFormat("en-US", { timeZone: tz, hourCycle: "h23", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })
+      .formatToParts(ms)
+      .map((x) => [x.type, x.value]),
+  );
+  return (Date.UTC(+p.year, +p.month - 1, +p.day, +p.hour, +p.minute) - Math.floor(ms / 60000) * 60000) / 60000;
+}
+
+/** A local date + time at a place → the real instant (ms). Without a zone, the longitude's rough offset. */
+export function localToUtc(date: string, time: string | undefined, where: { tz?: string; lng: number }) {
+  const [y, m, d] = date.split("-").map(Number);
+  const [hh, mm] = (time && /^\d{1,2}:\d{2}/.test(time) ? time : "12:00").split(":").map(Number);
+  const guess = Date.UTC(y, m - 1, d, hh, mm);
+  if (!where.tz) return guess - Math.round(where.lng / 15) * 3600000;
+  try {
+    const first = guess - zoneOffset(guess, where.tz) * 60000;
+    return guess - zoneOffset(first, where.tz) * 60000;
+  } catch {
+    return guess - Math.round(where.lng / 15) * 3600000;
+  }
+}
+
+/**
+ * When a flight really leaves or lands (ms since epoch), using each airport's own time zone, so
+ * Tokyo 18:30 → Calgary 12:30 sorts before Calgary 14:30 → Toronto. Undefined until airports load.
+ */
+export function flightInstant(r: Reservation, which: "dep" | "arr") {
+  const db = loaded;
+  if (!db || r.type !== "flight") return undefined;
+  const ends = flightAirports(r, db);
+  const date = which === "dep" ? r.startDate : (r.endDate ?? r.startDate);
+  if (!ends || !date) return undefined;
+  return localToUtc(date, which === "dep" ? r.startTime : r.endTime, ends[which === "dep" ? 0 : 1]);
 }

@@ -1,3 +1,4 @@
+import { airportsNow, flightAirports, flightInstant, localToUtc } from "../lib/airports";
 import { useState } from "react";
 import { CurrencySelect } from "./CurrencySelect";
 import { DateField } from "./DatePicker";
@@ -426,7 +427,28 @@ export function dayChips(reservations: Reservation[], date: string) {
     }
   }
   // "!" sorts before digits (morning hotel), "~" after them (evening check-in)
-  chips.sort((a, b) => (a.at < b.at ? -1 : a.at > b.at ? 1 : 0)); // plain code-point order (localeCompare ignores "!"/"~")
+  // Real instants where time zones differ: a flight's own airports; other bookings that day use the
+  // zone of the day's first flight airport (Tokyo 18:30 → Calgary 12:30 lands before Calgary 14:30 leaves)
+  const db = airportsNow();
+  const inst = new Map<(typeof chips)[number], number>();
+  let dayZone: { tz?: string; lng: number } | undefined;
+  for (const c of chips) {
+    if (c.r.type !== "flight" || !db) continue;
+    const dep = c.r.startDate === date && c.label.includes(" departs");
+    const ms = flightInstant(c.r, dep ? "dep" : "arr");
+    if (ms != null) inst.set(c, ms);
+    const ends = flightAirports(c.r, db);
+    if (ends && !dayZone) dayZone = ends[dep ? 0 : 1];
+  }
+  if (dayZone) for (const c of chips) if (!inst.has(c) && !/^[!~]/.test(c.at)) inst.set(c, localToUtc(date, c.time ?? c.at, dayZone));
+  const rank = (c: (typeof chips)[number]) => (c.at.startsWith("!") ? 0 : c.at.startsWith("~") ? 2 : 1);
+  chips.sort((a, b) => {
+    if (rank(a) !== rank(b)) return rank(a) - rank(b);
+    const x = inst.get(a);
+    const y = inst.get(b);
+    if (x != null && y != null && x !== y) return x - y;
+    return a.at < b.at ? -1 : a.at > b.at ? 1 : 0; // plain code-point order (localeCompare ignores "!"/"~")
+  });
   // One chip per booking when several travellers each have their own copy
   const merged: { r: Reservation; label: string; at: string; time?: string }[] = [];
   const count = new Map<string, number>();
