@@ -57,6 +57,7 @@ import {
   type Item,
 } from "../lib/trips";
 import { dayColor, LIST_COLOR } from "../lib/colors";
+import { RES_GLYPH } from "../lib/pinArt";
 import { flightAirports, flightArc, loadAirports, type Airport, type AirportDb } from "../lib/airports";
 import type { Pin, Route } from "../components/TripMap";
 // MapLibre is the heaviest dependency; load it after the plan panel is on screen.
@@ -321,8 +322,9 @@ export function TripPage() {
     // Lodging and restaurant bookings with a location get their own pins
     if (!focus)
       for (const r of state.reservations)
-        if (r.lat != null && r.lng != null && (r.type === "lodging" || r.type === "restaurant" || r.type === "other"))
-          pins.push({ id: `res:${r.id}`, lat: r.lat, lng: r.lng, color: "#e8ece9", label: r.type === "lodging" ? "H" : r.type === "restaurant" ? "R" : "•", name: r.title });
+        if (r.lat != null && r.lng != null && r.type !== "flight" && !pins.some((p) => p.id === `res:${r.id}` || (p.id.startsWith("res:") && p.name === r.title)))
+          // One pin per booking (several travellers' copies share it), with its type's symbol
+          pins.push({ id: `res:${r.id}`, lat: r.lat, lng: r.lng, color: "#e8ece9", label: "", glyph: RES_GLYPH[r.type], name: r.title });
     return { sections, pins, legs };
   }, [state, focus, airportDb]);
 
