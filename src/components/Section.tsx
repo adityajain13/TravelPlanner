@@ -237,6 +237,7 @@ export function Section(p: Props) {
                 readOnly={p.readOnly}
                 currency={p.currency}
                 searchContext={p.searchContext}
+                timeBefore={info.kind === "day" ? latestBefore(info.items, idx) : undefined}
                 onSelect={() => p.onSelect(it.id)}
                 onChange={(patch) => p.onChange(it.id, patch)}
                 onDelete={() => p.onDelete(it.id)}
@@ -431,4 +432,15 @@ export function placeChips(chips: NonNullable<Props["chips"]>, items: Item[]) {
     }
   }
   return at;
+}
+
+/** Latest start/end time among the stops above position idx (not just the one directly above). */
+function latestBefore(items: Item[], idx: number) {
+  let best: string | undefined;
+  for (const it of items.slice(0, idx))
+    for (const t of [it.startTime, it.endTime]) {
+      const v = hhmm(t);
+      if (v && (!best || v > best)) best = v;
+    }
+  return best;
 }

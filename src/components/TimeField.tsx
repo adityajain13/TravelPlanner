@@ -57,7 +57,7 @@ export function TimeField({ value, onChange, placeholder = "Add time", disabled,
     const idx = Math.min(95, h * 4 + Math.floor((m || 0) / 15));
     requestAnimationFrame(() => {
       const el = list.current?.children[idx] as HTMLElement | undefined;
-      if (el && list.current) list.current.scrollTop = el.offsetTop - list.current.clientHeight / 2 + el.clientHeight / 2;
+      if (el && list.current) list.current.scrollTop += el.getBoundingClientRect().top - list.current.getBoundingClientRect().top - list.current.clientHeight / 2 + el.clientHeight / 2; // centre it (offsetTop counted from the popover, not the list)
     });
   }, [open, value, near]);
 
@@ -133,7 +133,10 @@ export function TimeRangeField({
   className = "",
   children,
   title,
+  after,
 }: {
+  /** Latest time earlier in the day; with nothing set, the list opens on it (the previous stop's end). */
+  after?: string;
   start?: string;
   end?: string;
   onChange: (start: string | undefined, end: string | undefined) => void;
@@ -160,14 +163,20 @@ export function TimeRangeField({
   }, [open, start, end]);
 
   // Keep the list scrolled to the active value
-  const focusVal = (active === "start" ? s : (e ?? s)) ?? "09:00";
+  const nextSlot = (t?: string) => {
+    if (!t || !/^\d{1,2}:\d{2}/.test(t)) return undefined;
+    const [h, m] = t.split(":").map(Number);
+    const n = Math.min(95, Math.ceil((h * 60 + m) / 15)); // that slot (1 pm → 1:00 pm), or the next one
+    return `${String(Math.floor(n / 4)).padStart(2, "0")}:${String((n % 4) * 15).padStart(2, "0")}`;
+  };
+  const focusVal = (active === "start" ? s : (e ?? s)) ?? nextSlot(after) ?? "09:00";
   useEffect(() => {
     if (!open) return;
     const [h, m] = focusVal.split(":").map(Number);
     const idx = Math.min(95, h * 4 + Math.floor((m || 0) / 15));
     requestAnimationFrame(() => {
       const el = list.current?.children[idx] as HTMLElement | undefined;
-      if (el && list.current) list.current.scrollTop = el.offsetTop - list.current.clientHeight / 2 + el.clientHeight / 2;
+      if (el && list.current) list.current.scrollTop += el.getBoundingClientRect().top - list.current.getBoundingClientRect().top - list.current.clientHeight / 2 + el.clientHeight / 2; // centre it (offsetTop counted from the popover, not the list)
     });
   }, [open, active, focusVal]);
 
