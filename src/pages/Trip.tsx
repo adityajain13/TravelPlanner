@@ -50,6 +50,8 @@ import {
   removeItems,
   saveReservation,
   setReadOnly,
+  setItemImage,
+  samePlace,
   renameList,
   sectionsFor,
   updateItem,
@@ -835,6 +837,11 @@ export function TripPage() {
                 onAddPlace={(p, index) => {
                   const newId = addItem(doc, s.key, { kind: "place", name: p.name, address: p.address || undefined, category: p.category || undefined, lat: p.lat, lng: p.lng, osmId: p.osmId, googlePlaceId: p.googlePlaceId }, undefined, index);
                   setSelectedId(newId);
+                  // Already on the trip elsewhere with a photo: reuse that photo
+                  const all = readTrip(doc).items;
+                  const added = all.find((x) => x.id === newId);
+                  const twin = added && all.find((x) => x.id !== newId && x.image && samePlace(added, x));
+                  if (twin) updateItem(doc, newId, { image: twin.image });
                   // Picked from Google: copy its details (rating, hours…) and use its first photo
                   if (p.googlePlaceId && GOOGLE_KEY)
                     getDetails(p.googlePlaceId)
@@ -861,7 +868,14 @@ export function TripPage() {
                 }}
                 onAddNote={(text, index) => addItem(doc, s.key, { kind: "note", name: text }, undefined, index)}
                 onAddChecklist={(index) => addItem(doc, s.key, { kind: "checklist", name: "", checks: [{ id: Math.random().toString(36).slice(2, 10), text: "" }] }, undefined, index)}
-                onChange={(itemId, patch) => updateItem(doc, itemId, patch)}
+                onChange={(itemId, patch) => {
+                  // A new photo goes on every stop at the same place
+                  if ("image" in patch) {
+                    const { image, ...rest } = patch;
+                    setItemImage(doc, itemId, image);
+                    if (Object.keys(rest).length) updateItem(doc, itemId, rest);
+                  } else updateItem(doc, itemId, patch);
+                }}
                 onDelete={(itemId) => removeItem(doc, itemId)}
                 checked={readOnly ? undefined : checked}
                 onCheck={readOnly ? undefined : onCheck}

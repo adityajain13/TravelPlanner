@@ -132,3 +132,4 @@ Hosted at **adityajain.ca/travelplanner** by the `travelplanner` Cloudflare Work
 - Oct 26: booking chips slot between stops by time (stop time = start, else end); flight connections ignored for legs; leg to the departure airport shown before its flight chip (mode stored as hotelLegModes['<day>|dep']).
 - Oct 26: custom pin art (src/lib/pinArt.ts): glossy teardrop, white rim, shadow, white badge with number or a booking symbol (bed/plane/car/train/utensils/ticket); drawn at 3x.
 - Oct 26: photo picker shows the place's Google Maps photos first (googlePhotos in images.ts); pasted links preview and need 'Use image', with an error if it isn't an image.
+- Oct 26: a stop's new photo is applied to every stop at the same place (samePlace: Google/OSM id or same name within 150 m); new duplicates reuse it.
