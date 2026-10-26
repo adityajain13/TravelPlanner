@@ -1,4 +1,4 @@
-import { flightInstant } from "./airports";
+import { travelInstant } from "./airports";
 import * as Y from "yjs";
 import { IndexeddbPersistence } from "y-indexeddb";
 import { generateKeyBetween } from "fractional-indexing";
@@ -87,6 +87,13 @@ export interface TripMeta {
 export type ReservationType = "flight" | "lodging" | "car" | "train" | "restaurant" | "other";
 
 /** Wanderlog-style booking: lives in its own tab and shows as chips on the matching days. */
+export interface TravelEnd {
+  q: string;
+  lat: number;
+  lng: number;
+  tz?: string;
+}
+
 export interface Reservation extends CostSplit {
   id: string;
   type: ReservationType;
@@ -98,6 +105,10 @@ export interface Reservation extends CostSplit {
   endTime?: string;
   from?: string; // flights, trains, car pickup location
   to?: string; // destination, car drop-off location
+  /** Where from/to are (looked up in the background for trains, buses and cars) with their time
+   *  zone, so long-distance rides sort by real time. `q` is the text it was looked up from. */
+  fromAt?: TravelEnd;
+  toAt?: TravelEnd;
   address?: string;
   lat?: number;
   lng?: number;
@@ -115,7 +126,7 @@ export interface Reservation extends CostSplit {
 export function sortReservations(list: Reservation[]): Reservation[] {
   const k = (r: Reservation) => `${r.startDate ?? "9999-99-99"} ${r.startTime ?? "99:99"}`;
   // Flights compare by when they really leave (each airport's time zone), once airports are loaded
-  const when = new Map(list.map((r) => [r, flightInstant(r, "dep")]));
+  const when = new Map(list.map((r) => [r, travelInstant(r, "dep")]));
   return [...list].sort(
     (a, b) =>
       (when.get(a) != null && when.get(b) != null ? when.get(a)! - when.get(b)! : k(a).localeCompare(k(b))) ||

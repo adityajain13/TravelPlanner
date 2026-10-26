@@ -60,7 +60,7 @@ import {
 } from "../lib/trips";
 import { dayColor, LIST_COLOR } from "../lib/colors";
 import { RES_GLYPH } from "../lib/pinArt";
-import { flightAirports, flightArc, flightInstant, loadAirports, type Airport, type AirportDb } from "../lib/airports";
+import { flightAirports, flightArc, flightInstant, loadAirports, zoneAt, type Airport, type AirportDb } from "../lib/airports";
 import type { Pin, Route } from "../components/TripMap";
 // MapLibre is the heaviest dependency; load it after the plan panel is on screen.
 const TripMap = lazy(() => import("../components/TripMap").then((m) => ({ default: m.TripMap })));
@@ -396,6 +396,32 @@ export function TripPage() {
         if (!hit && r.address) hit = (await searchPlaces(r.address, state.meta.center).catch(() => []))[0] ?? null;
         const cur = readTrip(doc).reservations.find((x) => x.id === r.id);
         if (hit && cur && cur.lat == null) saveReservation(doc, { ...cur, lat: hit.lat, lng: hit.lng, address: cur.address || hit.address });
+      }
+    })();
+  }, [doc, state, readOnly]);
+
+  // Trains, buses and car rentals: find where they leave from / arrive at, with the time zone,
+  // so a cross-country ride sorts by real time (saved on the booking; redone if the text changes)
+  const endsTried = useRef(new Set<string>());
+  useEffect(() => {
+    if (!doc || !state || readOnly || !navigator.onLine) return;
+    const jobs: { id: string; side: "fromAt" | "toAt"; q: string }[] = [];
+    for (const r of state.reservations) {
+      if (r.type !== "train" && r.type !== "car") continue;
+      for (const [side, text] of [["fromAt", r.from], ["toAt", r.to]] as const) {
+        const q = (text ?? "").trim();
+        const key = `${r.id}|${side}|${q}`;
+        if (q && r[side]?.q !== q && !endsTried.current.has(key)) (endsTried.current.add(key), jobs.push({ id: r.id, side, q }));
+      }
+    }
+    if (!jobs.length) return;
+    (async () => {
+      for (const j of jobs) {
+        const hit = (await searchPlaces(j.q, state.meta.center).catch(() => []))[0];
+        if (!hit) continue;
+        const tz = await zoneAt(hit.lat, hit.lng);
+        const cur = readTrip(doc).reservations.find((x) => x.id === j.id);
+        if (cur && (cur[j.side === "fromAt" ? "from" : "to"] ?? "").trim() === j.q) saveReservation(doc, { ...cur, [j.side]: { q: j.q, lat: hit.lat, lng: hit.lng, tz } });
       }
     })();
   }, [doc, state, readOnly]);
