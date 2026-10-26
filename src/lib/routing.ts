@@ -161,9 +161,13 @@ const rides = (r: LegResult | null) => !!r?.steps?.some((st) => st.mode !== "WAL
 async function transitWithFallback(a: [number, number], b: [number, number], when?: string): Promise<LegResult | null> {
   const first = await transitous(a, b, when).catch(() => null);
   if (rides(first)) return first;
-  // Google next when there's a key: real timetables almost everywhere (e.g. Japan)
-  const google = await googleTransit(a, b).catch((e) => ((transitIssue = String((e as Error).message)), null));
-  if (google) return (transitIssue = null), google;
+  // Google next when there's a key: real timetables in most countries. Not Japan: Google's
+  // APIs return no transit there at all (licensing), so don't spend a request on it.
+  if (inJapan(a) && inJapan(b)) transitIssue = "Google has no transit timetables for Japan";
+  else {
+    const google = await googleTransit(a, b).catch((e) => ((transitIssue = String((e as Error).message)), null));
+    if (google) return (transitIssue = null), google;
+  }
   const alt = when ? nearbyWeekday(when) : null;
   if (alt) {
     const second = await transitous(a, b, alt).catch(() => null);
@@ -175,13 +179,33 @@ async function transitWithFallback(a: [number, number], b: [number, number], whe
   return roughTransit(a, b);
 }
 
+const inJapan = ([lng, lat]: [number, number]) => lat > 24 && lat < 46 && lng > 122.5 && lng < 146;
+
 /** Why Google transit couldn't help, shown on the leg (e.g. the Routes API isn't enabled). */
 export let transitIssue: string | null = null;
 
-/** Last resort so a leg still says roughly how long: road distance ≈ 1.3× straight line, ~22 km/h door to door, + 8 min. */
-function roughTransit(a: [number, number], b: [number, number]): LegResult {
-  const km = distanceKm(a, b) * 1.3;
-  return { mode: "transit", coords: [a, b], distance: km * 1000, duration: Math.round((km / 22) * 3600 + 8 * 60), estimated: true, rough: true, live: true };
+/**
+ * Last resort when no timetable answers. Short hops are just walked (real footpath route). Longer
+ * ones follow the road route on the map, timed at ~25 km/h door to door + 10 min for walking to
+ * and waiting at stations. Falls back to a straight line only if the road router is down too.
+ */
+async function roughTransit(a: [number, number], b: [number, number]): Promise<LegResult> {
+  const crow = distanceKm(a, b);
+  if (crow < 1.3) {
+    const walk = await osrmQ.run(() => osrm("walk", a, b)).catch(() => null);
+    if (walk) return walk;
+  }
+  const road = await osrmQ.run(() => osrm("drive", a, b)).catch(() => null);
+  const km = road ? road.distance / 1000 : crow * 1.3;
+  return {
+    mode: "transit",
+    coords: road && road.coords.length > 1 ? road.coords : [a, b],
+    distance: km * 1000,
+    duration: Math.round((km / 25) * 3600 + 10 * 60),
+    estimated: true,
+    rough: true,
+    live: true,
+  };
 }
 
 /** Google Routes API (transit). Needs the Routes API enabled on the browser key. */

@@ -37,7 +37,7 @@ export function LegChip({ mode, state, readOnly, onMode, from, to, label }: { mo
         disabled={readOnly || shownMode === "flight"}
         onClick={() => setOpen((o) => !o)}
         className="flex min-w-0 items-center gap-1.5 rounded-full px-2 py-0.5 hover:bg-surface-2 hover:text-fg disabled:hover:bg-transparent"
-        title={res?.rough ? `No timetable available here${transitIssue ? ` (${transitIssue})` : ""}: estimated from distance` : res?.estimated ? "Timed on the same weekday next week: timetables for your dates aren't published yet" : readOnly ? undefined : "Change how you get here"}
+        title={res?.rough ? `No timetable available here${transitIssue ? ` (${transitIssue})` : ""}: estimated from the road distance` : res?.estimated ? "Timed on the same weekday next week: timetables for your dates aren't published yet" : readOnly ? undefined : "Change how you get here"}
       >
         {label && (
           <span className="flex min-w-0 shrink items-center gap-1 font-semibold text-fg/80" title={label}>
@@ -60,7 +60,7 @@ export function LegChip({ mode, state, readOnly, onMode, from, to, label }: { mo
           Directions
         </a>
       )}
-      {res?.rough && transitIssue && <span className="truncate text-[12px] text-danger/80" title={transitIssue}>{transitIssue}</span>}
+      {res?.rough && transitIssue && !transitIssue.includes("Japan") && <span className="truncate text-[12px] text-danger/80" title={transitIssue}>{transitIssue}</span>}
       {steps && steps.length > 0 && (
         <span className="truncate text-muted/80">
           {steps.map((s) => (s.mode === "WALK" ? `walk ${s.minutes}m` : `${s.name ?? s.mode.toLowerCase()} ${s.minutes}m`)).join(" → ")}
