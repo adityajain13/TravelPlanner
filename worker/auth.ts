@@ -5,7 +5,7 @@ import { API, BASE, error, json, parseCookies, randomToken, safeEqual, sendMail,
  *   POST /api/auth/request {email}     → emails a 6-digit code + one-tap link (if the email is allowed)
  *   POST /api/auth/verify {email,code} → session cookie
  *   GET  /api/auth/link?e=&t=          → session cookie, redirect to the app
- *   GET  /api/auth/invite?t=           → one-time invite link from a trip owner: session cookie, open the trip
+ *   POST /api/auth/invite {t, peek?}    → one-time invite from a trip owner: who it's for (peek), or a session cookie
  *   GET  /api/auth/me                  → {email} (also rolls the session forward)
  *   POST /api/auth/logout
  * Sessions last a year and roll forward on use, so you effectively stay logged in.
@@ -139,15 +139,24 @@ export async function handleAuth(req: Request, env: Env, url: URL): Promise<Resp
     return new Response(null, { status: 302, headers: { Location: `${BASE}/`, "Set-Cookie": cookie } });
   }
 
+  // Invite links open the app's sign-in page, which redeems with a POST on a button press.
+  // A GET must not use the link up: chat apps fetch links to build previews.
   if (path === "/invite" && req.method === "GET") {
-    const t = url.searchParams.get("t") ?? "";
-    const h = await sha256(t);
-    const row = await env.DB.prepare("SELECT email, trip_id, expires_at FROM invites WHERE token_hash = ?").bind(h).first<{ email: string; trip_id: string; expires_at: number }>();
-    const member = row && (await env.DB.prepare("SELECT 1 FROM trip_members WHERE trip_id = ? AND email = ?").bind(row.trip_id, row.email).first());
-    if (!row || row.expires_at < Date.now() || !member) return Response.redirect(`${url.origin}${BASE}/login?expired=1`, 302);
+    return Response.redirect(`${url.origin}${BASE}/login?invite=${encodeURIComponent(url.searchParams.get("t") ?? "")}`, 302);
+  }
+  if (path === "/invite" && req.method === "POST") {
+    const { t, peek } = (await req.json().catch(() => ({}))) as { t?: string; peek?: boolean };
+    const h = await sha256(String(t ?? ""));
+    const row = await env.DB.prepare(
+      "SELECT i.email, i.trip_id, i.expires_at, t.title FROM invites i JOIN trip_members m ON m.trip_id = i.trip_id AND m.email = i.email LEFT JOIN trips t ON t.id = i.trip_id WHERE i.token_hash = ?",
+    )
+      .bind(h)
+      .first<{ email: string; trip_id: string; expires_at: number; title: string | null }>();
+    if (!row || row.expires_at < Date.now()) return error(410, "That invite link expired or was already used. Ask for a new one.");
+    if (peek) return json({ email: row.email, title: row.title ?? "a trip" });
     await env.DB.prepare("DELETE FROM invites WHERE token_hash = ?").bind(h).run(); // single use
     const cookie = await createSession(req, env, row.email);
-    return new Response(null, { status: 302, headers: { Location: `${BASE}/`, "Set-Cookie": cookie } });
+    return json({ email: row.email, tripId: row.trip_id }, { headers: { "Set-Cookie": cookie } });
   }
 
   if (path === "/me" && req.method === "GET") {

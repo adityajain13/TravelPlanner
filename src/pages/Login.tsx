@@ -1,7 +1,7 @@
 import { Logo } from "../components/Logo";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Navigate, useNavigate, useSearchParams } from "react-router-dom";
-import { ArrowLeft, Loader2, Mail } from "lucide-react";
+import { ArrowLeft, Loader2, Mail, Users } from "lucide-react";
 import { api, useSession } from "../lib/api";
 import { inputCls } from "../components/NewTripDialog";
 
@@ -15,7 +15,31 @@ export function Login() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(params.get("expired") ? "That link expired or was already used." : null);
 
-  if (status === "in") return <Navigate to="/" replace />;
+  // Invite link from a trip owner: show who it's for, sign in on a button press (link previews can't use it up)
+  const inviteToken = params.get("invite");
+  const [invite, setInvite] = useState<{ email: string; title: string } | null>(null);
+  useEffect(() => {
+    if (!inviteToken) return;
+    api<{ email: string; title: string }>("/auth/invite", { method: "POST", body: JSON.stringify({ t: inviteToken, peek: true }) })
+      .then(setInvite)
+      .catch((e) => setError((e as Error).message));
+  }, [inviteToken]);
+  async function accept() {
+    setBusy(true);
+    setError(null);
+    try {
+      const r = await api<{ email: string }>("/auth/invite", { method: "POST", body: JSON.stringify({ t: inviteToken }) });
+      setEmail(r.email);
+      navigate("/", { replace: true });
+    } catch (err) {
+      setError((err as Error).message);
+      setInvite(null);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (status === "in" && !inviteToken) return <Navigate to="/" replace />;
 
   async function request(e?: React.FormEvent) {
     e?.preventDefault();
@@ -60,7 +84,21 @@ export function Login() {
           )}
         </div>
 
-        {step === "email" ? (
+        {invite ? (
+          <div className="space-y-3 rounded-2xl border border-line bg-surface p-4">
+            <p className="flex items-start gap-2.5 text-[15px]">
+              <Users className="mt-0.5 size-5 shrink-0 text-accent" />
+              <span>
+                You've been invited to <span className="font-semibold">{invite.title}</span>. Continue as <span className="font-semibold">{invite.email}</span>.
+              </span>
+            </p>
+            <button onClick={accept} disabled={busy} className="flex w-full items-center justify-center gap-2 rounded-xl bg-accent py-2.5 font-semibold text-on-accent disabled:opacity-60">
+              {busy && <Loader2 className="size-4 animate-spin" />} Continue
+            </button>
+          </div>
+        ) : inviteToken && !error ? (
+          <Loader2 className="size-5 animate-spin text-muted" />
+        ) : step === "email" ? (
           <form onSubmit={request} className="space-y-3">
             <input
               type="email"
