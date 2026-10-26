@@ -14,6 +14,8 @@ export interface TripIndexRow {
   /** Set when this trip was opened from someone else's share link (no login needed). */
   shareToken?: string;
   role?: "view" | "edit";
+  /** Set when someone else owns this trip and shared it with your account (their email). */
+  owner?: string;
 }
 
 export interface RegionRow {

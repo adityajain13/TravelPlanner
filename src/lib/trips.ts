@@ -245,8 +245,12 @@ export async function createTrip(meta: TripMeta): Promise<string> {
 }
 
 /** Removes the trip from this device; owners also delete it on the server (best effort). */
-export async function deleteTrip(id: string, opts: { server: boolean }) {
-  if (opts.server) {
+export async function deleteTrip(id: string, opts: { server: boolean; leave?: string }) {
+  if (opts.leave) {
+    // Someone else's trip: leave it (removes you from its people) rather than deleting it
+    const res = await fetch(`/travelplanner/api/trips/${id}/members/${encodeURIComponent(opts.leave)}`, { method: "DELETE", credentials: "same-origin" }).catch(() => null);
+    if (!res?.ok) throw new Error("Couldn't leave the trip — try again online");
+  } else if (opts.server) {
     const res = await fetch(`/travelplanner/api/trips/${id}`, { method: "DELETE", credentials: "same-origin" }).catch(() => null);
     if (res && !res.ok && res.status !== 401) throw new Error("Couldn't delete on the server");
   }

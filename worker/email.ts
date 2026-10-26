@@ -1,5 +1,6 @@
 import PostalMime from "postal-mime";
 import { sendMail, type Env } from "./util";
+import { canLogin } from "./auth";
 
 /*
  * trips@adityajain.ca → Email Routing → this handler.
@@ -174,24 +175,25 @@ export async function handleEmail(message: ForwardableEmailMessage, env: Env) {
   // trips+<trip id>@… (from the trip's Forward dialog) pins the email to that trip, no guessing
   const tag = message.to.toLowerCase().match(/^[^+@]+\+([a-z0-9_-]+)@/)?.[1];
 
-  // The owner forwards from an allow-listed address. Anyone else must be on that trip's
-  // "who can forward" list and use the trip's own address; their bookings land in the owner's trip.
+  // Untagged mail: from anyone with an account, matched against their own trips.
+  // trips+<id>@: from the trip's owner, an editor on it, or someone on its "who can forward" list;
+  // bookings then land in the owner's inbox for that trip.
   let owner = sender;
-  if (!allowed.includes(sender)) {
-    const guest = tag
-      ? await env.DB.prepare("SELECT t.owner FROM trip_senders s JOIN trips t ON t.id = s.trip_id WHERE lower(s.trip_id) = ? AND s.email = ?")
-          .bind(tag, sender)
-          .first<{ owner: string }>()
-      : null;
-    if (!guest) {
-      message.setReject(
-        tag
-          ? "You're not on this trip's list of people who can forward emails. Ask the trip owner to add your address."
-          : "This address only accepts mail from its owner. Ask the trip owner to add you, then send to the trip's own address.",
-      );
+  if (tag) {
+    const trip = await env.DB.prepare("SELECT id, owner FROM trips WHERE lower(id) = ?").bind(tag).first<{ id: string; owner: string }>();
+    const ok =
+      trip &&
+      (trip.owner === sender ||
+        (await env.DB.prepare("SELECT 1 FROM trip_members WHERE trip_id = ? AND email = ? AND role = 'edit'").bind(trip.id, sender).first()) ||
+        (await env.DB.prepare("SELECT 1 FROM trip_senders WHERE trip_id = ? AND email = ?").bind(trip.id, sender).first()));
+    if (!ok) {
+      message.setReject("You can't forward to this trip. Ask the trip owner to add your address.");
       return;
     }
-    owner = guest.owner;
+    owner = trip!.owner;
+  } else if (!allowed.includes(sender) && !(await canLogin(env, sender))) {
+    message.setReject("This address only accepts mail from Atlas Journeys users. Ask the trip owner to add you, then send to the trip's own address.");
+    return;
   }
 
   const raw = await new Response(message.raw).arrayBuffer();
