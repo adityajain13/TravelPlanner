@@ -176,15 +176,23 @@ export function TripMap({ pins, routes, selectedId, onSelect, theme, fitKey, fal
 
   // Follow selection, with a small photo card above the pin (like Wanderlog's map popups)
   const popup = useRef<maplibregl.Popup | null>(null);
+  const centered = useRef<{ id: string; insetKnown: boolean } | null>(null);
   useEffect(() => {
     const map = mapRef.current;
     const p = pins.find((x) => x.id === selectedId);
     popup.current?.remove();
     popup.current = null;
     if (map && !p && !inset) map.setPadding({ top: 0, bottom: 0, left: 0, right: 0 });
+    if (!p) centered.current = null;
     if (!map || !p) return;
-    const pad = { top: (inset?.top ?? 0) + 40, bottom: (inset?.bottom ?? 0) + 40, left: 40, right: 40 };
-    map.easeTo({ center: [p.lng, p.lat], zoom: Math.max(map.getZoom(), 14), duration: 500, padding: pad });
+    // Frame a pin once when it's selected (and once more if the panel's size wasn't known yet).
+    // Shrinking or expanding the place panel afterwards leaves the map where it is.
+    const insetKnown = !inset || inset.bottom > 0;
+    if (!(centered.current?.id === p.id && centered.current.insetKnown)) {
+      const pad = { top: (inset?.top ?? 0) + 40, bottom: (inset?.bottom ?? 0) + 40, left: 40, right: 40 };
+      map.easeTo({ center: [p.lng, p.lat], zoom: Math.max(map.getZoom(), 14), duration: 500, padding: pad });
+      centered.current = { id: p.id, insetKnown };
+    }
     // The place panel replaces the little photo popup
     if (p.name && !inset) {
       const el = document.createElement("div");

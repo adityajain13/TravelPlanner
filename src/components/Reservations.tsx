@@ -326,15 +326,28 @@ export function ReservationForm({ doc, state, initial, onClose }: { doc: Y.Doc; 
           </button>
         </div>
         {f.title && text(f.title, "title", true)}
-        <label className="block space-y-1">
+        <div className="block space-y-1">
           <span className="text-xs text-muted">For (passenger / guest, optional)</span>
-          <input list="tp-travelers" value={r.traveler ?? ""} onChange={(e) => set({ traveler: e.target.value || undefined })} placeholder="Everyone" className={inputCls} />
-          <datalist id="tp-travelers">
-            {(state.meta.travelers ?? []).map((t) => (
-              <option key={t} value={t} />
+          {/* Chips for the trip's people instead of a native suggestion list; type any other name */}
+          <div className="flex flex-wrap items-center gap-1.5">
+            {[undefined, ...(state.meta.travelers ?? [])].map((t) => (
+              <button
+                key={t ?? "everyone"}
+                type="button"
+                onClick={() => set({ traveler: t })}
+                className={`rounded-full px-3 py-1 text-[13px] font-semibold ${r.traveler === t ? "bg-accent text-on-accent" : "bg-surface-2 text-muted hover:text-fg"}`}
+              >
+                {t ?? "Everyone"}
+              </button>
             ))}
-          </datalist>
-        </label>
+            <input
+              value={r.traveler && !(state.meta.travelers ?? []).includes(r.traveler) ? r.traveler : ""}
+              onChange={(e) => set({ traveler: e.target.value || undefined })}
+              placeholder="Someone else"
+              className="min-w-0 flex-1 rounded-full bg-transparent px-2 py-1 text-[13px] outline-none placeholder:text-muted/60 focus:bg-surface-2"
+            />
+          </div>
+        </div>
         {f.from && text(f.from, "from")}
         {f.to && text(f.to, "to")}
         {f.address && (

@@ -40,7 +40,8 @@ export function LegChip({ mode, state, readOnly, onMode, from, to, label }: { mo
       >
         {label && (
           <span className="flex items-center gap-1 font-semibold text-fg/80">
-            <BedDouble className="size-3.5" /> {label} ·
+            {/* Airport legs ("From Kansai (KIX)", "KIX to Hotel …") get a plane, hotel legs a bed */}
+            {/\b[A-Z]{3}\b/.test(label) && !/^(From|To) (?!.*\([A-Z]{3}\))/.test(label) ? <Plane className="size-3.5" /> : <BedDouble className="size-3.5" />} {label} ·
           </span>
         )}
         {state === "loading" ? <Loader2 className="size-3.5 animate-spin" /> : MODE_ICON[shownMode]}
