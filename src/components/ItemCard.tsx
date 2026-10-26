@@ -35,6 +35,9 @@ interface Props {
   /** Days and lists, for the "Added to ▾" menu */
   targets?: SectionTarget[];
   onMoveTo?: (section: string) => void;
+  /** Days/lists this place is on (copies of it), and add/remove it on one. */
+  sections?: string[];
+  onToggleSection?: (section: string) => void;
   /** Open the budget editor (category, who paid, split) for this stop's cost. */
   onCostDetails?: () => void;
 }
@@ -82,6 +85,8 @@ function ItemCardView({
   onCheck,
   targets,
   onMoveTo,
+  sections,
+  onToggleSection,
   onCostDetails,
   sortable,
   overlay,
@@ -222,11 +227,13 @@ function ItemCardView({
                     <SectionPicker
                       targets={targets}
                       current={item.section}
-                      onPick={(k) => k !== item.section && onMoveTo(k)}
+                      onPick={(k) => (onToggleSection ? onToggleSection(k) : k !== item.section && onMoveTo(k))}
+                      selected={onToggleSection ? sections : undefined}
                       className={`${PILL} hover:border-accent hover:text-fg`}
                     >
                       <Bookmark className="size-3.5" />
                       {targets.find((t) => t.key === item.section)?.label ?? "Move to"}
+                      {sections && sections.length > 1 && <span className="text-accent">+{sections.length - 1}</span>}
                     </SectionPicker>
                   )}
                   {onCheck && !checked && (

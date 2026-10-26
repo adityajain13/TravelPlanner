@@ -402,10 +402,11 @@ export function samePlace(a: Item, b: Item) {
   if (a.kind !== "place" || b.kind !== "place") return false;
   if (a.googlePlaceId && a.googlePlaceId === b.googlePlaceId) return true;
   if (a.osmId && a.osmId === b.osmId) return true;
-  if (a.lat == null || a.lng == null || b.lat == null || b.lng == null) return false;
-  const near = Math.hypot((a.lat - b.lat) * 111_000, (a.lng - b.lng) * 111_000 * Math.cos((a.lat * Math.PI) / 180)) < 150;
-  const n = (x: string) => x.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "");
-  return near && n(a.name) === n(b.name);
+  const n = (x?: string) => (x ?? "").toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "");
+  if (n(a.name) !== n(b.name)) return false;
+  // Unpinned copies: same name and same address
+  if (a.lat == null || a.lng == null || b.lat == null || b.lng == null) return n(a.address) === n(b.address);
+  return Math.hypot((a.lat - b.lat) * 111_000, (a.lng - b.lng) * 111_000 * Math.cos((a.lat * Math.PI) / 180)) < 150;
 }
 
 /** Set (or clear) a stop's photo, and the same photo on every other stop at that place, in one undo step. */

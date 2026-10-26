@@ -26,6 +26,8 @@ interface Props {
   onMode: (m: PanelMode) => void;
   targets: SectionTarget[];
   onMoveTo: (section: string) => void;
+  sections?: string[];
+  onToggleSection?: (section: string) => void;
   onLink: (googlePlaceId: string) => void;
   onSnapshot?: (d: import("../lib/google").GoogleDetails) => void;
   readOnly?: boolean;
@@ -178,13 +180,15 @@ export function PlacePanel(p: Props) {
           <SectionPicker
             targets={p.targets}
             current={item.section}
-            onPick={(k) => k !== item.section && p.onMoveTo(k)}
+            onPick={(k) => (p.onToggleSection ? p.onToggleSection(k) : k !== item.section && p.onMoveTo(k))}
+            selected={p.onToggleSection ? p.sections : undefined}
             disabled={p.readOnly}
             className="rounded-full border border-line px-3 py-1.5 text-[13px] font-semibold text-muted hover:border-accent hover:text-fg disabled:hover:border-line"
-            title="Move to another day or list"
+            title="Add to or remove from days and lists"
           >
             <Bookmark className="size-3.5" style={{ color: section?.color }} />
             {section ? `Added to ${section.label}` : "Added"}
+            {p.sections && p.sections.length > 1 && <span className="text-accent">+{p.sections.length - 1}</span>}
           </SectionPicker>
           {item.category && <span className="rounded-full bg-surface-2 px-2.5 py-1 text-[13px] text-muted capitalize">{item.category}</span>}
           {item.address && (

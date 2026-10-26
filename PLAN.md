@@ -135,3 +135,4 @@ Hosted at **adityajain.ca/travelplanner** by the `travelplanner` Cloudflare Work
 - Oct 26: a stop's new photo is applied to every stop at the same place (samePlace: Google/OSM id or same name within 150 m); new duplicates reuse it.
 - Oct 26: flights ordered by real instants using each airport's IANA time zone (airports.json now carries tz); day chips, reservation list and airport legs use it.
 - Oct 26: trains/buses/cars: from/to geocoded in the background with their IANA zone (@photostructure/tz-lookup, lazy chunk), saved as fromAt/toAt; sorting uses travelInstant for all of them.
+- Oct 26: day menu on stop cards and the place panel is multi-select: tick days/lists to put the place on them (copies), untick to remove (keeps at least one); samePlace also matches unpinned copies by name+address.
