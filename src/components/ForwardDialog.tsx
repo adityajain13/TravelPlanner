@@ -21,7 +21,7 @@ export function ForwardDialog({ tripId, tripTitles, initialView = "forward", onC
   const [items, setItems] = useState<InboxItem[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   // Per trip by default: this trip's emails plus any that didn't match a trip; old trips stay out
-  const [scope, setScope] = useState<"trip" | "all">(tripId ? "trip" : "all");
+  const scope: "trip" | "all" = tripId ? "trip" : "all";
 
   useEffect(() => {
     if (view !== "history" || items) return;
@@ -90,20 +90,7 @@ export function ForwardDialog({ tripId, tripTitles, initialView = "forward", onC
               )}
               <h2 className="font-display text-[24px]">Imported emails</h2>
             </div>
-            {tripId && (
-              <div className="mt-3 flex w-fit rounded-full border border-line p-1 text-[13px] font-semibold">
-                {(
-                  [
-                    ["trip", "This trip"],
-                    ["all", "All trips"],
-                  ] as const
-                ).map(([k, label]) => (
-                  <button key={k} onClick={() => setScope(k)} className={`rounded-full px-3 py-1 ${scope === k ? "bg-accent text-on-accent" : "text-muted hover:text-fg"}`}>
-                    {label}
-                  </button>
-                ))}
-              </div>
-            )}
+            {tripId && <p className="mt-1 text-[13px] text-muted">This trip's emails, plus any that didn't match a trip.</p>}
             <div className="-mx-2 mt-4 min-h-0 overflow-y-auto px-2">
               {error ? (
                 <p className="py-10 text-center text-muted">{error}</p>

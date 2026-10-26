@@ -97,7 +97,39 @@ export function budgetLines(state: TripState, convert: (a: number, c: string) =>
       item: it,
     });
   }
-  return lines.sort((a, b) => (b.date ?? "").localeCompare(a.date ?? ""));
+  return sortByItinerary(lines, state);
+}
+
+/**
+ * Chronological, the way the trip happens: by date, then by time of day. Stops without a time
+ * take the time of a neighbouring stop, so a day reads in itinerary order; untimed bookings close
+ * the day. Undated last.
+ */
+function sortByItinerary(lines: Line[], state: TripState): Line[] {
+  const pos = new Map<string, { idx: number; time: string }>();
+  const byDay = new Map<string, Item[]>();
+  for (const it of state.items) if (it.section.startsWith("day:")) (byDay.get(it.section) ?? byDay.set(it.section, []).get(it.section)!).push(it);
+  for (const items of byDay.values()) {
+    items.sort((a, b) => (a.order < b.order ? -1 : a.order > b.order ? 1 : 0));
+    // untimed stops take the previous stop's time, else the next one's, else midday
+    const next: string[] = [];
+    for (let i = items.length - 1, t = "12:00"; i >= 0; i--) next[i] = t = items[i].startTime ?? t;
+    let carry = "";
+    items.forEach((it, idx) => {
+      if (it.startTime) carry = it.startTime;
+      pos.set(it.id, { idx, time: carry || next[idx] });
+    });
+  }
+  const key = (l: Line) => {
+    const p = l.item ? pos.get(l.item.id) : undefined;
+    // bookings without a time (e.g. a hotel) go at the end of their day
+    const time = p?.time ?? l.fromReservation?.startTime ?? "23:59";
+    return { date: l.date ?? "9999-99-99", time, idx: p?.idx ?? -1, created: l.expense?.createdAt ?? l.fromReservation?.createdAt ?? 0 };
+  };
+  return lines
+    .map((l) => ({ l, k: key(l) }))
+    .sort((a, b) => a.k.date.localeCompare(b.k.date) || a.k.time.localeCompare(b.k.time) || a.k.idx - b.k.idx || a.k.created - b.k.created)
+    .map((x) => x.l);
 }
 
 // OSM / Google-ish place types → budget categories, for costs typed on itinerary stops
