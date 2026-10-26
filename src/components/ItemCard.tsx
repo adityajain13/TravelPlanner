@@ -219,7 +219,7 @@ function ItemCardView({
                       targets={targets}
                       current={item.section}
                       onPick={(k) => k !== item.section && onMoveTo(k)}
-                      className="rounded-full border border-line px-2.5 py-1 font-semibold text-muted hover:border-accent hover:text-fg"
+                      className={`${PILL} hover:border-accent hover:text-fg`}
                     >
                       <Bookmark className="size-3.5" />
                       {targets.find((t) => t.key === item.section)?.label ?? "Move to"}
@@ -233,13 +233,13 @@ function ItemCardView({
                 </div>
               )}
               {isPlace && (
-                <div className="flex items-center text-[14px]">
+                <div className="flex items-center">
                   <TimeRangeField
                     disabled={readOnly}
                     start={item.startTime}
                     end={item.endTime}
                     onChange={(startTime, endTime) => onChange({ startTime, endTime })}
-                    className="rounded-full px-2.5 py-1 hover:bg-surface"
+                    className={`${PILL} ${readOnly ? "" : "hover:border-accent hover:text-fg"}`}
                   />
                 </div>
               )}
@@ -305,10 +305,13 @@ function ItemCardView({
   );
 }
 
+/** Every control row in the open card is the same pill, so their icons line up on the left. */
+const PILL = "flex items-center gap-1.5 rounded-full border border-line px-3 py-1.5 text-[13px] font-semibold text-muted";
+
 function CostInput({ amount, currency, disabled, onCommit }: { amount?: number; currency: string; disabled?: boolean; onCommit: (a: number | undefined, c: string) => void }) {
   return (
-    <div className="flex items-center gap-1.5 text-xs text-muted">
-      <Wallet className="size-3.5" />
+    <div className={`${PILL} py-1 pr-1 focus-within:border-accent`}>
+      <Wallet className="size-3.5 shrink-0" />
       <input
         type="number"
         min="0"
@@ -322,9 +325,9 @@ function CostInput({ amount, currency, disabled, onCommit }: { amount?: number; 
           if (v !== amount) onCommit(v, currency);
         }}
         onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()}
-        className="w-24 rounded-md bg-transparent px-1 py-0.5 text-fg outline-none placeholder:text-muted/60 focus:bg-surface"
+        className="w-20 bg-transparent py-0.5 text-fg outline-none [appearance:textfield] placeholder:font-normal placeholder:text-muted/60 [&::-webkit-inner-spin-button]:appearance-none"
       />
-      <CurrencySelect value={currency} disabled={disabled} onChange={(c) => amount != null && onCommit(amount, c)} className="text-[12px] text-fg" />
+      <CurrencySelect value={currency} disabled={disabled} onChange={(c) => amount != null && onCommit(amount, c)} className="!rounded-full !px-2 !py-0.5 text-[13px] text-fg" />
     </div>
   );
 }
