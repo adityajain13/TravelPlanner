@@ -31,7 +31,7 @@ interface Props {
   currency?: string;
   chips?: { r: Reservation; label: string }[];
   /** Incoming leg per item id (days only). */
-  legs?: Map<string, { mode: TravelMode; state?: LegState; from: [number, number]; to: [number, number] }>;
+  legs?: Map<string, { mode: TravelMode; state?: LegState; from: [number, number]; to: [number, number]; label?: string }>;
   searchContext?: string;
   onLegMode?: (itemId: string, mode: TravelMode) => void;
   onChipClick?: (r: Reservation) => void;
@@ -187,6 +187,7 @@ export function Section(p: Props) {
                         onMode={(m) => p.onLegMode?.(it.id, m)}
                         from={p.legs.get(it.id)!.from}
                         to={p.legs.get(it.id)!.to}
+                        label={p.legs.get(it.id)!.label}
                       />
                     )}
                   </div>
@@ -200,6 +201,7 @@ export function Section(p: Props) {
                   onMode={(m) => p.onLegMode?.(it.id, m)}
                   from={p.legs.get(it.id)!.from}
                   to={p.legs.get(it.id)!.to}
+                  label={p.legs.get(it.id)!.label}
                 />
               )}
               <ItemCard
@@ -224,6 +226,17 @@ export function Section(p: Props) {
               </div>
             ))}
           </SortableContext>
+          {p.legs?.has("end") && (
+            <LegChip
+              mode={p.legs.get("end")!.mode}
+              state={p.legs.get("end")!.state}
+              readOnly={p.readOnly}
+              onMode={(m) => p.onLegMode?.("end", m)}
+              from={p.legs.get("end")!.from}
+              to={p.legs.get("end")!.to}
+              label={p.legs.get("end")!.label}
+            />
+          )}
           {info.key !== "orphan" && !p.readOnly && (
             <div className="flex items-center gap-2 pt-1.5 pr-1 pl-6">
               <PlaceSearch near={p.near} countryCode={p.countryCode} onPick={p.onAddPlace} onNote={p.onAddNote} />

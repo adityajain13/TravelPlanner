@@ -32,6 +32,8 @@ export interface LegResult {
   estimated?: boolean;
   /** Not written to the offline route cache. */
   live?: boolean;
+  /** No timetable anywhere: a distance-based guess. */
+  rough?: boolean;
 }
 
 export interface LegRequest {
@@ -165,9 +167,19 @@ async function transitWithFallback(a: [number, number], b: [number, number], whe
   }
   const now = await transitous(a, b).catch(() => null);
   if (rides(now)) return { ...now!, estimated: true };
-  const google = await googleTransit(a, b).catch(() => null);
+  const google = await googleTransit(a, b).catch((e) => ((transitIssue = String((e as Error).message)), null));
   if (google) return google;
-  return first ?? now; // walking-only answer, if that's all there is
+  if (first ?? now) return first ?? now; // walking-only answer, if that's all there is
+  return roughTransit(a, b);
+}
+
+/** Why Google transit couldn't help, shown on the leg (e.g. the Routes API isn't enabled). */
+export let transitIssue: string | null = null;
+
+/** Last resort so a leg still says roughly how long: road distance ≈ 1.3× straight line, ~22 km/h door to door, + 8 min. */
+function roughTransit(a: [number, number], b: [number, number]): LegResult {
+  const km = distanceKm(a, b) * 1.3;
+  return { mode: "transit", coords: [a, b], distance: km * 1000, duration: Math.round((km / 22) * 3600 + 8 * 60), estimated: true, rough: true, live: true };
 }
 
 /** Google Routes API (transit). Needs the Routes API enabled on the browser key. */
@@ -186,7 +198,10 @@ async function googleTransit(a: [number, number], b: [number, number]): Promise<
       travelMode: "TRANSIT",
     }),
   });
-  if (!res.ok) return null;
+  if (!res.ok) {
+    const msg = res.status === 403 ? "Google: enable the Routes API for this key" : `Google transit ${res.status}`;
+    throw new Error(msg);
+  }
   type Step = { travelMode?: string; staticDuration?: string; transitDetails?: { transitLine?: { nameShort?: string; name?: string; vehicle?: { type?: string } } } };
   const j = (await res.json()) as { routes?: { duration?: string; distanceMeters?: number; polyline?: { encodedPolyline?: string }; legs?: { steps?: Step[] }[] }[] };
   const r = j.routes?.[0];

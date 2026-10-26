@@ -46,7 +46,8 @@ export function ForwardDialog({ tripId, tripTitles, initialView = "forward", onC
     }
   };
 
-  const shown = items?.filter((it) => scope === "all" || it.trip_id === tripId || !it.trip_id);
+  // This trip only; unmatched emails are sorted out from the home screen
+  const shown = items?.filter((it) => scope === "all" || it.trip_id === tripId);
   const when = (ms: number) => new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }).format(ms);
 
   return createPortal(
@@ -90,7 +91,7 @@ export function ForwardDialog({ tripId, tripTitles, initialView = "forward", onC
               )}
               <h2 className="font-display text-[24px]">Imported emails</h2>
             </div>
-            {tripId && <p className="mt-1 text-[13px] text-muted">This trip's emails, plus any that didn't match a trip.</p>}
+            {tripId && <p className="mt-1 text-[13px] text-muted">Emails for this trip. Ones that didn't match a trip are on the home screen.</p>}
             <div className="-mx-2 mt-4 min-h-0 overflow-y-auto px-2">
               {error ? (
                 <p className="py-10 text-center text-muted">{error}</p>

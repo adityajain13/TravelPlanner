@@ -4,6 +4,7 @@ import type * as Y from "yjs";
 import { addItem, daySection, saveReservation, type TripState } from "../lib/trips";
 import { bookingToItem, bookingToReservation, patchInbox, reservationTypeFor, type Booking, type InboxItem } from "../lib/inbox";
 import { formatShort } from "../lib/dates";
+import { formatMoney } from "../lib/fx";
 
 export const BOOKING_ICON: Record<Booking["type"], React.ReactNode> = {
   flight: <Plane className="size-4" />,
@@ -66,7 +67,7 @@ export function InboxPanel({ items, doc, state, onDone }: { items: InboxItem[]; 
               <div className="min-w-0 flex-1">
                 <p className="text-sm font-semibold">{b.title}</p>
                 <p className="text-xs text-muted">
-                  {[b.start_date && formatShort(b.start_date), b.start_time, b.confirmation && `#${b.confirmation}`].filter(Boolean).join(" · ")}
+                  {[b.start_date && formatShort(b.start_date), b.start_time, b.confirmation && `#${b.confirmation}`, b.cost != null && formatMoney(b.cost, b.currency ?? "CAD")].filter(Boolean).join(" · ")}
                 </p>
                 <div className="mt-2 flex gap-2">
                   <button

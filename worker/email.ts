@@ -20,7 +20,9 @@ export interface Booking {
   address?: string;
   from?: string;
   to?: string;
-  notes?: string; // seat, room type, cancellation deadline, price, etc.
+  notes?: string; // seat, room type, cancellation deadline, etc.
+  cost?: number; // total paid / due for this booking
+  currency?: string; // ISO 4217
 }
 
 interface TripRow {
@@ -56,7 +58,9 @@ const TOOL = {
             address: { type: "string" },
             from: { type: "string" },
             to: { type: "string" },
-            notes: { type: "string", description: "Useful extras only: seats, room type, check-in time, cancellation deadline, total price, terminal." },
+            notes: { type: "string", description: "Useful extras only: seats, room type, check-in time, cancellation deadline, terminal." },
+            cost: { type: "number", description: "Total price of this booking as a plain number (taxes and fees included), if shown anywhere in the email or attachments. For a round trip split evenly across the legs unless per-leg prices are given." },
+            currency: { type: "string", description: "ISO 4217 code of cost, e.g. CAD, JPY, EUR. Infer from symbols and the booking site (¥ on a Japanese site = JPY)." },
           },
           required: ["type", "title"],
         },
@@ -68,7 +72,13 @@ const TOOL = {
   },
 };
 
-async function extract(env: Env, subject: string, body: string, trips: TripRow[]) {
+export interface Attachment {
+  filename: string;
+  mimeType: string;
+  base64: string;
+}
+
+async function extract(env: Env, subject: string, body: string, trips: TripRow[], pdfs: Attachment[] = []) {
   const tripList = trips.length
     ? trips.map((t) => `- id ${t.id}: "${t.title}" (${t.destination ?? "?"}, ${t.start_date} → ${t.end_date})`).join("\n")
     : "(no trips yet)";
@@ -78,6 +88,7 @@ Trips:
 ${tripList}
 
 Pick the trip whose dates and destination fit the bookings (allow a few days either side for travel days). If none fits, use null.
+Include each booking's total price (cost + currency) when it appears in the email or any attached PDF (receipts, e-tickets, invoices).
 
 Subject: ${subject}
 
@@ -92,10 +103,19 @@ ${body.slice(0, MAX_CHARS)}`;
     },
     body: JSON.stringify({
       model: env.EXTRACT_MODEL || "claude-haiku-5-5",
-      max_tokens: 2000,
+      max_tokens: 3000,
       tools: [TOOL],
       tool_choice: { type: "tool", name: TOOL.name },
-      messages: [{ role: "user", content: prompt }],
+      // Attached PDFs (e-tickets, invoices) are read too: often the only place the price is
+      messages: [
+        {
+          role: "user",
+          content: [
+            ...pdfs.map((a) => ({ type: "document", source: { type: "base64", media_type: "application/pdf", data: a.base64 }, title: a.filename })),
+            { type: "text", text: prompt },
+          ],
+        },
+      ],
     }),
   });
   if (!res.ok) throw new Error(`Claude API ${res.status}: ${(await res.text()).slice(0, 200)}`);
@@ -104,6 +124,21 @@ ${body.slice(0, MAX_CHARS)}`;
   if (!out) throw new Error("No structured output");
   const valid = new Set(trips.map((t) => t.id));
   return { ...out, trip_id: out.trip_id && valid.has(out.trip_id) ? out.trip_id : null };
+}
+
+/** Up to 3 PDF attachments, 4 MB each (keeps the request small and cheap). */
+function pdfAttachments(parsed: { attachments?: { filename?: string | null; mimeType?: string; content: ArrayBuffer | string | Uint8Array }[] }): Attachment[] {
+  const out: Attachment[] = [];
+  for (const a of parsed.attachments ?? []) {
+    const isPdf = a.mimeType === "application/pdf" || /\.pdf$/i.test(a.filename ?? "");
+    if (!isPdf || out.length >= 3) continue;
+    const bytes = typeof a.content === "string" ? new TextEncoder().encode(a.content) : a.content instanceof Uint8Array ? a.content : new Uint8Array(a.content);
+    if (bytes.byteLength > 4 * 1024 * 1024) continue;
+    let bin = "";
+    for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+    out.push({ filename: a.filename ?? "attachment.pdf", mimeType: "application/pdf", base64: btoa(bin) });
+  }
+  return out;
 }
 
 /** HTML → readable text, enough for extraction (booking emails are mostly tables). */
@@ -162,7 +197,7 @@ export async function handleEmail(message: ForwardableEmailMessage, env: Env) {
 
   let out;
   try {
-    out = await extract(env, subject, body, pinned ? [pinned] : trips);
+    out = await extract(env, subject, body, pinned ? [pinned] : trips, pdfAttachments(parsed));
     if (pinned) out.trip_id = pinned.id;
   } catch (e) {
     console.error(e);

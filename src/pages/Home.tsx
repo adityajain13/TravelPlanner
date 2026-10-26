@@ -60,6 +60,7 @@ export function Home() {
       <div className="mb-8 flex items-end justify-between gap-4">
         <h1 className="font-display text-4xl leading-none sm:text-5xl">Your trips</h1>
         <div className="flex shrink-0 gap-2">
+        <UnmatchedInbox items={unmatched} trips={trips ?? []} onChange={loadInbox} />
         <button
           onClick={() => setImporting(true)}
           className="flex items-center gap-1.5 rounded-full border border-line px-4 py-2 text-sm text-muted hover:border-accent hover:text-fg"
@@ -83,7 +84,6 @@ export function Home() {
         </div>
       )}
 
-      <UnmatchedInbox items={unmatched} trips={trips ?? []} onChange={loadInbox} />
       <TripGroup title="Upcoming" trips={upcoming} />
       <TripGroup title="Past" trips={past} />
 
