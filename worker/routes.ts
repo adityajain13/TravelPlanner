@@ -72,9 +72,10 @@ async function japan(req: Request, env: Env, url: URL): Promise<Response> {
       headers: { "x-rapidapi-key": env.NAVITIME_RAPIDAPI_KEY!, "x-rapidapi-host": "navitime-route-totalnavi.p.rapidapi.com" },
     });
   };
-  // Shared cache (all devices, 30 days): the same hop at the same hour isn't searched twice
-  const cacheKey = new Request(`https://cache.travelplanner/japan?${new URLSearchParams({ f: body.from.map((v) => v.toFixed(4)).join(","), t: body.to.map((v) => v.toFixed(4)).join(","), w: (body.when ?? "").slice(0, 13) })}`);
-  const hit = await caches.default.match(cacheKey);
+  // Kept in D1 for a year, shared by everyone: the same hop at the same hour isn't searched twice
+  const cacheKey = `${body.from.map((v) => v.toFixed(4)).join(",")}|${body.to.map((v) => v.toFixed(4)).join(",")}|${(body.when ?? "").slice(0, 13)}`;
+  const YEAR = 365 * 86400000;
+  const hit = await env.DB.prepare("SELECT body FROM transit_cache WHERE key = ? AND created_at > ?").bind(cacheKey, Date.now() - YEAR).first<{ body: string }>();
   if (hit) return new Response(hit.body, { headers: { "content-type": "application/json" } });
 
   let res = await call(true);
@@ -84,7 +85,7 @@ async function japan(req: Request, env: Env, url: URL): Promise<Response> {
   const it = j.items?.[0];
   const keep = async (r: Response) => {
     const text = await r.text();
-    await caches.default.put(cacheKey, new Response(text, { headers: { "content-type": "application/json", "cache-control": "max-age=2592000" } })).catch(() => undefined);
+    await env.DB.prepare("INSERT OR REPLACE INTO transit_cache (key, body, created_at) VALUES (?, ?, ?)").bind(cacheKey, text, Date.now()).run().catch(() => undefined);
     return new Response(text, { headers: { "content-type": "application/json" } });
   };
   if (!it?.summary?.move?.time) return keep(Response.json({ route: null }));
