@@ -12,6 +12,7 @@
       try {
         var t = localStorage.getItem("tp-theme");
         if (t === "light") document.documentElement.classList.remove("dark");
+        if (t === "amoled") document.documentElement.classList.add("amoled");
       } catch (e) {}
     </script>
   </head>

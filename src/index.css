@@ -29,6 +29,14 @@
   color-scheme: dark;
 }
 
+/* AMOLED: true black background, near-black surfaces so cards still read */
+.dark.amoled {
+  --bg: #000000;
+  --surface: #0a0b0a;
+  --surface-2: #121413;
+  --line: #1c201e;
+}
+
 @theme inline {
   --color-bg: var(--bg);
   --color-surface: var(--surface);

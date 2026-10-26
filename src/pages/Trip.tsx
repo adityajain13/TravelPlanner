@@ -15,7 +15,7 @@ import {
   type DragStartEvent,
 } from "@dnd-kit/core";
 import { sortableKeyboardCoordinates } from "@dnd-kit/sortable";
-import { ArrowLeft, Camera, Redo2, Undo2, Copy, FolderInput, Trash2, X, Cloud, CloudOff, Moon, Sun, Eye, ImagePlus, List, Loader2, Map as MapIcon, PanelLeft, Share2 } from "lucide-react";
+import { ArrowLeft, Camera, Redo2, Undo2, Copy, FolderInput, Trash2, X, Cloud, CloudOff, Eye, ImagePlus, List, Loader2, Map as MapIcon, PanelLeft, Share2 } from "lucide-react";
 import { Contents, ContentsRail, type Tab } from "../components/Contents";
 import { useConverter } from "../lib/fx";
 import { budgetLines, lineForItem, totals, travelersOf } from "../lib/budget";
@@ -36,7 +36,8 @@ import { db } from "../lib/db";
 import { useSession } from "../lib/api";
 import { useSync } from "../lib/sync";
 import { useTrip } from "../lib/useTrip";
-import { useTheme } from "../lib/theme";
+import { NEXT, THEME_LABEL, useTheme } from "../lib/theme";
+import { ThemeIcon } from "../components/ThemeToggle";
 import { daysBetween } from "../lib/dates";
 import {
   readTrip,
@@ -520,7 +521,7 @@ export function TripPage() {
                   />
                 )}
                 {isOwner && <HeroPill icon={<Share2 />} label="Share" onClick={() => setSharing(true)} />}
-                <HeroPill icon={theme === "dark" ? <Sun /> : <Moon />} label={theme === "dark" ? "Light mode" : "Dark mode"} onClick={toggleTheme} />
+                <HeroPill icon={<ThemeIcon theme={theme} />} label={THEME_LABEL[NEXT[theme]]} onClick={toggleTheme} />
               </div>
             </div>
             <div className="absolute right-4 bottom-3 z-10 flex max-w-[45%] flex-col items-end gap-1.5">

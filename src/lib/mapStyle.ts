@@ -17,7 +17,9 @@ const ATTR_MT = '<a href="https://www.maptiler.com/copyright/">© MapTiler</a>';
  * Phase 2 swaps the `protomaps` source to a downloaded .pmtiles extract when offline.
  */
 export function buildStyle(theme: Theme, mode: MapMode): StyleSpecification {
-  const flavor = theme === "dark" ? "dark" : "light";
+  const flavor = theme === "light" ? "light" : "dark";
+  // Black mode: same dark map, with land and the void around it taken to true black
+  const fl = theme === "amoled" ? { ...namedFlavor("dark"), background: "#000000", earth: "#050505", water: "#161a22" } : namedFlavor(flavor);
   const style: StyleSpecification = {
     version: 8,
     glyphs: "https://protomaps.github.io/basemaps-assets/fonts/{fontstack}/{range}.pbf",
@@ -46,7 +48,7 @@ export function buildStyle(theme: Theme, mode: MapMode): StyleSpecification {
       ...layers("protomaps", namedFlavor("dark"), { lang: "en", labelsOnly: true }),
     ];
   } else {
-    style.layers = layers("protomaps", namedFlavor(flavor), { lang: "en" });
+    style.layers = layers("protomaps", fl, { lang: "en" });
   }
   return style;
 }
