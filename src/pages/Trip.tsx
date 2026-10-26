@@ -64,6 +64,7 @@ import { ItemCardDragPreview } from "../components/ItemCard";
 import { OfflineMapButton } from "../components/OfflineMapButton";
 import { HeroPill } from "../components/HeroPill";
 import { AddSection } from "../components/AddSection";
+import { ChipScroller } from "../components/ChipScroller";
 import { LogoMark } from "../components/Logo";
 import { PlacePanel, type PanelMode } from "../components/PlacePanel";
 import { SectionPicker, type SectionTarget } from "../components/SectionPicker";
@@ -591,7 +592,7 @@ export function TripPage() {
             </div>
           </nav>
           {tab === "plan" && view.sections.some((s) => s.kind === "day") && (
-            <div className="flex gap-1.5 overflow-x-auto pt-2 pb-2.5 [scrollbar-width:none]">
+            <ChipScroller className="pt-2 pb-2.5">
               {view.sections
                 .filter((s) => s.kind === "day")
                 .map((s) => (
@@ -604,7 +605,7 @@ export function TripPage() {
                     {formatChip(s.date!)}
                   </button>
                 ))}
-            </div>
+            </ChipScroller>
           )}
           {focus && tab === "plan" && (
             <button onClick={() => setFocus(null)} className="mb-2.5 flex items-center gap-1.5 rounded-full bg-accent/15 px-3 py-1 text-xs font-medium text-accent">
