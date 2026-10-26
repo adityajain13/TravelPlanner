@@ -181,9 +181,9 @@ function ItemCardView({
           {isPlace && subtitle && <p className="mt-0.5 truncate text-sm text-muted">{subtitle}</p>}
           {isPlace && !selected && item.notes && <p className="mt-1.5 line-clamp-3 text-[15px] leading-snug whitespace-pre-line text-muted">{item.notes}</p>}
 
-          {isPlace && !selected && (item.startTime || item.cost != null) && (
+          {isPlace && !selected && (item.startTime || item.endTime || item.cost != null) && (
             <div className="mt-2.5 flex flex-wrap gap-1.5 text-[13px] font-semibold">
-              {item.startTime && (
+              {(item.startTime || item.endTime) && (
                 <TimeRangeField
                   disabled={readOnly}
                   start={item.startTime}
@@ -192,8 +192,8 @@ function ItemCardView({
                   title="Change time"
                   className={`${chip} ${readOnly ? "" : "hover:bg-accent/20"}`}
                 >
-                  <Clock className="size-3.5 text-accent" /> {fmtTime(item.startTime)}
-                  {item.endTime ? ` – ${fmtTime(item.endTime)}` : ""}
+                  <Clock className="size-3.5 text-accent" />{" "}
+                  {item.startTime ? `${fmtTime(item.startTime)}${item.endTime ? ` – ${fmtTime(item.endTime)}` : ""}` : `Until ${fmtTime(item.endTime!)}`}
                 </TimeRangeField>
               )}
               {item.cost != null && (
