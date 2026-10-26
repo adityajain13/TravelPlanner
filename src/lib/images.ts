@@ -85,6 +85,23 @@ export function similarity(a: string, b: string) {
   return inter / Math.max(1, Math.min(ta.size, tb.size));
 }
 
+const GENERIC = new Set(["the", "of", "and", "temple", "shrine", "museum", "park", "station", "castle", "garden", "gardens", "tower", "bridge", "market", "street", "store", "shop", "restaurant", "cafe", "hotel", "branch", "main", "jinja", "dera", "ji", "falls", "waterfall", "sign", "lake", "mount", "mt", "beach", "square", "hall", "building"]);
+const words = (s: string) => norm(s).split(" ").filter((t) => t.length > 1 && !GENERIC.has(t));
+
+/**
+ * The article is about *this* place, not something it's named after or sits in: most of the
+ * place's distinctive words are in the title and vice versa. "Uncle Rikuro's Cheesecake Daimaru
+ * Shinsaibashi" ≠ "Shinsaibashi"; "Kiyomizu-dera Temple" = "Kiyomizu-dera" (generic words like temple/falls are ignored).
+ */
+export function sameSubject(name: string, title: string) {
+  const a = words(name);
+  const b = words(title); // a disambiguator counts: "Iceland (supermarket)" ≠ "Iceland"
+  if (!a.length || !b.length) return norm(name) === norm(title);
+  const inB = a.filter((t) => b.includes(t)).length / a.length;
+  const inA = b.filter((t) => a.includes(t)).length / b.length;
+  return inB >= 0.67 && inA >= 0.67;
+}
+
 // Wikimedia thumbnail URLs embed the width ("/500px-File.jpg"). Wikimedia only serves a fixed set of
 // "standard" widths reliably, so cards use the exact URL the API returned (500px) and the large
 // version asks for 1280 with the API URL as a fallback (see Photo.tsx).
@@ -193,7 +210,7 @@ export async function searchImages(query: string, opts: { name?: string; coords?
     openverse(query, opts.signal).catch(() => []),
   ]);
   // Only the place's own article (nearby + matching, or exact title); loose matches were the junk
-  const own = wiki.filter((w) => (w.near ? w.score >= 0.75 : norm(w.img.title ?? "") === norm(opts.name ?? query))).map((w) => w.img);
+  const own = wiki.filter((w) => (w.near ? w.score >= 0.75 && sameSubject(opts.name ?? query, w.img.title ?? "") : norm(w.img.title ?? "") === norm(opts.name ?? query))).map((w) => w.img);
   const seen = new Set<string>();
   return [...own.slice(0, 2), ...un, ...com, ...ov].filter((i) => (seen.has(i.thumb) ? false : (seen.add(i.thumb), true)));
 }
@@ -203,7 +220,7 @@ export async function searchImages(query: string, opts: { name?: string; coords?
  *  - a title-search hit whose title is essentially the name ("Iceland (supermarket)" ≠ "Iceland"). */
 export async function bestImage(name: string, coords?: [number, number], signal?: AbortSignal): Promise<PlaceImage | null> {
   const wiki = await wikipedia(name, coords, signal).catch(() => []);
-  const hit = wiki.find((w) => (w.near ? w.score >= 0.75 : norm(w.img.title ?? "") === norm(name)));
+  const hit = wiki.find((w) => (w.near ? w.score >= 0.75 && sameSubject(name, w.img.title ?? "") : norm(w.img.title ?? "") === norm(name)));
   return hit?.img ?? null;
 }
 
@@ -230,7 +247,7 @@ export function placeSummary(name: string, coords?: [number, number]) {
       key,
       (async () => {
         const wiki = await wikipedia(name, coords).catch(() => []);
-        const hit = wiki.find((w) => (w.near ? w.score >= 0.75 : norm(w.img.title ?? "") === norm(name)));
+        const hit = wiki.find((w) => (w.near ? w.score >= 0.75 && sameSubject(name, w.img.title ?? "") : norm(w.img.title ?? "") === norm(name)));
         const title = hit?.img.title;
         if (!title) return null;
         const q = new URLSearchParams({ action: "query", format: "json", formatversion: "2", origin: "*", prop: "extracts|info", exintro: "1", explaintext: "1", exsentences: "4", inprop: "url", titles: title, redirects: "1" });
