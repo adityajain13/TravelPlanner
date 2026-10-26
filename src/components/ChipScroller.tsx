@@ -55,10 +55,12 @@ export function ChipScroller({ children, className = "" }: { children: ReactNode
   const arrow = "absolute top-1/2 z-10 grid size-7 -translate-y-1/2 place-items-center rounded-full border border-line bg-surface text-muted shadow-md hover:text-fg max-md:hidden";
 
   return (
+    // Padding goes on the outside so the arrows centre on the chips, not on uneven padding
+    <div className={className}>
     <div className="relative">
       <div
         ref={ref}
-        className={`flex gap-1.5 overflow-x-auto [scrollbar-width:none] select-none [&::-webkit-scrollbar]:hidden ${className}`}
+        className="flex items-center gap-1.5 overflow-x-auto [scrollbar-width:none] select-none [&::-webkit-scrollbar]:hidden"
         style={{ maskImage: `linear-gradient(to right, ${fade})`, WebkitMaskImage: `linear-gradient(to right, ${fade})` }}
       >
         {children}
@@ -73,6 +75,7 @@ export function ChipScroller({ children, className = "" }: { children: ReactNode
           <ChevronRight className="size-4" />
         </button>
       )}
+    </div>
     </div>
   );
 }
