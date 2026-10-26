@@ -368,7 +368,8 @@ export function TripPage() {
         .map((l) => {
           const r = legResults.get(l.req.key);
           if (typeof r === "object") {
-            const style: Route["style"] = r.mode === "flight" ? "dashed" : r.mode === "walk" ? "dotted" : "solid";
+            // Estimates follow the road on the map but stay dashed, so they read as approximate
+            const style: Route["style"] = r.mode === "flight" || r.rough ? "dashed" : r.mode === "walk" ? "dotted" : "solid";
             return { color: l.color, coords: r.coords, style };
           }
           return { color: l.color, coords: [l.req.from, l.req.to], style: "dashed" as const };
