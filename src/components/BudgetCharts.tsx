@@ -4,15 +4,17 @@ import type { Line } from "../lib/budget";
 import { CATEGORIES, CATEGORY_LABEL } from "../lib/budget";
 import { formatMoney } from "../lib/fx";
 import { parseISODate } from "../lib/dates";
+import { SECTION_COLORS } from "../lib/colors";
+import { CAT_COLOR } from "./Budget";
 import type { ExpenseCategory, TripState } from "../lib/trips";
 
-type Row = { key: string; label: string; sub?: string; amount: number; count: number; parts: Map<ExpenseCategory, number> };
+type Row = { key: string; label: string; sub?: string; color?: string; amount: number; count: number; parts: Map<ExpenseCategory, number> };
 
 const dayFmt = (d: string) => new Intl.DateTimeFormat(undefined, { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" }).format(parseISODate(d));
 
 /**
- * Spending breakdown, Wanderlog-style but readable: horizontal bars (one hue; the label says what
- * each bar is), the amount and share printed at the end of every bar, and a hover card with
+ * Spending breakdown, Wanderlog-style but readable: horizontal bars (each bar in its category's icon colour or
+ * its day's pin colour), the amount and share printed at the end of every bar, and a hover card with
  * the biggest items. "Day by day" shows every trip day, so quiet days read as gaps.
  */
 export function BudgetCharts({ lines, state, currency }: { lines: Line[]; state: TripState; currency: string }) {
@@ -30,13 +32,13 @@ export function BudgetCharts({ lines, state, currency }: { lines: Line[]; state:
     };
     const m = new Map<string, Row>();
     if (tab === "category") {
-      for (const l of counted) add(m, l.category, () => ({ key: l.category, label: CATEGORY_LABEL[l.category], amount: 0, count: 0, parts: new Map() }), l);
+      for (const l of counted) add(m, l.category, () => ({ key: l.category, label: CATEGORY_LABEL[l.category], color: CAT_COLOR[l.category], amount: 0, count: 0, parts: new Map() }), l);
       return CATEGORIES.map((c) => m.get(c)).filter((r): r is Row => !!r).sort((a, b) => b.amount - a.amount);
     }
     // every trip day in order (empty days included), then anything outside the dates / undated
     const days: string[] = [];
     for (let d = parseISODate(state.meta.startDate); d <= parseISODate(state.meta.endDate); d = new Date(d.getTime() + 86400000)) days.push(d.toISOString().slice(0, 10));
-    for (const d of days) m.set(d, { key: d, label: dayFmt(d), sub: `Day ${days.indexOf(d) + 1}`, amount: 0, count: 0, parts: new Map() });
+    for (const d of days) m.set(d, { key: d, label: dayFmt(d), sub: `Day ${days.indexOf(d) + 1}`, color: SECTION_COLORS[days.indexOf(d) % SECTION_COLORS.length], amount: 0, count: 0, parts: new Map() });
     for (const l of counted) {
       const k = l.date && m.has(l.date) ? l.date : l.date ? "outside" : "none";
       add(m, k, () => ({ key: k, label: k === "outside" ? "Other dates" : "No date", amount: 0, count: 0, parts: new Map() }), l);
@@ -85,8 +87,9 @@ export function BudgetCharts({ lines, state, currency }: { lines: Line[]; state:
               </span>
               <span className="flex min-w-0 items-center gap-2">
                 <span
-                  className={`h-[18px] shrink-0 rounded-r-[4px] transition-colors ${r.amount ? (on ? "bg-accent" : "bg-accent/75") : "bg-line"}`}
-                  style={{ width: r.amount ? `max(3px, ${(r.amount / max) * 72}%)` : "2px" }}
+                  // Same colour as the category icon / the day's pins; brightens on hover
+                  className={`h-[18px] shrink-0 rounded-r-[4px] transition-opacity ${r.amount ? (on ? "opacity-100" : "opacity-80") : "bg-line"}`}
+                  style={{ width: r.amount ? `max(3px, ${(r.amount / max) * 72}%)` : "2px", background: r.amount ? (r.color ?? "var(--muted)") : undefined }}
                 />
                 {r.amount > 0 && (
                   <span className="shrink-0 text-[12.5px] whitespace-nowrap tabular-nums">
