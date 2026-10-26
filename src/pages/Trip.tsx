@@ -492,6 +492,21 @@ export function TripPage() {
     moveItem(doc!, activeId, target.key, index);
   }
 
+  // A place can sit on several days/lists (as copies); the day menu ticks and toggles them
+  const copiesOf = (itemId: string) => {
+    const me = state?.items.find((i) => i.id === itemId);
+    return me ? (state?.items ?? []).filter((x) => x.id === itemId || samePlace(me, x)) : [];
+  };
+  const sectionsOf = (itemId: string) => [...new Set(copiesOf(itemId).map((x) => x.section))];
+  const toggleSection = (itemId: string, key: string) => {
+    if (!doc) return;
+    const copies = copiesOf(itemId);
+    const there = copies.filter((x) => x.section === key);
+    if (!there.length) return void copyItems(doc, [itemId], key);
+    if (there.length >= copies.length) return; // keep it on at least one day or list
+    removeItems(doc, there.map((x) => x.id));
+    if (selectedId && there.some((x) => x.id === selectedId)) setSelectedId(copies.find((x) => x.section !== key)!.id);
+  };
   const selectFromMap = (itemId: string) => {
     if (itemId.startsWith("res:") || itemId.startsWith("apt:")) {
       setTab("bookings");
@@ -911,6 +926,8 @@ export function TripPage() {
                 onCheck={readOnly ? undefined : onCheck}
                 targets={readOnly ? undefined : targets}
                 onMoveTo={readOnly ? undefined : (itemId, k) => moveItems(doc, [itemId], k)}
+                sectionsOf={sectionsOf}
+                onToggleSection={readOnly ? undefined : toggleSection}
                 onCostDetails={readOnly ? undefined : setCostFor}
                 subtitle={state.meta.subtitles?.[s.key]}
                 onColor={
@@ -998,6 +1015,8 @@ export function TripPage() {
             onMode={setPanelMode}
             targets={targets}
             onMoveTo={(k) => moveItems(doc, [openItem.id], k)}
+            sections={sectionsOf(openItem.id)}
+            onToggleSection={readOnly ? undefined : (k) => toggleSection(openItem.id, k)}
             onLink={(googlePlaceId) => updateItem(doc, openItem.id, { googlePlaceId })}
             onSnapshot={(d) => updateItem(doc, openItem.id, { google: { ...d, fetchedAt: Date.now() } })}
             readOnly={readOnly}

@@ -13,6 +13,8 @@ interface Props {
   /** Section the item is in now (gets a check mark). */
   current?: string;
   onPick: (key: string) => void;
+  /** Multi-select: every section ticked here; picks toggle and the menu stays open. */
+  selected?: string[];
   children: ReactNode; // trigger contents
   className?: string;
   align?: "left" | "right";
@@ -21,7 +23,8 @@ interface Props {
 }
 
 /** Wanderlog's "Added ▾" menu: every day and list, with the current one ticked. */
-export function SectionPicker({ targets, current, onPick, children, className = "", align = "left", disabled, title }: Props) {
+export function SectionPicker({ targets, current, onPick, children, className = "", align = "left", disabled, title, selected }: Props) {
+  const multi = !!selected;
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -41,18 +44,25 @@ export function SectionPicker({ targets, current, onPick, children, className = 
       </button>
       {open && (
         <ul
+          aria-multiselectable={multi || undefined}
           className={`absolute top-full z-50 mt-1.5 max-h-80 min-w-52 overflow-y-auto rounded-xl border border-line bg-surface py-1.5 shadow-2xl ${align === "right" ? "right-0" : "left-0"}`}
         >
           {targets.map((t) => (
             <li key={t.key}>
               <button
                 type="button"
-                onClick={() => (onPick(t.key), setOpen(false))}
+                onClick={() => (onPick(t.key), !multi && setOpen(false))}
                 className="flex w-full items-center gap-2.5 px-3 py-1.5 text-left text-[15px] text-fg hover:bg-surface-2"
               >
                 <PinMarker color={t.color} size={16} label="" />
                 <span className="flex-1 truncate">{t.label}</span>
-                {t.key === current && <Check className="size-4 text-accent" />}
+                {multi ? (
+                  <span className={`grid size-[18px] place-items-center rounded-[5px] border ${selected!.includes(t.key) ? "border-accent bg-accent text-on-accent" : "border-line"}`}>
+                    {selected!.includes(t.key) && <Check className="size-3.5" strokeWidth={3} />}
+                  </span>
+                ) : (
+                  t.key === current && <Check className="size-4 text-accent" />
+                )}
               </button>
             </li>
           ))}
