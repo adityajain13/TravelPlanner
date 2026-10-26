@@ -39,6 +39,8 @@ interface Props {
   fallbackCenter?: [number, number];
   /** Space taken by the place panel over the map; the selected pin is framed in what's left. */
   inset?: { top: number; bottom: number } | null;
+  /** Frame just these pins (a day chip was clicked); a new nonce re-frames even for the same day. */
+  frame?: { ids: string[]; nonce: number } | null;
 }
 
 maplibregl.setWorkerUrl(workerUrl);
@@ -73,7 +75,7 @@ const readMode = (): MapMode => {
   }
 };
 
-export function TripMap({ pins, routes, selectedId, onSelect, theme, fitKey, fallbackCenter, inset }: Props) {
+export function TripMap({ pins, routes, selectedId, onSelect, theme, fitKey, fallbackCenter, inset, frame }: Props) {
   const container = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const [mode, setMode] = useState<MapMode>(readMode);
@@ -154,6 +156,21 @@ export function TripMap({ pins, routes, selectedId, onSelect, theme, fitKey, fal
     map.fitBounds(coreBounds(pins)!, { ...FIT, duration: 600 });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fitKey, pins.length > 0]);
+
+  // Frame one day's pins (most of them, same rule as the whole trip)
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !frame) return;
+    const sel = latest.current.pins.filter((p) => frame.ids.includes(p.id));
+    if (!sel.length) return;
+    const bottom = (inset?.bottom ?? 0) + 64;
+    if (sel.length === 1) {
+      map.easeTo({ center: [sel[0].lng, sel[0].lat], zoom: Math.max(map.getZoom(), 13), duration: 600, padding: { top: 64, left: 64, right: 64, bottom } });
+      return;
+    }
+    map.fitBounds(coreBounds(sel)!, { padding: { top: 64, left: 64, right: 64, bottom }, maxZoom: FIT.maxZoom, duration: 700 });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [frame?.nonce]);
 
   // Follow selection, with a small photo card above the pin (like Wanderlog's map popups)
   const popup = useRef<maplibregl.Popup | null>(null);

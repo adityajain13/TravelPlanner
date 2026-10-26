@@ -120,6 +120,7 @@ export function TripPage() {
     }
   });
   const [contentsDrawer, setContentsDrawer] = useState(false);
+  const [dayFrame, setDayFrame] = useState<{ ids: string[]; nonce: number } | null>(null);
   const [planHidden, setPlanHidden] = useState(() => {
     try {
       return localStorage.getItem("tp-plan-hidden") === "1";
@@ -613,7 +614,11 @@ export function TripPage() {
                 .map((s) => (
                   <button
                     key={s.key}
-                    onClick={() => scrollToId(scrollRef.current, `sec-${s.key}`)}
+                    onClick={() => {
+                      scrollToId(scrollRef.current, `sec-${s.key}`);
+                      const ids = s.items.filter((i) => i.lat != null && i.lng != null).map((i) => i.id);
+                      if (ids.length) setDayFrame((f) => ({ ids, nonce: (f?.nonce ?? 0) + 1 }));
+                    }}
                     className="flex shrink-0 items-center gap-1.5 rounded-full border border-line px-2.5 py-1 text-xs text-muted hover:border-accent hover:text-fg"
                   >
                     <span className="size-2 rounded-full" style={{ background: s.color }} />
@@ -816,6 +821,7 @@ export function TripPage() {
           onSelect={selectFromMap}
           theme={theme}
           fitKey={`${id}:${focus ?? "all"}`}
+          frame={dayFrame}
           fallbackCenter={near}
           inset={openItem ? (panelInset ?? { top: 0, bottom: 0 }) : null}
         />
