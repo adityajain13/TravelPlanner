@@ -65,7 +65,7 @@ export function ImagePicker({
 
   const pick = (img: PlaceImage | undefined) => {
     if (img) trackPick(img);
-    onPick(img && forStorage(img));
+    onPick(img && { ...forStorage(img), manual: true });
     onClose();
   };
 

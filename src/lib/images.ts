@@ -16,6 +16,8 @@ export interface PlaceImage {
   author?: string; // photographer's page (Unsplash attribution)
   authorName?: string;
   track?: string; // Unsplash download_location, pinged when picked; not stored
+  /** Chosen by hand in the photo picker (automatic clean-ups leave it alone). */
+  manual?: boolean;
 }
 
 import { shareQuery } from "./shareToken";
