@@ -35,6 +35,8 @@ export interface LegResult {
   live?: boolean;
   /** No timetable anywhere: a distance-based guess. */
   rough?: boolean;
+  /** Where a transit answer came from, when it matters for caching. */
+  source?: "navitime";
 }
 
 export interface LegRequest {
@@ -163,8 +165,11 @@ async function transitWithFallback(a: [number, number], b: [number, number], whe
   if (rides(first)) return first;
   // Google next when there's a key: real timetables in most countries. Not Japan: Google's
   // APIs return no transit there at all (licensing), so don't spend a request on it.
-  if (inJapan(a) && inJapan(b)) transitIssue = "Google has no transit timetables for Japan";
-  else {
+  if (inJapan(a) && inJapan(b)) {
+    // Japan: NAVITIME (through the Worker), since Google has no transit there
+    const jp = await japanTransit(a, b, when).catch((e) => ((transitIssue = String((e as Error).message)), null));
+    if (jp) return (transitIssue = null), jp;
+  } else {
     const google = await googleTransit(a, b).catch((e) => ((transitIssue = String((e as Error).message)), null));
     if (google) return (transitIssue = null), google;
   }
@@ -180,6 +185,28 @@ async function transitWithFallback(a: [number, number], b: [number, number], whe
 }
 
 const inJapan = ([lng, lat]: [number, number]) => lat > 24 && lat < 46 && lng > 122.5 && lng < 146;
+
+/** Japanese trains via NAVITIME on the Worker (null = no route; throws with the reason otherwise). */
+async function japanTransit(a: [number, number], b: [number, number], when?: string): Promise<LegResult | null> {
+  const res = await fetch(`/travelplanner/api/routes/japan?${new URLSearchParams(shareQuery())}`, {
+    method: "POST",
+    credentials: "same-origin",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ from: a, to: b, when }),
+  });
+  if (!res.ok) throw new Error(((await res.json().catch(() => ({}))) as { error?: string }).error ?? `Japan transit ${res.status}`);
+  const { route } = (await res.json()) as { route: { duration: number; distance: number; transfers: number; steps: TransitStep[]; coords: [number, number][] } | null };
+  if (!route) return null;
+  return {
+    mode: "transit",
+    coords: route.coords.length > 1 ? route.coords : [a, b],
+    distance: route.distance || distanceKm(a, b) * 1000,
+    duration: route.duration,
+    steps: route.steps,
+    transfers: route.transfers,
+    source: "navitime",
+  };
+}
 
 /** Why Google transit couldn't help, shown on the leg (e.g. the Routes API isn't enabled). */
 export let transitIssue: string | null = null;
@@ -270,7 +297,9 @@ export function useLegs(requests: LegRequest[]): Map<string, LegState> {
       const todo: LegRequest[] = [];
       requests.forEach((r, i) => {
         const c = cached[i];
-        const fresh = c && Date.now() - c.fetchedAt < (r.mode === "transit" ? TTL.transit : TTL.other);
+        // NAVITIME answers (Japan) keep a month: the free plan only has a few hundred searches
+        const ttl = r.mode !== "transit" ? TTL.other : typeof c?.result === "object" && c.result.source === "navitime" ? TTL.other / 2 : TTL.transit;
+        const fresh = c && Date.now() - c.fetchedAt < ttl;
         if (c && (fresh || !navigator.onLine)) set(r.key, c.result);
         else todo.push(r);
       });
