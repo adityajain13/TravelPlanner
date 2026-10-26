@@ -166,7 +166,7 @@ export async function handleTrips(req: Request, env: Env, url: URL): Promise<Res
           env.DB.prepare("DELETE FROM invites WHERE expires_at < ?").bind(Date.now()),
           env.DB.prepare("INSERT INTO invites (token_hash, email, trip_id, expires_at) VALUES (?, ?, ?, ?)").bind(await sha256(t), email, id, Date.now() + 7 * 86400000),
         ]);
-        invite = `${url.origin}${API}/auth/invite?t=${t}`;
+        invite = `${url.origin}/travelplanner/login?invite=${t}`;
       }
       return json({ ok: true, invite });
     }
