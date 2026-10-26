@@ -757,7 +757,7 @@ export function TripPage() {
               </button>
             </div>
           )}
-          <nav className="flex items-stretch gap-5 pt-2.5 text-[15px] font-semibold">
+          <nav className="flex items-stretch gap-5 pt-2.5 text-[15px] font-semibold max-sm:gap-4">
             <button onClick={() => setContentsDrawer(true)} className="-ml-1 flex items-center pb-2 text-muted hover:text-fg lg:hidden" title="Contents" aria-label="Contents">
               <PanelLeft className="size-4" />
             </button>
@@ -771,13 +771,13 @@ export function TripPage() {
               <button
                 key={k}
                 onClick={() => setTab(k)}
-                className={`border-b-2 pb-1.5 transition-colors ${tab === k ? "border-accent text-fg" : "border-transparent text-muted hover:text-fg"}`}
+                className={`shrink-0 border-b-2 pb-1.5 whitespace-nowrap transition-colors ${tab === k ? "border-accent text-fg" : "border-transparent text-muted hover:text-fg"}`}
               >
                 {label}
               </button>
             ))}
             {/* Sits at the end of the tab row instead of taking its own line */}
-            <div className="ml-auto flex items-center pb-2">
+            <div className="ml-auto flex shrink-0 items-center pb-2">
               <OfflineMapButton tripId={id!} state={state} />
             </div>
           </nav>

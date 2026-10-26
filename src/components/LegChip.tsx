@@ -31,21 +31,24 @@ export function LegChip({ mode, state, readOnly, onMode, from, to, label }: { mo
   const steps = res?.steps?.filter((s) => s.mode !== "WALK" || s.minutes >= 2);
 
   return (
-    <div className="relative my-0.5 ml-9 flex flex-wrap items-center gap-x-2 text-[13px] text-muted" onClick={(e) => e.stopPropagation()}>
+    // Always one line: the label and route text shrink with an ellipsis, Directions stays whole
+    <div className="relative my-0.5 ml-9 flex min-w-0 items-center gap-x-2 text-[13px] whitespace-nowrap text-muted" onClick={(e) => e.stopPropagation()}>
       <button
         disabled={readOnly || shownMode === "flight"}
         onClick={() => setOpen((o) => !o)}
-        className="flex items-center gap-1.5 rounded-full px-2 py-0.5 hover:bg-surface-2 hover:text-fg disabled:hover:bg-transparent"
+        className="flex min-w-0 items-center gap-1.5 rounded-full px-2 py-0.5 hover:bg-surface-2 hover:text-fg disabled:hover:bg-transparent"
         title={res?.rough ? `No timetable available here${transitIssue ? ` (${transitIssue})` : ""}: estimated from distance` : res?.estimated ? "Timed on the same weekday next week: timetables for your dates aren't published yet" : readOnly ? undefined : "Change how you get here"}
       >
         {label && (
-          <span className="flex items-center gap-1 font-semibold text-fg/80">
+          <span className="flex min-w-0 shrink items-center gap-1 font-semibold text-fg/80" title={label}>
             {/* Airport legs ("From Kansai (KIX)", "KIX to Hotel …") get a plane, hotel legs a bed */}
-            {/\b[A-Z]{3}\b/.test(label) && !/^(From|To) (?!.*\([A-Z]{3}\))/.test(label) ? <Plane className="size-3.5" /> : <BedDouble className="size-3.5" />} {label} ·
+            {/\b[A-Z]{3}\b/.test(label) && !/^(From|To) (?!.*\([A-Z]{3}\))/.test(label) ? <Plane className="size-3.5" /> : <BedDouble className="size-3.5 shrink-0" />}
+            <span className="min-w-0 truncate">{label}</span>
+            <span className="shrink-0">·</span>
           </span>
         )}
-        {state === "loading" ? <Loader2 className="size-3.5 animate-spin" /> : MODE_ICON[shownMode]}
-        {text}
+        <span className="shrink-0 [&>svg]:size-3.5">{state === "loading" ? <Loader2 className="animate-spin" /> : MODE_ICON[shownMode]}</span>
+        <span className="min-w-0 truncate" title={text}>{text.replace(" (rough estimate)", " (rough)")}</span>
       </button>
       {from && to && shownMode !== "flight" && (
         <a
