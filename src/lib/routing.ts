@@ -297,8 +297,8 @@ export function useLegs(requests: LegRequest[]): Map<string, LegState> {
       const todo: LegRequest[] = [];
       requests.forEach((r, i) => {
         const c = cached[i];
-        // NAVITIME answers (Japan) keep a month: the free plan only has a few hundred searches
-        const ttl = r.mode !== "transit" ? TTL.other : typeof c?.result === "object" && c.result.source === "navitime" ? TTL.other / 2 : TTL.transit;
+        // NAVITIME answers (Japan) keep a year: the free plan only has a few hundred searches
+        const ttl = r.mode !== "transit" ? TTL.other : typeof c?.result === "object" && c.result.source === "navitime" ? 365 * 864e5 : TTL.transit;
         const fresh = c && Date.now() - c.fetchedAt < ttl;
         if (c && (fresh || !navigator.onLine)) set(r.key, c.result);
         else todo.push(r);
