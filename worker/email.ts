@@ -21,6 +21,7 @@ export interface Booking {
   from?: string;
   to?: string;
   notes?: string; // seat, room type, cancellation deadline, etc.
+  traveler?: string; // passenger / guest name
   cost?: number; // total paid / due for this booking
   currency?: string; // ISO 4217
 }
@@ -59,6 +60,7 @@ const TOOL = {
             from: { type: "string" },
             to: { type: "string" },
             notes: { type: "string", description: "Useful extras only: seats, room type, check-in time, cancellation deadline, terminal." },
+            traveler: { type: "string", description: "Passenger or guest name this booking is for, as printed (e.g. \"Aditya Jain\"). One booking entry per passenger when the email lists several." },
             cost: { type: "number", description: "Total price of this booking as a plain number (taxes and fees included), if shown anywhere in the email or attachments. For a round trip split evenly across the legs unless per-leg prices are given." },
             currency: { type: "string", description: "ISO 4217 code of cost, e.g. CAD, JPY, EUR. Infer from symbols and the booking site (¥ on a Japanese site = JPY)." },
           },
