@@ -113,3 +113,4 @@ Hosted at **adityajain.ca/travelplanner** by the `travelplanner` Cloudflare Work
 - Delete imported email: Imported emails grouped per email (subject+time) with a delete button; DELETE /api/inbox/:id; removeFromEmail removes reservations/stops tagged inboxId (new adds are tagged) or, for older ones, same title+date.
 - Hotels/restaurants without a pin are located in the background on trip open (Google first, then Photon by name+address, then address), so hotel legs and pins appear.
 - Booking address is a place search (AddressSearch: OSM + Google) that pins the reservation; Pinned / No pin badge.
+- Google transit goes through the Worker (/api/routes/transit, forwards the app key with the site Referer; optional GOOGLE_ROUTES_KEY secret) since browser CORS to routes.googleapis.com is unreliable; tried right after Transitous fails; failure reason shown inline on rough-estimate legs.

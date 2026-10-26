@@ -11,6 +11,8 @@ export interface Env {
   ANTHROPIC_API_KEY: string;
   EXTRACT_MODEL?: string;
   UNSPLASH_ACCESS_KEY?: string;
+  /** optional server-side key for Google Routes; else the app's own key is forwarded */
+  GOOGLE_ROUTES_KEY?: string;
 }
 
 export const BASE = "/travelplanner";
