@@ -72,7 +72,7 @@ export function WanderlogImport({ onClose }: { onClose: () => void }) {
   const count = (type: string) => trip?.reservations.filter((r) => r.type === type).length ?? 0;
 
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-4 backdrop-blur-sm" onClick={() => !busy && onClose()}>
+    <div className="fixed inset-0 z-50 grid grid-cols-[minmax(0,1fr)] place-items-center bg-black/60 p-4 backdrop-blur-sm" onClick={() => !busy && onClose()}>
       <div onClick={(e) => e.stopPropagation()} className="w-full max-w-md space-y-5 rounded-2xl border border-line bg-surface p-6 shadow-2xl">
         <div className="flex items-center justify-between">
           <h2 className="font-display text-2xl">Import from Wanderlog</h2>

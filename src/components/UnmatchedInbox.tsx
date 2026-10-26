@@ -55,7 +55,7 @@ function UnmatchedSheet({ items, trips, onChange, onClose }: { items: InboxItem[
     date ? mine.filter((t) => t.startDate && t.endDate && Math.abs(new Date(date).getTime() - new Date(t.startDate).getTime()) < 45 * 86400000).slice(0, 2) : [];
 
   return createPortal(
-    <div className="fixed inset-0 z-[100] grid place-items-center bg-black/60 p-4 backdrop-blur-sm" onClick={onClose}>
+    <div className="fixed inset-0 z-[100] grid grid-cols-[minmax(0,1fr)] place-items-center bg-black/60 p-4 backdrop-blur-sm" onClick={onClose}>
       <div onClick={(e) => e.stopPropagation()} className="relative flex max-h-[85vh] w-full max-w-lg flex-col rounded-3xl border border-line bg-surface p-6 shadow-2xl">
         <button onClick={onClose} className="absolute top-4 right-4 grid size-9 place-items-center rounded-full border border-line text-muted hover:text-fg" aria-label="Close">
           <X className="size-4" />

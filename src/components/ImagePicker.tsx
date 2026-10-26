@@ -72,7 +72,7 @@ export function ImagePicker({
   const shown = results && google ? [...google, ...results].filter((r) => !broken.has(r.thumb)) : null;
 
   return createPortal(
-    <div className="fixed inset-0 z-[100] grid place-items-center bg-black/65 p-4 backdrop-blur-sm" onClick={onClose}>
+    <div className="fixed inset-0 z-[100] grid grid-cols-[minmax(0,1fr)] place-items-center bg-black/65 p-4 backdrop-blur-sm" onClick={onClose}>
       <div onClick={(e) => e.stopPropagation()} className="flex max-h-[85vh] w-full max-w-3xl flex-col gap-4 rounded-2xl border border-line bg-surface p-5 shadow-2xl">
         <div className="flex items-center justify-between">
           <h2 className="font-display text-2xl">Choose a photo</h2>
