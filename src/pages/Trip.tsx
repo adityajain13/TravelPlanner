@@ -484,7 +484,7 @@ export function TripPage() {
       >
         <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto pb-28 md:pb-10">
         <header ref={headerRef} className="relative">
-          <div className="relative h-52 overflow-hidden bg-surface-2 md:h-60">
+          <div className="relative h-80 overflow-hidden bg-surface-2">
             {state.meta.cover ? (
               <Photo srcs={[state.meta.cover.url, state.meta.cover.thumb]} className="absolute inset-0 size-full object-cover" />
             ) : (
