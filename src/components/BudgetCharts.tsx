@@ -156,16 +156,6 @@ export function BudgetCharts({ lines, state, currency }: { lines: Line[]; state:
           );
         })}
       </ul>
-      {tab === "people" && (
-        <ul className="mt-3 flex flex-wrap gap-x-4 gap-y-1 pl-[7.5rem] text-[12px] text-muted max-sm:pl-1">
-          {CATEGORIES.filter((c) => counted.some((l) => l.category === c)).map((c) => (
-            <li key={c} className="flex items-center gap-1.5">
-              <span className="size-2 rounded-full" style={{ background: CAT_COLOR[c] }} />
-              {CATEGORY_LABEL[c]}
-            </li>
-          ))}
-        </ul>
-      )}
     </section>
   );
 }
