@@ -191,6 +191,13 @@ export async function handleEmail(message: ForwardableEmailMessage, env: Env) {
   // trips+<trip id>@… (from the trip's Forward dialog) pins the email to that trip, no guessing
   const tag = message.to.toLowerCase().match(/^[^+@]+\+([a-z0-9_-]+)@/)?.[1];
 
+  // Account mail for the sending address itself (e.g. Google verifying trips@ so it can have a
+  // profile photo in Gmail) goes to the owner's inbox instead of being read as a booking
+  if (/@(accounts\.)?google\.com$/.test(sender) && allowed[0]) {
+    await message.forward(allowed[0]);
+    return;
+  }
+
   // Untagged mail: from anyone with an account, matched against their own trips.
   // trips+<id>@: from the trip's owner, an editor on it, or someone on its "who can forward" list;
   // bookings then land in the owner's inbox for that trip.
