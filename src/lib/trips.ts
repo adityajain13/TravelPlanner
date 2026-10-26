@@ -383,6 +383,35 @@ export function updateItem(doc: Y.Doc, id: string, patch: Partial<Omit<Item, "id
   );
 }
 
+/** Two stops are the same place: same Google/OSM place, or the same name within ~150 m. */
+export function samePlace(a: Item, b: Item) {
+  if (a.kind !== "place" || b.kind !== "place") return false;
+  if (a.googlePlaceId && a.googlePlaceId === b.googlePlaceId) return true;
+  if (a.osmId && a.osmId === b.osmId) return true;
+  if (a.lat == null || a.lng == null || b.lat == null || b.lng == null) return false;
+  const near = Math.hypot((a.lat - b.lat) * 111_000, (a.lng - b.lng) * 111_000 * Math.cos((a.lat * Math.PI) / 180)) < 150;
+  const n = (x: string) => x.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "");
+  return near && n(a.name) === n(b.name);
+}
+
+/** Set (or clear) a stop's photo, and the same photo on every other stop at that place, in one undo step. */
+export function setItemImage(doc: Y.Doc, id: string, image: Item["image"], origin: EditOrigin = ME) {
+  const items = doc.getMap<Y.Map<unknown>>("items");
+  const me = items.get(id)?.toJSON() as Item | undefined;
+  if (!me) return;
+  edit(
+    doc,
+    () => {
+      for (const [k, m] of items.entries()) {
+        if (k !== id && !samePlace(me, m.toJSON() as Item)) continue;
+        if (image) m.set("image", image);
+        else m.delete("image");
+      }
+    },
+    origin,
+  );
+}
+
 export function removeItem(doc: Y.Doc, id: string, origin: EditOrigin = ME) {
   edit(doc, () => doc.getMap("items").delete(id), origin);
 }
