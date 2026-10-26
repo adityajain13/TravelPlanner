@@ -51,6 +51,8 @@ export interface Item extends CostSplit {
   image?: import("./images").PlaceImage;
   /** How you get here from the previous stop of the day; falls back to the trip default. */
   travelMode?: import("./routing").TravelMode;
+  /** The forwarded email (inbox row) this came from. */
+  inboxId?: string;
   /** Checklist rows (kind "checklist"); the item's name is the checklist title. */
   checks?: CheckItem[];
   createdAt: number;
@@ -101,6 +103,8 @@ export interface Reservation extends CostSplit {
   costCurrency?: string;
   /** Who it's for (passenger / guest), when each traveller has their own booking. */
   traveler?: string;
+  /** The forwarded email (inbox row) this came from, so deleting the email can remove it. */
+  inboxId?: string;
   createdAt: number;
 }
 
@@ -375,6 +379,25 @@ export function updateItem(doc: Y.Doc, id: string, patch: Partial<Omit<Item, "id
 
 export function removeItem(doc: Y.Doc, id: string, origin: EditOrigin = ME) {
   edit(doc, () => doc.getMap("items").delete(id), origin);
+}
+
+/**
+ * Remove whatever a forwarded email added: reservations/stops tagged with its inbox ids, plus
+ * (for ones added before tagging existed) reservations with the same title and date.
+ * Returns how many were removed.
+ */
+export function removeFromEmail(doc: Y.Doc, inboxIds: string[], legacy: { title: string; startDate?: string }[] = []) {
+  const ids = new Set(inboxIds);
+  const res = doc.getMap<Y.Map<unknown>>("reservations");
+  const items = doc.getMap<Y.Map<unknown>>("items");
+  const gone: [Y.Map<Y.Map<unknown>>, string][] = [];
+  for (const [id, m] of res) {
+    const r = m.toJSON() as Reservation;
+    if ((r.inboxId && ids.has(r.inboxId)) || (!r.inboxId && legacy.some((l) => l.title === r.title && (l.startDate ?? "") === (r.startDate ?? "")))) gone.push([res, id]);
+  }
+  for (const [id, m] of items) if (ids.has((m.toJSON() as Item).inboxId ?? "")) gone.push([items, id]);
+  if (gone.length) edit(doc, () => gone.forEach(([map, id]) => map.delete(id)));
+  return gone.length;
 }
 
 /** Remove several items in one undoable change. */

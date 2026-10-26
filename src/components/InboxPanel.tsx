@@ -34,9 +34,9 @@ export function InboxPanel({ items, doc, state, onDone }: { items: InboxItem[]; 
     setBusy(it.id);
     try {
       if (reservationTypeFor(it.booking)) {
-        saveReservation(doc, await bookingToReservation(it.booking, state.meta.center), { by: "email" });
+        saveReservation(doc, { ...(await bookingToReservation(it.booking, state.meta.center)), inboxId: it.id }, { by: "email" });
       } else {
-        addItem(doc, target(it.booking).section, await bookingToItem(it.booking, state.meta.center), { by: "email" });
+        addItem(doc, target(it.booking).section, { ...(await bookingToItem(it.booking, state.meta.center)), inboxId: it.id }, { by: "email" });
       }
       await patchInbox(it.id, { status: "added" });
       onDone(it.id);

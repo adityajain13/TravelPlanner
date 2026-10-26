@@ -9,7 +9,7 @@ import { ForwardDialog } from "./ForwardDialog";
 import { useLiveQuery } from "dexie-react-hooks";
 import { db } from "../lib/db";
 import type { PlaceResult } from "../lib/photon";
-import { removeReservation, saveReservation, sortReservations, type Reservation, type ReservationType, type TripState } from "../lib/trips";
+import { removeFromEmail, removeReservation, saveReservation, sortReservations, type Reservation, type ReservationType, type TripState } from "../lib/trips";
 import { searchPlaces } from "../lib/photon";
 import { formatMoney } from "../lib/fx";
 import { inputCls } from "./NewTripDialog";
@@ -142,7 +142,15 @@ export function ReservationsPanel({ doc, state, readOnly, tripId, canForward }: 
       })}
 
       {editing && <ReservationForm doc={doc} state={state} initial={editing} onClose={() => setEditing(null)} />}
-      {forward && <ForwardDialog tripId={tripId} tripTitles={tripTitles} initialView={forward} onClose={() => setForward(null)} />}
+      {forward && (
+        <ForwardDialog
+          tripId={tripId}
+          tripTitles={tripTitles}
+          initialView={forward}
+          onClose={() => setForward(null)}
+          onDeleteEmail={readOnly ? undefined : (rows) => removeFromEmail(doc, rows.map((r) => r.id), rows.filter((r) => r.status === "added").map((r) => ({ title: r.booking.title, startDate: r.booking.start_date })))}
+        />
+      )}
     </div>
   );
 }
