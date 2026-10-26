@@ -120,3 +120,4 @@ Hosted at **adityajain.ca/travelplanner** by the `travelplanner` Cloudflare Work
 - Oct 25: day chips frame the map on that day's pins (75% rule); chip-row arrows centred on the chips.
 - Oct 25: AMOLED black theme (toggle cycles dark → black → light; black map background too).
 - Oct 25: spending bars coloured by category icon colour / day pin colour.
+- Oct 25: day-by-day spending bars stacked by category (Other takes the day colour) + legend.

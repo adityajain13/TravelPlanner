@@ -72,7 +72,7 @@ export function BudgetCharts({ lines, state, currency }: { lines: Line[]; state:
         {rows.map((r) => {
           const pct = total ? (r.amount / total) * 100 : 0;
           const on = hover === r.key;
-          const top = [...r.parts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 3);
+          const top = [...r.parts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5);
           return (
             <li
               key={r.key}
@@ -87,10 +87,22 @@ export function BudgetCharts({ lines, state, currency }: { lines: Line[]; state:
               </span>
               <span className="flex min-w-0 items-center gap-2">
                 <span
-                  // Same colour as the category icon / the day's pins; brightens on hover
-                  className={`h-[18px] shrink-0 rounded-r-[4px] transition-opacity ${r.amount ? (on ? "opacity-100" : "opacity-80") : "bg-line"}`}
-                  style={{ width: r.amount ? `max(3px, ${(r.amount / max) * 72}%)` : "2px", background: r.amount ? (r.color ?? "var(--muted)") : undefined }}
-                />
+                  // Category bars use the icon colour. Day bars are stacked by category; only
+                  // uncategorised ("Other") spending takes the day's pin colour. Brightens on hover.
+                  className={`flex h-[18px] shrink-0 overflow-hidden rounded-r-[4px] transition-opacity ${r.amount ? (on ? "opacity-100" : "opacity-80") : "bg-line"}`}
+                  style={{ width: r.amount ? `max(3px, ${(r.amount / max) * 72}%)` : "2px", background: r.amount && tab === "category" ? (r.color ?? "var(--muted)") : undefined }}
+                >
+                  {tab === "day" &&
+                    r.amount > 0 &&
+                    CATEGORIES.filter((c) => r.parts.get(c)).map((c, i) => (
+                      <span
+                        key={c}
+                        title={`${CATEGORY_LABEL[c]}: ${formatMoney(r.parts.get(c)!, currency)}`}
+                        className={i ? "border-l border-surface" : ""}
+                        style={{ width: `${(r.parts.get(c)! / r.amount) * 100}%`, background: c === "other" ? (r.color ?? CAT_COLOR.other) : CAT_COLOR[c] }}
+                      />
+                    ))}
+                </span>
                 {r.amount > 0 && (
                   <span className="shrink-0 text-[12.5px] whitespace-nowrap tabular-nums">
                     {formatMoney(r.amount, currency)} <span className="text-muted">· {pct < 1 ? "<1" : Math.round(pct)}%</span>
@@ -107,7 +119,10 @@ export function BudgetCharts({ lines, state, currency }: { lines: Line[]; state:
                     <ul className="mt-1.5 space-y-0.5">
                       {top.map(([c, v]) => (
                         <li key={c} className="flex justify-between gap-2">
-                          <span>{CATEGORY_LABEL[c]}</span>
+                          <span className="flex items-center gap-1.5">
+                            <span className="size-2 rounded-full" style={{ background: c === "other" ? (r.color ?? CAT_COLOR.other) : CAT_COLOR[c] }} />
+                            {CATEGORY_LABEL[c]}
+                          </span>
                           <span className="tabular-nums">{formatMoney(v, currency)}</span>
                         </li>
                       ))}
@@ -119,6 +134,16 @@ export function BudgetCharts({ lines, state, currency }: { lines: Line[]; state:
           );
         })}
       </ul>
+      {tab === "day" && (
+        <ul className="mt-3 flex flex-wrap gap-x-4 gap-y-1 pl-[7.5rem] text-[12px] text-muted max-sm:pl-1">
+          {CATEGORIES.filter((c) => counted.some((l) => l.category === c)).map((c) => (
+            <li key={c} className="flex items-center gap-1.5">
+              <span className="size-2 rounded-full" style={{ background: c === "other" ? "conic-gradient(#5fd68b, #f2a65a, #6aa8ff, #c58cff, #5fd68b)" : CAT_COLOR[c] }} />
+              {c === "other" ? "Other (day colour)" : CATEGORY_LABEL[c]}
+            </li>
+          ))}
+        </ul>
+      )}
     </section>
   );
 }
