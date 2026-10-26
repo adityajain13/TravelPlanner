@@ -316,7 +316,7 @@ export function ReservationForm({ doc, state, initial, onClose }: { doc: Y.Doc; 
   );
 
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-4 backdrop-blur-sm" onClick={onClose}>
+    <div className="fixed inset-0 z-50 grid grid-cols-[minmax(0,1fr)] place-items-center bg-black/60 p-4 backdrop-blur-sm" onClick={onClose}>
       <form onSubmit={submit} onClick={(e) => e.stopPropagation()} className="max-h-[90vh] w-full max-w-md space-y-3 overflow-y-auto rounded-2xl border border-line bg-surface p-6 shadow-2xl">
         <div className="flex items-center justify-between">
           <h2 className="flex items-center gap-2 font-display text-2xl">

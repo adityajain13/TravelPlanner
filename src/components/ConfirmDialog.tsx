@@ -42,7 +42,7 @@ export function ConfirmDialog({
   };
 
   return createPortal(
-    <div className="fixed inset-0 z-[110] grid place-items-center bg-black/60 p-4 backdrop-blur-sm" onClick={() => !busy && onClose()}>
+    <div className="fixed inset-0 z-[110] grid grid-cols-[minmax(0,1fr)] place-items-center bg-black/60 p-4 backdrop-blur-sm" onClick={() => !busy && onClose()}>
       <div role="alertdialog" aria-modal="true" aria-label={title} onClick={(e) => e.stopPropagation()} className="w-full max-w-sm rounded-3xl border border-line bg-surface p-6 text-center shadow-2xl">
         {icon && <div className={`mx-auto mb-3 grid size-12 place-items-center rounded-full [&>svg]:size-5 ${danger ? "bg-danger/15 text-danger" : "bg-accent/15 text-accent"}`}>{icon}</div>}
         <h2 className="font-display text-[22px] leading-tight">{title}</h2>

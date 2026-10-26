@@ -267,7 +267,7 @@ export function ExpenseForm({ doc, travelers, initial, linked, onClose }: { doc:
 
   const box = "rounded-2xl border border-line bg-bg";
   return createPortal(
-    <div className="fixed inset-0 z-[100] grid place-items-center bg-black/60 p-4 backdrop-blur-sm" onClick={onClose}>
+    <div className="fixed inset-0 z-[100] grid grid-cols-[minmax(0,1fr)] place-items-center bg-black/60 p-4 backdrop-blur-sm" onClick={onClose}>
       <div onClick={(ev) => ev.stopPropagation()} className="relative max-h-[90vh] w-full max-w-md overflow-y-auto rounded-3xl border border-line bg-surface p-6 shadow-2xl">
         <button type="button" onClick={onClose} className="absolute top-4 right-4 grid size-9 place-items-center rounded-full border border-line text-muted hover:text-fg" aria-label="Close">
           <X className="size-4" />

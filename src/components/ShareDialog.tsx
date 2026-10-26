@@ -52,7 +52,7 @@ export function ShareDialog({ tripId, onClose }: { tripId: string; onClose: () =
   ];
 
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-4 backdrop-blur-sm" onClick={onClose}>
+    <div className="fixed inset-0 z-50 grid grid-cols-[minmax(0,1fr)] place-items-center bg-black/60 p-4 backdrop-blur-sm" onClick={onClose}>
       <div onClick={(e) => e.stopPropagation()} className="w-full max-h-[90vh] max-w-md space-y-5 overflow-y-auto rounded-2xl border border-line bg-surface p-6 shadow-2xl">
         <div className="flex items-center justify-between">
           <h2 className="font-display text-2xl">Share trip</h2>

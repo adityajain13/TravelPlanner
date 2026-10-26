@@ -80,8 +80,8 @@ export function ForwardDialog({
   const when = (ms: number) => dtf(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }).format(ms);
 
   return createPortal(
-    <div className="fixed inset-0 z-[100] grid place-items-center bg-black/60 p-4 backdrop-blur-sm" onClick={onClose}>
-      <div onClick={(e) => e.stopPropagation()} className="relative flex max-h-[85vh] w-full max-w-lg flex-col rounded-3xl border border-line bg-surface p-7 shadow-2xl">
+    <div className="fixed inset-0 z-[100] grid grid-cols-[minmax(0,1fr)] place-items-center bg-black/60 p-4 backdrop-blur-sm" onClick={onClose}>
+      <div onClick={(e) => e.stopPropagation()} className="relative flex max-h-[85vh] w-full max-w-lg flex-col rounded-3xl border border-line bg-surface p-7 shadow-2xl max-sm:p-5">
         <button onClick={onClose} className="absolute top-4 right-4 grid size-9 place-items-center rounded-full border border-line text-muted hover:text-fg" aria-label="Close">
           <X className="size-4" />
         </button>
@@ -96,7 +96,11 @@ export function ForwardDialog({
                 : "Forward booking emails from your own address. They wait for you to review."}
             </p>
             <div className="mt-6 flex items-center gap-2 rounded-2xl border border-line bg-bg p-2 pl-4">
-              <span className="min-w-0 flex-1 truncate text-left text-[16px] select-all">{tripAddress(tripId)}</span>
+              <span className="min-w-0 flex-1 text-left text-[15px] [overflow-wrap:anywhere] select-all sm:truncate sm:text-[16px]">
+                {/* On phones it wraps at the @ (a <wbr>, so copying the text stays clean) */}
+                {tripAddress(tripId).split("@")[0]}
+                <wbr />@{tripAddress(tripId).split("@")[1]}
+              </span>
               <button onClick={copy} className="flex items-center gap-1.5 rounded-xl bg-accent px-4 py-2.5 text-[15px] font-bold text-on-accent">
                 {copied ? <Check className="size-4" /> : <Copy className="size-4" />} {copied ? "Copied" : "Copy"}
               </button>
