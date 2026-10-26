@@ -1,10 +1,12 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useState } from "react";
+import { Menu } from "./Menu";
+import { askConfirm } from "./ConfirmDialog";
 import { CurrencySelect } from "./CurrencySelect";
 import { BudgetCharts, CsvButton, exportBudgetCsv } from "./BudgetCharts";
 import { createPortal } from "react-dom";
 import { DateField } from "./DatePicker";
 import type * as Y from "yjs";
-import { ArrowLeft, ArrowRight, Check, BedDouble, Car, ChevronDown, ChevronRight, Fuel, Landmark, Pencil, Plane, Plus, Receipt, ShoppingBag, ShoppingCart, Ticket, TrainFront, Trash2, Users, Utensils, Wine, X } from "lucide-react";
+import { ArrowLeft, ArrowRight, BedDouble, Car, ChevronRight, Fuel, Landmark, Pencil, Plane, Plus, Receipt, ShoppingBag, ShoppingCart, Ticket, TrainFront, Trash2, Users, Utensils, Wine, X } from "lucide-react";
 import { removeExpense, saveExpense, saveReservation, updateItem, updateMeta, type CostSplit, type Expense, type ExpenseCategory, type TripState } from "../lib/trips";
 import { formatMoney, useConverter } from "../lib/fx";
 import { budgetLines, CATEGORIES, CATEGORY_LABEL, settleUp, totals, travelersOf, type Line } from "../lib/budget";
@@ -421,7 +423,7 @@ export function ExpenseForm({ doc, travelers, initial, linked, onClose }: { doc:
               {initial.id && !linked && (
                 <button
                   type="button"
-                  onClick={() => confirm("Delete this expense?") && (removeExpense(doc, initial.id!), onClose())}
+                  onClick={async () => (await askConfirm({ title: "Delete this expense?", body: "It's removed from the budget and the split." })) && (removeExpense(doc, initial.id!), onClose())}
                   className="flex items-center gap-2 rounded-full border border-line px-5 py-2.5 text-[15px] font-bold text-muted hover:text-danger"
                 >
                   <Trash2 className="size-4" /> Delete
@@ -441,42 +443,3 @@ function Avatar({ name }: { name: string }) {
   return <span className="grid size-7 shrink-0 place-items-center rounded-full bg-surface-2 text-[12px] font-bold text-fg">{name.slice(0, 1).toUpperCase()}</span>;
 }
 
-/** Small styled dropdown (replaces native selects in the expense editor). */
-function Menu({ label, options, onPick }: { label: React.ReactNode; options: { key: string; label: string; hint?: string; icon?: React.ReactNode; on?: boolean }[]; onPick: (key: string) => void }) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (!open) return;
-    const down = (e: MouseEvent) => !ref.current?.contains(e.target as Node) && setOpen(false);
-    document.addEventListener("mousedown", down);
-    return () => document.removeEventListener("mousedown", down);
-  }, [open]);
-  return (
-    <div ref={ref} className="relative">
-      <button type="button" onClick={() => setOpen((o) => !o)} className="flex items-center gap-2 rounded-full py-1 pr-1 pl-2 text-[15px] font-semibold text-fg hover:bg-surface-2">
-        {label}
-        <ChevronDown className={`size-4 text-muted transition-transform ${open ? "rotate-180" : ""}`} />
-      </button>
-      {open && (
-        <ul className="absolute top-full right-0 z-10 mt-1 min-w-48 rounded-xl border border-line bg-surface p-1.5 shadow-2xl">
-          {options.map((o) => (
-            <li key={o.key}>
-              <button
-                type="button"
-                onClick={() => (onPick(o.key), setOpen(false))}
-                className={`flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-[15px] hover:bg-surface-2 ${o.on ? "text-fg" : "text-muted"}`}
-              >
-                {o.icon}
-                <span className="min-w-0 flex-1">
-                  <span className="block">{o.label}</span>
-                  {o.hint && <span className="block text-[12px] text-muted">{o.hint}</span>}
-                </span>
-                {o.on && <Check className="size-4 text-accent" />}
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
-  );
-}

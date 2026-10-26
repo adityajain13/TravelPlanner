@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { Check, Copy, Eye, Link2, Loader2, Pencil, RotateCcw, UserPlus, X } from "lucide-react";
 import { api, shareUrl } from "../lib/api";
+import { askConfirm } from "./ConfirmDialog";
+import { Menu } from "./Menu";
 
 type Links = { view?: string; edit?: string };
 
@@ -33,7 +35,7 @@ export function ShareDialog({ tripId, onClose }: { tripId: string; onClose: () =
   }, [tripId]);
 
   async function reset() {
-    if (!confirm("Reset both links? Anyone using the current links loses access.")) return;
+    if (!(await askConfirm({ title: "Reset both links?", body: "Anyone using the current links loses access. New links are made right away.", confirmLabel: "Reset" }))) return;
     await api(`/trips/${tripId}/share`, { method: "DELETE" }).catch(() => undefined);
     await load();
   }
@@ -131,7 +133,7 @@ function People({ tripId }: { tripId: string }) {
     }
   };
   const remove = async (e: string) => {
-    if (!confirm(`Remove ${e} from this trip?`)) return;
+    if (!(await askConfirm({ title: `Remove ${e}?`, body: "The trip disappears from their list. You can add them back any time.", confirmLabel: "Remove" }))) return;
     await api(`/trips/${tripId}/members/${encodeURIComponent(e)}`, { method: "DELETE" }).catch(() => undefined);
     if (invite?.email === e) setInvite(null);
     await load();
@@ -155,16 +157,7 @@ function People({ tripId }: { tripId: string }) {
           {members.map((m) => (
             <li key={m.email} className="flex items-center gap-2 px-3 py-2">
               <span className="min-w-0 flex-1 truncate text-sm">{m.email}</span>
-              <select
-                value={m.role}
-                disabled={busy}
-                onChange={(e) => put({ email: m.email, role: e.target.value as Member["role"] }, false)}
-                className="rounded-full bg-surface-2 px-2 py-1 text-xs font-semibold outline-none"
-                aria-label={`${m.email} access`}
-              >
-                <option value="edit">Can edit</option>
-                <option value="view">View only</option>
-              </select>
+              <RoleMenu role={m.role} disabled={busy} label={`${m.email} access`} onPick={(r) => put({ email: m.email, role: r }, false)} />
               <button onClick={() => put(m, true)} disabled={busy} title="New sign-in link" aria-label={`New sign-in link for ${m.email}`} className="grid size-7 place-items-center rounded-full text-muted hover:bg-surface-2 hover:text-fg">
                 <Link2 className="size-3.5" />
               </button>
@@ -177,10 +170,7 @@ function People({ tripId }: { tripId: string }) {
       )}
       <form onSubmit={(e) => (e.preventDefault(), email.trim() && put({ email: email.trim().toLowerCase(), role }, true))} className="flex items-center gap-2 rounded-xl border border-line px-3 py-1.5 focus-within:border-accent">
         <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="friend@example.com" className="min-w-0 flex-1 bg-transparent py-1 text-sm outline-none placeholder:text-muted/60" />
-        <select value={role} onChange={(e) => setRole(e.target.value as Member["role"])} className="rounded-full bg-surface-2 px-2 py-1 text-xs font-semibold outline-none" aria-label="Access">
-          <option value="edit">Can edit</option>
-          <option value="view">View only</option>
-        </select>
+        <RoleMenu role={role} label="Access" onPick={setRole} />
         <button disabled={busy || !email.trim()} className="rounded-full bg-accent px-3 py-1 text-xs font-bold text-on-accent disabled:opacity-40">
           {busy ? <Loader2 className="size-3.5 animate-spin" /> : "Add"}
         </button>
@@ -197,5 +187,22 @@ function People({ tripId }: { tripId: string }) {
         </div>
       )}
     </div>
+  );
+}
+
+const ROLE_LABEL: Record<Member["role"], string> = { edit: "Can edit", view: "View only" };
+function RoleMenu({ role, onPick, disabled, label }: { role: Member["role"]; onPick: (r: Member["role"]) => void; disabled?: boolean; label: string }) {
+  return (
+    <Menu
+      label={ROLE_LABEL[role]}
+      ariaLabel={label}
+      disabled={disabled}
+      className="flex items-center gap-1 rounded-full bg-surface-2 py-1 pr-1.5 pl-2.5 text-xs font-semibold text-fg hover:text-accent disabled:opacity-50"
+      options={[
+        { key: "edit", label: "Can edit", hint: "Changes the plan, forwards bookings", on: role === "edit" },
+        { key: "view", label: "View only", hint: "Sees the plan", on: role === "view" },
+      ]}
+      onPick={(k) => onPick(k as Member["role"])}
+    />
   );
 }

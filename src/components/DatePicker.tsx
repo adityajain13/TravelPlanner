@@ -66,9 +66,12 @@ export function Popover({ anchor, onClose, children }: { anchor: HTMLElement; on
       setPos({ top: Math.max(8, top), left });
     };
     place();
+    // Re-place when the content grows (e.g. the custom colour picker opening)
+    const ro = new ResizeObserver(place);
+    if (ref.current) ro.observe(ref.current);
     window.addEventListener("resize", place);
     window.addEventListener("scroll", place, true);
-    return () => (window.removeEventListener("resize", place), window.removeEventListener("scroll", place, true));
+    return () => (ro.disconnect(), window.removeEventListener("resize", place), window.removeEventListener("scroll", place, true));
   }, [anchor]);
 
   useEffect(() => {

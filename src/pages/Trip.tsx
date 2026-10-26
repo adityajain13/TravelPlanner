@@ -78,6 +78,7 @@ import { BudgetPanel, ExpenseForm } from "../components/Budget";
 import { departureTime, legKey, MODES, useLegs, type LegRequest, type TravelMode } from "../lib/routing";
 import { MODE_ICON, MODE_LABEL } from "../components/LegChip";
 import type { Reservation } from "../lib/trips";
+import { askConfirm } from "../components/ConfirmDialog";
 
 const ORPHAN = "orphan";
 const formatChip = (d: string) =>
@@ -600,8 +601,8 @@ export function TripPage() {
                 <FolderInput className="size-4" /> Move to
               </SectionPicker>
               <button
-                onClick={() => {
-                  if (!confirm(`Delete ${checked.size} item${checked.size > 1 ? "s" : ""}?`)) return;
+                onClick={async () => {
+                  if (!(await askConfirm({ title: `Delete ${checked.size} item${checked.size > 1 ? "s" : ""}?`, body: "Undo brings them back." }))) return;
                   removeItems(doc, checkedIds);
                   if (selectedId && checked.has(selectedId)) setSelectedId(null);
                   clearChecked();

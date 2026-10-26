@@ -1,6 +1,7 @@
 import { StrictMode, Suspense, lazy } from "react";
 import { createRoot } from "react-dom/client";
 import { createBrowserRouter, RouterProvider } from "react-router-dom";
+import { ConfirmHost } from "./components/ConfirmDialog";
 import "./index.css";
 import { SessionProvider } from "./lib/api";
 import { Home } from "./pages/Home";
@@ -31,6 +32,7 @@ createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <SessionProvider>
       <RouterProvider router={router} />
+      <ConfirmHost />
     </SessionProvider>
   </StrictMode>,
 );
