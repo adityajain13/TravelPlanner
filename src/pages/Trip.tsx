@@ -26,7 +26,8 @@ import { Photo } from "../components/Photo";
 import { PhotoCredit } from "../components/PhotoCredit";
 import { RES_ICON, RES_SINGULAR } from "../components/Reservations";
 import { GENERIC_PLACE } from "../lib/geocode";
-import { findPlaceId, getDetails, GOOGLE_KEY, photoUrl } from "../lib/google";
+import { autocomplete, findPlaceId, getDetails, GOOGLE_KEY, photoUrl, suggestionPlace } from "../lib/google";
+import { searchPlaces } from "../lib/photon";
 import { edit } from "../lib/trips";
 import { parseISODate } from "../lib/dates";
 import { scrollToId } from "../lib/scroll";
@@ -46,6 +47,7 @@ import {
   copyItems,
   removeItem,
   removeItems,
+  saveReservation,
   setReadOnly,
   renameList,
   sectionsFor,
@@ -272,6 +274,30 @@ export function TripPage() {
   }, [view, legResults]);
 
   // Suggest a cover photo once, for editable trips that don't have one
+  // Hotels (and restaurants) booked without a pin — e.g. an email address the map search didn't
+  // know — get located in the background, so legs to/from the hotel and their pins appear.
+  const pinTried = useRef(new Set<string>());
+  useEffect(() => {
+    if (!doc || !state || readOnly || !navigator.onLine) return;
+    const todo = state.reservations.filter((r) => (r.type === "lodging" || r.type === "restaurant") && r.lat == null && !pinTried.current.has(r.id));
+    if (!todo.length) return;
+    todo.forEach((r) => pinTried.current.add(r.id));
+    (async () => {
+      for (const r of todo) {
+        const q = [r.title, r.address].filter(Boolean).join(", ");
+        let hit: { lat: number; lng: number; address?: string } | null = null;
+        if (GOOGLE_KEY) {
+          const [sug] = await autocomplete(q, state.meta.center).catch(() => []);
+          if (sug) hit = await suggestionPlace(sug.placeId).catch(() => null);
+        }
+        if (!hit) hit = (await searchPlaces(q, state.meta.center).catch(() => []))[0] ?? null;
+        if (!hit && r.address) hit = (await searchPlaces(r.address, state.meta.center).catch(() => []))[0] ?? null;
+        const cur = readTrip(doc).reservations.find((x) => x.id === r.id);
+        if (hit && cur && cur.lat == null) saveReservation(doc, { ...cur, lat: hit.lat, lng: hit.lng, address: cur.address || hit.address });
+      }
+    })();
+  }, [doc, state, readOnly]);
+
   const coverTried = useRef(false);
   useEffect(() => {
     // Older auto-covers could be a namesake article ("Iceland (supermarket)"); treat those as missing
