@@ -1,4 +1,5 @@
 import { GOOGLE_KEY } from "./google";
+import { shareQuery } from "./shareToken";
 import { useEffect, useState } from "react";
 import { db } from "./db";
 import { distanceKm } from "./geocode";
@@ -154,12 +155,15 @@ const rides = (r: LegResult | null) => !!r?.steps?.some((st) => st.mode !== "WAL
 
 /**
  * Transit, trying in turn: the real date/time, the same weekday next week, leaving now
- * (all Transitous), then Google's transit directions when a key is set (cached like the rest). Like Wanderlog, the
+ * (all Transitous), with Google's transit directions tried right after the real date fails (cached like the rest). Like Wanderlog, the
  * point is "how long will this take", so any of these is a fine answer.
  */
 async function transitWithFallback(a: [number, number], b: [number, number], when?: string): Promise<LegResult | null> {
   const first = await transitous(a, b, when).catch(() => null);
   if (rides(first)) return first;
+  // Google next when there's a key: real timetables almost everywhere (e.g. Japan)
+  const google = await googleTransit(a, b).catch((e) => ((transitIssue = String((e as Error).message)), null));
+  if (google) return (transitIssue = null), google;
   const alt = when ? nearbyWeekday(when) : null;
   if (alt) {
     const second = await transitous(a, b, alt).catch(() => null);
@@ -167,8 +171,6 @@ async function transitWithFallback(a: [number, number], b: [number, number], whe
   }
   const now = await transitous(a, b).catch(() => null);
   if (rides(now)) return { ...now!, estimated: true };
-  const google = await googleTransit(a, b).catch((e) => ((transitIssue = String((e as Error).message)), null));
-  if (google) return google;
   if (first ?? now) return first ?? now; // walking-only answer, if that's all there is
   return roughTransit(a, b);
 }
@@ -184,23 +186,17 @@ function roughTransit(a: [number, number], b: [number, number]): LegResult {
 
 /** Google Routes API (transit). Needs the Routes API enabled on the browser key. */
 async function googleTransit(a: [number, number], b: [number, number]): Promise<LegResult | null> {
-  if (!GOOGLE_KEY) return null;
-  const res = await fetch("https://routes.googleapis.com/directions/v2:computeRoutes", {
+  if (!GOOGLE_KEY) throw new Error("no Google key in this build (VITE_GOOGLE_PLACES_KEY)");
+  const res = await fetch(`/travelplanner/api/routes/transit?${new URLSearchParams(shareQuery())}`, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Goog-Api-Key": GOOGLE_KEY,
-      "X-Goog-FieldMask": "routes.duration,routes.distanceMeters,routes.polyline.encodedPolyline,routes.legs.steps.travelMode,routes.legs.steps.staticDuration,routes.legs.steps.transitDetails.transitLine.nameShort,routes.legs.steps.transitDetails.transitLine.name,routes.legs.steps.transitDetails.transitLine.vehicle.type",
-    },
-    body: JSON.stringify({
-      origin: { location: { latLng: { latitude: a[1], longitude: a[0] } } },
-      destination: { location: { latLng: { latitude: b[1], longitude: b[0] } } },
-      travelMode: "TRANSIT",
-    }),
+    credentials: "same-origin",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ from: a, to: b, key: GOOGLE_KEY }),
   });
   if (!res.ok) {
-    const msg = res.status === 403 ? "Google: enable the Routes API for this key" : `Google transit ${res.status}`;
-    throw new Error(msg);
+    const detail = ((await res.json().catch(() => ({}))) as { error?: { message?: string } | string }).error;
+    const why = typeof detail === "string" ? detail : detail?.message;
+    throw new Error(res.status === 403 ? `Google refused: ${why ?? "check the key allows Routes API"}` : `Google transit ${res.status}${why ? `: ${why}` : ""}`);
   }
   type Step = { travelMode?: string; staticDuration?: string; transitDetails?: { transitLine?: { nameShort?: string; name?: string; vehicle?: { type?: string } } } };
   const j = (await res.json()) as { routes?: { duration?: string; distanceMeters?: number; polyline?: { encodedPolyline?: string }; legs?: { steps?: Step[] }[] }[] };

@@ -56,6 +56,7 @@ export function LegChip({ mode, state, readOnly, onMode, from, to, label }: { mo
           Directions
         </a>
       )}
+      {res?.rough && transitIssue && <span className="truncate text-[12px] text-danger/80" title={transitIssue}>{transitIssue}</span>}
       {steps && steps.length > 0 && (
         <span className="truncate text-muted/80">
           {steps.map((s) => (s.mode === "WALK" ? `walk ${s.minutes}m` : `${s.name ?? s.mode.toLowerCase()} ${s.minutes}m`)).join(" → ")}
