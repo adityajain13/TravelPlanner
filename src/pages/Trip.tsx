@@ -57,7 +57,7 @@ import {
   type Item,
 } from "../lib/trips";
 import { dayColor, LIST_COLOR } from "../lib/colors";
-import { flightAirports, flightArc, loadAirports, type AirportDb } from "../lib/airports";
+import { flightAirports, flightArc, loadAirports, type Airport, type AirportDb } from "../lib/airports";
 import type { Pin, Route } from "../components/TripMap";
 // MapLibre is the heaviest dependency; load it after the plan panel is on screen.
 const TripMap = lazy(() => import("../components/TripMap").then((m) => ({ default: m.TripMap })));
@@ -193,6 +193,11 @@ export function TripPage() {
   );
 
   // Build sections, their items, colours and map data in one pass
+  const hasFlights = !!state?.reservations.some((r) => r.type === "flight");
+  const [airportDb, setAirportDb] = useState<AirportDb | null>(null);
+  useEffect(() => {
+    if (hasFlights && !airportDb) loadAirports().then(setAirportDb).catch(() => undefined);
+  }, [hasFlights, airportDb]);
   const view = useMemo(() => {
     if (!state) return null;
     const order = sectionsFor(state);
@@ -221,15 +226,52 @@ export function TripPage() {
     const hotels = state.reservations.filter((r) => r.type === "lodging" && r.lat != null && r.lng != null && r.startDate);
     const morningHotel = (d: string) => hotels.find((h) => h.startDate! < d && (h.endDate ?? h.startDate!) >= d);
     const eveningHotel = (d: string) => hotels.find((h) => h.startDate! <= d && (h.endDate ?? h.startDate!) > d);
+    // Flights by day, so days start at the arrival airport and end at the departure airport
+    type Flight = { r: Reservation; dep: Airport; arr: Airport; arrDate: string };
+    const flightsOn: Flight[] = [];
+    if (airportDb)
+      for (const r of state.reservations) {
+        const ends = flightAirports(r, airportDb);
+        if (ends && r.startDate && !flightsOn.some((f) => f.r.startDate === r.startDate && f.r.startTime === r.startTime && f.dep.code === ends[0].code))
+          flightsOn.push({ r, dep: ends[0], arr: ends[1], arrDate: r.endDate ?? r.startDate });
+      }
+    const timeOf = (t?: string) => (t && /^\d{1,2}:\d{2}/.test(t) ? t.padStart(5, "0") : undefined);
+    const ll = (p: { lat: number; lng: number }): [number, number] => [p.lng, p.lat];
+    const pushLeg = (s: SectionInfo, toId: string, label: string, from: [number, number], to: [number, number], at?: string, modeOverride?: TravelMode) => {
+      if (Math.abs(from[0] - to[0]) + Math.abs(from[1] - to[1]) < 0.0005) return;
+      const mode = modeOverride ?? defaultMode;
+      const when = mode === "transit" ? departureTime(s.date!, at, to[0]) : undefined;
+      legs.push({ section: s.key, toId, color: s.color, label, req: { key: legKey(mode, from, to, when), mode, from, to, when } });
+    };
+
     for (const s of sections) {
       let n = 0;
       let prev: Item | null = null;
       let first = true;
+      // Today's flights: the last one landing starts the day; the first one leaving ends the morning
+      const landing = s.kind === "day" ? flightsOn.filter((f) => f.arrDate === s.date).sort((a, b) => (timeOf(a.r.endTime) ?? "").localeCompare(timeOf(b.r.endTime) ?? "")).at(-1) : undefined;
+      const leaving = s.kind === "day" ? flightsOn.filter((f) => f.r.startDate === s.date).sort((a, b) => (timeOf(a.r.startTime) ?? "").localeCompare(timeOf(b.r.startTime) ?? ""))[0] : undefined;
+      const landed = landing ? timeOf(landing.r.endTime) : undefined;
+      if (leaving && s.kind === "day") {
+        // To the departure airport: from the last stop before take-off, else from where you slept
+        const depAt = timeOf(leaving.r.startTime);
+        const placed = s.items.filter((i) => i.kind === "place" && i.lat != null);
+        const timed = placed.some((i) => timeOf(i.startTime));
+        // Untimed stops on a day you fly out (and don't also land): the flight comes after them
+        const before = timed || leaving === landing ? placed.filter((i) => depAt && timeOf(i.startTime) && timeOf(i.startTime)! < depAt).at(-1) : placed.at(-1);
+        const from = before ? ([before.lng!, before.lat!] as [number, number]) : morningHotel(s.date!) ? ll({ lat: morningHotel(s.date!)!.lat!, lng: morningHotel(s.date!)!.lng! }) : undefined;
+        if (from) pushLeg(s, `dep:${leaving.r.id}`, `To ${leaving.dep.name} (${leaving.dep.code})`, from, ll(leaving.dep), depAt ? `${String(Math.max(0, +depAt.slice(0, 2) - 3)).padStart(2, "0")}${depAt.slice(2)}` : undefined);
+      }
       for (const it of s.items) {
         if (it.kind !== "place") continue;
         n++;
         if (it.lat == null || it.lng == null) continue;
         if (!focus || s.key === focus) pins.push({ id: it.id, lat: it.lat, lng: it.lng, color: s.color, label: String(n), name: it.name, image: it.image?.thumb, unsplash: it.image?.source === "unsplash" ? { name: it.image.authorName ?? "Unknown", author: it.image.author } : undefined });
+        if (s.kind === "day" && first && landing && !(landed && timeOf(it.startTime) && timeOf(it.startTime)! < landed)) {
+          // First stop after landing: from the arrival airport instead of a hotel
+          first = false;
+          pushLeg(s, it.id, `From ${landing.arr.name} (${landing.arr.code})`, ll(landing.arr), [it.lng, it.lat], landed, it.travelMode);
+        }
         if (s.kind === "day" && first) {
           first = false;
           const h = morningHotel(s.date!);
@@ -250,8 +292,13 @@ export function TripPage() {
         }
         prev = it;
       }
+      // Landed with no stops after: straight from the airport to tonight's hotel
+      if (s.kind === "day" && landing && (!prev || (landed && timeOf(prev.startTime) && timeOf(prev.startTime)! < landed))) {
+        const h = eveningHotel(s.date!);
+        if (h) pushLeg(s, "end", `${landing.arr.code} to ${h.title}`, ll(landing.arr), [h.lng!, h.lat!], landed, state.meta.hotelLegModes?.[s.key]);
+      }
       // …and back to tonight's hotel after the last stop
-      const night = s.kind === "day" && prev ? eveningHotel(s.date!) : undefined;
+      const night = s.kind === "day" && prev && !(landing && landed && timeOf(prev.startTime) && timeOf(prev.startTime)! < landed) ? eveningHotel(s.date!) : undefined;
       if (night && prev) {
         const mode = state.meta.hotelLegModes?.[s.key] ?? defaultMode;
         const from: [number, number] = [prev.lng!, prev.lat!];
@@ -268,14 +315,9 @@ export function TripPage() {
         if (r.lat != null && r.lng != null && (r.type === "lodging" || r.type === "restaurant" || r.type === "other"))
           pins.push({ id: `res:${r.id}`, lat: r.lat, lng: r.lng, color: "#e8ece9", label: r.type === "lodging" ? "H" : r.type === "restaurant" ? "R" : "•", name: r.title });
     return { sections, pins, legs };
-  }, [state, focus]);
+  }, [state, focus, airportDb]);
 
   // Airports from flight bookings: a plane pin each, and an arc per flight (never routed like a leg)
-  const hasFlights = !!state?.reservations.some((r) => r.type === "flight");
-  const [airportDb, setAirportDb] = useState<AirportDb | null>(null);
-  useEffect(() => {
-    if (hasFlights && !airportDb) loadAirports().then(setAirportDb).catch(() => undefined);
-  }, [hasFlights, airportDb]);
   const flights = useMemo(() => {
     const pins: Pin[] = [];
     const arcs: Route[] = [];

@@ -127,3 +127,4 @@ Hosted at **adityajain.ca/travelplanner** by the `travelplanner` Cloudflare Work
 - Oct 25: invite links open the sign-in page and redeem on a Continue press (POST), so chat link previews can't use them up.
 - Oct 26: drop plain trips@ mention; one fare on first leg only; People tab shows owes/is owed; in-app confirm dialog on Home (leave/remove/delete); distinct + editable day colours (dot = picker, meta.dayColors); airports from flight bookings as plane pins with flight arcs (OpenFlights data, lazy chunk).
 - Oct 26: no native dialogs: askConfirm()/ConfirmHost replaces every confirm(); shared Menu replaces <select>; themed react-colorful custom day colour picker.
+- Oct 26: legs to/from airports on flight days (hotel/stops → departure airport, arrival airport → first stop or hotel); map no longer moves when the place panel is resized; traveler chips replace datalist.
