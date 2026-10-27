@@ -166,7 +166,6 @@ export function TripPage() {
     }
   });
   const [contentsDrawer, setContentsDrawer] = useState(false);
-  const [settings] = useSettings();
   const [showSettings, setShowSettings] = useState(false);
   const [mapPicked, setMapPicked] = useState<string | null>(null);
   const [dayFrame, setDayFrame] = useState<{ ids: string[]; nonce: number } | null>(null);
@@ -217,6 +216,10 @@ export function TripPage() {
   useEffect(() => {
     if (doc) setReadOnly(doc, readOnly);
   }, [doc, readOnly]);
+  // Settings live in the trip, per account; view-only or signed out: this device
+  const { email: myEmail } = useSession();
+  const settingsScope = useMemo(() => (doc && myEmail && !readOnly ? { doc, email: myEmail.toLowerCase() } : null), [doc, myEmail, readOnly]);
+  const [settings] = useSettings(settingsScope);
 
   // Bookings forwarded to trips@ that matched this trip
   const [inbox, setInbox] = useState<InboxItem[]>([]);
@@ -1408,7 +1411,7 @@ export function TripPage() {
       )}
       {editingRes && <ReservationForm doc={doc} state={state} initial={editingRes} onClose={() => setEditingRes(null)} />}
       {sharing && id && <ShareDialog tripId={id} onClose={() => setSharing(false)} />}
-      {showSettings && <SettingsDialog onClose={() => setShowSettings(false)} />}
+      {showSettings && <SettingsDialog scope={readOnly ? null : settingsScope} onClose={() => setShowSettings(false)} />}
 
       {/* Mobile plan/map switch */}
       <button

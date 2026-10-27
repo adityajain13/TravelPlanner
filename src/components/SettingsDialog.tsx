@@ -2,11 +2,11 @@ import { useEffect } from "react";
 import { createPortal } from "react-dom";
 import { Crosshair, EyeOff, Moon, MoonStar, PanelBottom, PanelLeft, PanelLeftDashed, Plane, RectangleHorizontal, Pill, Clock, Hourglass, Sun, X } from "lucide-react";
 import { useTheme, type Theme } from "../lib/theme";
-import { useSettings, type Settings } from "../lib/settings";
+import { useSettings, type Settings, type SettingsScope } from "../lib/settings";
 
 /** App settings (this device). One section per setting; options as selectable cards. */
-export function SettingsDialog({ onClose }: { onClose: () => void }) {
-  const [settings, update] = useSettings();
+export function SettingsDialog({ onClose, scope }: { onClose: () => void; scope?: SettingsScope | null }) {
+  const [settings, update, where] = useSettings(scope);
   const [theme, , setTheme] = useTheme();
   const themes: { key: Theme; icon: React.ReactNode; short: string; hint: string }[] = [
     { key: "light", icon: <Sun />, short: "Light", hint: "Light background" },
@@ -81,7 +81,9 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
           ]}
           onPick={(k) => update({ timing: k })}
         />
-        <p className="mt-5 text-[12px] text-muted">Settings are saved on this device.</p>
+        <p className="mt-5 text-[12px] text-muted">
+          {where === "trip" ? "Saved to your account for this trip; appearance is saved on this device." : "Settings are saved on this device."}
+        </p>
       </div>
     </div>,
     document.body,
