@@ -66,7 +66,7 @@ import {
   draftSection,
   isDraftSection,
 } from "../lib/trips";
-import { DayCompare } from "../components/DayCompare";
+import { DayCompare, type Bookend } from "../components/DayCompare";
 import { autoTimes, DEFAULT_DAY_START, DEFAULT_STAY } from "../lib/autoTime";
 import { dayColor, LIST_COLOR } from "../lib/colors";
 import { RES_GLYPH } from "../lib/pinArt";
@@ -303,7 +303,8 @@ export function TripPage() {
       }
     const timeOf = (t?: string) => (t && /^\d{1,2}:\d{2}/.test(t) ? t.padStart(5, "0") : undefined);
     const ll = (p: { lat: number; lng: number }): [number, number] => [p.lng, p.lat];
-    const landings = new Map<string, string>(); // plan → when that day's flight lands (auto times start then)
+    const landings = new Map<string, string>();
+    const bookends = new Map<string, { start?: Bookend; end?: Bookend }>(); // plan → where the day starts/ends // plan → when that day's flight lands (auto times start then)
     let ghost = false; // set by walk() below: legs of a plan that isn't shown
     const pushLeg = (s: SectionInfo, toId: string, label: string, from: [number, number], to: [number, number], at?: string, modeOverride?: TravelMode) => {
       if (Math.abs(from[0] - to[0]) + Math.abs(from[1] - to[1]) < 0.0005) return;
@@ -331,6 +332,16 @@ export function TripPage() {
         .sort((a, b) => (flightInstant(a.r, "dep") ?? 0) - (flightInstant(b.r, "dep") ?? 0))[0];
       const landed = landing ? timeOf(landing.r.endTime) : undefined;
       if (landed) landings.set(s.writeKey ?? s.key, landed);
+      if (s.kind === "day") {
+        // Any hotel booking counts here, pinned or not (the legs need a pin; the label doesn't)
+        const stays = state.reservations.filter((r) => r.type === "lodging" && r.startDate);
+        const mh = stays.find((h) => h.startDate! < s.date! && (h.endDate ?? h.startDate!) >= s.date!);
+        const eh = stays.find((h) => h.startDate! <= s.date! && (h.endDate ?? h.startDate!) > s.date!);
+        bookends.set(s.writeKey ?? s.key, {
+          start: landing ? { name: `${landing.arr.name} (${landing.arr.code})`, kind: "airport", time: landed } : mh ? { name: mh.title, kind: "hotel" } : undefined,
+          end: leaving ? { name: `${leaving.dep.name} (${leaving.dep.code})`, kind: "airport", time: timeOf(leaving.r.startTime) } : eh ? { name: eh.title, kind: "hotel" } : undefined,
+        });
+      }
       if (leaving && s.kind === "day") {
         // To the departure airport: from the last stop before take-off, else from where you slept
         const depAt = timeOf(leaving.r.startTime);
@@ -401,7 +412,7 @@ export function TripPage() {
         if (r.lat != null && r.lng != null && r.type !== "flight" && !pins.some((p) => p.id === `res:${r.id}` || (p.id.startsWith("res:") && p.name === r.title)))
           // One pin per booking (several travellers' copies share it), with its type's symbol
           pins.push({ id: `res:${r.id}`, lat: r.lat, lng: r.lng, color: "#e8ece9", label: "", glyph: RES_GLYPH[r.type], name: r.title });
-    return { sections, pins, legs, landings };
+    return { sections, pins, legs, landings, bookends };
   }, [state, focus, airportDb, dayDraft]);
 
   // Airports from flight bookings: a plane pin each, and an arc per flight (never routed like a leg)
@@ -1317,6 +1328,7 @@ export function TripPage() {
                   legs: vlegs.map((l) => legResults.get(l.req.key)).filter((x) => x != null),
                   pins,
                   routes,
+                  ...view.bookends.get(ver),
                 };
               })}
               onEdit={(d) => {

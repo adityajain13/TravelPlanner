@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
-import { Check, Clock, GitBranch, Pencil, Route as RouteIcon, Trash2, Wallet, X } from "lucide-react";
+import { BedDouble, Check, Clock, Plane, GitBranch, Pencil, Route as RouteIcon, Trash2, Wallet, X } from "lucide-react";
 import type { Item } from "../lib/trips";
 import type { LegState } from "../lib/routing";
 import { formatDistance, formatDuration } from "../lib/routing";
@@ -25,6 +25,16 @@ export interface Version {
   /** For the column's map: numbered stops (plus the hotel/airport its legs start or end at) and routes. */
   pins: Pin[];
   routes: Route[];
+  /** Where the day starts and ends: last night's / tonight's hotel, or the airport on a flight day. */
+  start?: Bookend;
+  end?: Bookend;
+}
+
+export interface Bookend {
+  name: string;
+  kind: "hotel" | "airport";
+  /** Landing / take-off time (airports). */
+  time?: string;
 }
 
 interface Props {
@@ -163,14 +173,16 @@ function Column({ v, box, ...p }: Props & { v: Version; box: Box }) {
       </div>
 
       <ol className="mt-3 min-h-0 flex-1 space-y-1 overflow-y-auto px-3 pb-2 [scrollbar-width:thin]">
-        {v.items.length === 0 && <li className="px-1 py-6 text-center text-[13px] text-muted">Nothing planned yet</li>}
-        {v.items.map((i) => (
+        {v.start && <End e={v.start} label="Start" />}
+        {places.length === 0 && <li className="px-1 py-6 text-center text-[13px] text-muted">Nothing planned yet</li>}
+        {places.map((i) => (
           <li key={i.id} className="flex items-center gap-2 rounded-lg px-1 py-1">
-            {i.kind === "place" ? <PinMarker color={p.color} label={++n} size={20} /> : <span className="w-5 shrink-0 text-center text-muted">•</span>}
-            <span className={`min-w-0 flex-1 truncate text-[14px] ${i.kind === "place" ? "" : "text-muted italic"}`}>{i.name || (i.kind === "note" ? "Note" : "Checklist")}</span>
+            <PinMarker color={p.color} label={++n} size={20} />
+            <span className="min-w-0 flex-1 truncate text-[14px]">{i.name}</span>
             {i.startTime && <span className="shrink-0 text-[12px] text-muted tabular-nums">{fmtTime(i.startTime)}</span>}
           </li>
         ))}
+        {v.end && <End e={v.end} label="End" />}
       </ol>
 
       <div className="flex gap-2 border-t border-line p-3">
@@ -213,6 +225,19 @@ function Column({ v, box, ...p }: Props & { v: Version; box: Box }) {
         )}
       </div>
     </div>
+  );
+}
+
+/** The hotel / airport the day starts or ends at, set apart from the numbered stops. */
+function End({ e, label }: { e: Bookend; label: string }) {
+  return (
+    <li className="flex items-center gap-2 rounded-lg bg-surface-2/50 px-1 py-1.5">
+      <span className="grid w-5 shrink-0 place-items-center text-muted [&>svg]:size-4">{e.kind === "hotel" ? <BedDouble /> : <Plane />}</span>
+      <span className="min-w-0 flex-1 truncate text-[13px] text-muted">
+        <span className="font-semibold text-fg">{label}</span> · {e.name}
+      </span>
+      {e.time && <span className="shrink-0 pr-1 text-[12px] text-muted tabular-nums">{fmtTime(e.time)}</span>}
+    </li>
   );
 }
 
