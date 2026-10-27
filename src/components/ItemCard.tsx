@@ -1,3 +1,4 @@
+import { hasLink, Linkified } from "./Linkified";
 import { useEffect, useState } from "react";
 import { CurrencySelect } from "./CurrencySelect";
 import { useSortable } from "@dnd-kit/sortable";
@@ -187,7 +188,7 @@ function ItemCardView({
             </div>
           </div>
           {isPlace && subtitle && <p className="mt-0.5 truncate text-sm text-muted">{subtitle}</p>}
-          {isPlace && !selected && item.notes && <p className="mt-1.5 line-clamp-3 text-[15px] leading-snug whitespace-pre-line text-muted">{item.notes}</p>}
+          {isPlace && !selected && item.notes && <Linkified text={item.notes} className="mt-1.5 line-clamp-3 block text-[15px] leading-snug whitespace-pre-line text-muted" />}
 
           {isPlace && !selected && (item.startTime || item.endTime || item.cost != null) && (
             <div className="mt-2.5 flex flex-wrap gap-1.5 text-[13px] font-semibold">
@@ -352,8 +353,19 @@ function NotesInput({ value, onCommit, disabled }: { value: string; onCommit: (v
   useEffect(() => {
     if (!focused) setDraft(value);
   }, [value, focused]);
+  // With a link in it, show the note with clickable links; click elsewhere on it to edit
+  if (!focused && hasLink(value))
+    return (
+      <div
+        onClick={() => !disabled && setFocused(true)}
+        className={`w-full rounded-lg bg-surface px-2.5 py-1.5 text-sm whitespace-pre-line text-fg ${disabled ? "" : "cursor-text"}`}
+      >
+        <Linkified text={value} />
+      </div>
+    );
   return (
     <textarea
+      autoFocus={hasLink(value)}
       readOnly={disabled}
       value={draft}
       onChange={(e) => setDraft(e.target.value)}
@@ -382,11 +394,16 @@ function NoteBody({ text, readOnly, onCommit }: { text: string; readOnly?: boole
   useEffect(() => {
     if (!focused) setDraft(text);
   }, [text, focused]);
-  if (readOnly) return <p className="min-w-0 flex-1 text-[15px] leading-relaxed whitespace-pre-line">{text}</p>;
+  if (readOnly || (!focused && hasLink(text)))
+    return (
+      <p onClick={(e) => !readOnly && (e.stopPropagation(), setFocused(true))} className={`min-w-0 flex-1 text-[15px] leading-relaxed whitespace-pre-line ${readOnly ? "" : "cursor-text"}`}>
+        <Linkified text={text} />
+      </p>
+    );
   return (
     <textarea
       value={draft}
-      autoFocus={!text}
+      autoFocus={!text || hasLink(text)}
       onChange={(e) => setDraft(e.target.value)}
       onFocus={() => setFocused(true)}
       onBlur={() => (setFocused(false), onCommit(draft))}
@@ -429,11 +446,12 @@ function ChecklistBody({ item, readOnly, onChange, onDelete }: { item: Item; rea
               className="size-[17px] shrink-0 cursor-pointer accent-[var(--accent)]"
               aria-label={c.text || "Item"}
             />
+            <LinkOrInput text={c.text} done={!!c.done} readOnly={readOnly}>
             <input
               disabled={readOnly}
               defaultValue={c.text}
               key={`${c.id}:${c.text}`}
-              autoFocus={focusId === c.id}
+              autoFocus={focusId === c.id || hasLink(c.text)}
               placeholder="List item"
               onFocus={() => setFocusId(null)}
               onBlur={(e) => e.target.value !== c.text && save(checks.map((x) => (x.id === c.id ? { ...x, text: e.target.value } : x)))}
@@ -454,6 +472,7 @@ function ChecklistBody({ item, readOnly, onChange, onDelete }: { item: Item; rea
               }}
               className={`min-w-0 flex-1 bg-transparent py-0.5 text-[15px] outline-none placeholder:text-muted/50 ${c.done ? "text-muted line-through" : ""}`}
             />
+            </LinkOrInput>
             {!readOnly && (
               <button onClick={() => save(checks.filter((x) => x.id !== c.id))} className="text-muted opacity-0 group-hover/row:opacity-100 hover:text-danger" aria-label="Remove item">
                 <X className="size-3.5" />
@@ -480,5 +499,16 @@ function ChecklistBody({ item, readOnly, onChange, onDelete }: { item: Item; rea
         </button>
       )}
     </div>
+  );
+}
+
+/** A checklist row: its text with clickable links when it has one; click the text to edit. */
+function LinkOrInput({ text, done, readOnly, children }: { text: string; done: boolean; readOnly?: boolean; children: React.ReactNode }) {
+  const [editing, setEditing] = useState(false);
+  if (editing || !hasLink(text)) return <span className="contents" onBlur={() => setEditing(false)}>{children}</span>;
+  return (
+    <span onClick={() => !readOnly && setEditing(true)} className={`min-w-0 flex-1 py-0.5 text-[15px] ${done ? "text-muted line-through" : ""} ${readOnly ? "" : "cursor-text"}`}>
+      <Linkified text={text} />
+    </span>
   );
 }
