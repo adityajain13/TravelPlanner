@@ -111,7 +111,7 @@ export function Section(p: Props) {
       className={`group/section section-lazy scroll-mt-28 border-b border-line/70 py-4 transition-colors last:border-b-0 ${isOver ? "bg-accent/5" : ""}`}
     >
       {/* Top-aligned so the chevron and dot stay level with the title when a subheading is shown */}
-      <div className="flex items-start gap-2 px-2">
+      <div className="flex items-start gap-2 pr-3 pl-2">
         <button onClick={() => setOpen((o) => !o)} className="mt-2 text-muted hover:text-fg" aria-label={open ? "Collapse" : "Expand"}>
           <ChevronDown className={`size-4 transition-transform ${open ? "" : "-rotate-90"}`} />
         </button>
@@ -168,7 +168,7 @@ export function Section(p: Props) {
 
       {chipsAt.get(0) && <div className="mt-2">{chipRow(chipsAt.get(0)!)}</div>}
       {open && (
-        <div className="mt-2 space-y-0.5 pl-3">
+        <div className="mt-2 space-y-0.5 px-3">
           <SortableContext items={info.items.map((i) => i.id)} strategy={verticalListSortingStrategy}>
             {info.items.map((it, idx) => (
               <div key={it.id}>
@@ -268,7 +268,7 @@ export function Section(p: Props) {
           )}
           {chipsAt.get(info.items.length) && info.items.length > 0 && <div className="py-1.5">{chipRow(chipsAt.get(info.items.length)!)}</div>}
           {info.key !== "orphan" && !p.readOnly && (
-            <div className="flex items-center gap-2 pt-1.5 pr-1 pl-6">
+            <div className="flex items-center gap-2 pt-1.5 pl-6">
               <PlaceSearch near={p.near} countryCode={p.countryCode} onPick={p.onAddPlace} onNote={p.onAddNote} />
               <button onClick={() => p.onAddNote("")} className={roundBtn} title="Add a note" aria-label="Add a note">
                 <StickyNote className="size-[18px]" />
