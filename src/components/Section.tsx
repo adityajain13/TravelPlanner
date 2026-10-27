@@ -9,6 +9,7 @@ import { formatDistance, formatDuration, type LegState, type TravelMode } from "
 import type { PlaceResult } from "../lib/photon";
 import { formatDayHeading } from "../lib/dates";
 import { ItemCard } from "./ItemCard";
+import { fmtTime } from "./TimeField";
 import { PlaceSearch } from "./PlaceSearch";
 import type { SectionTarget } from "./SectionPicker";
 import { Popover } from "./DatePicker";
@@ -32,7 +33,9 @@ interface Props {
   focused: boolean;
   readOnly?: boolean;
   currency?: string;
-  chips?: { r: Reservation; label: string; at?: string; time?: string }[];
+  chips?: { r: Reservation; label: string; at?: string; time?: string; verb?: string; clock?: string; people?: number }[];
+  /** Bookings in the day as small pills (default look) or slim cards lined up with the stops. */
+  chipStyle?: "pill" | "card";
   /** Incoming leg per item id (days only). */
   legs?: Map<string, { mode: TravelMode; state?: LegState; from: [number, number]; to: [number, number]; label?: string }>;
   searchContext?: string;
@@ -81,7 +84,38 @@ export function Section(p: Props) {
   const dayTravel = secs > 0 ? `${formatDuration(secs)} · ${formatDistance(metres)}` : null;
   let n = 0;
   const chipsAt = placeChips(p.chips ?? [], info.items);
-  const chipRow = (cs: NonNullable<Props["chips"]>) => (
+  const card = p.chipStyle === "card";
+  const chipRow = (cs: NonNullable<Props["chips"]>) =>
+    card ? (
+      <div className="space-y-0.5">
+        {cs.map((c, i) => {
+          const depKey = c.r.type === "flight" && c.r.startDate === info.date ? `dep:${c.r.title}|${c.r.startDate}` : "";
+          const dep = depKey ? p.legs?.get(depKey) : undefined;
+          return (
+            <div key={`${c.r.id}-${i}`}>
+              {dep && <LegChip mode={dep.mode} state={dep.state} readOnly={p.readOnly} onMode={(m) => p.onLegMode?.(depKey, m)} from={dep.from} to={dep.to} label={dep.label} />}
+              {/* Same columns as a stop: empty pin column, then the card */}
+              <div className="flex items-start gap-2 py-1">
+                <div className="w-7 shrink-0" />
+                <button
+                  onClick={() => p.onChipClick?.(c.r)}
+                  className="flex min-w-0 flex-1 items-center gap-3 rounded-xl border border-line bg-surface/60 px-3 py-2 text-left transition-colors hover:border-muted/50 hover:bg-surface"
+                >
+                  <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-surface-2 text-muted [&>svg]:size-4">{RES_ICON[c.r.type]}</span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-[14px] font-semibold text-fg">{c.r.title}</span>
+                    <span className="block truncate text-[12px] text-muted">
+                      {[c.verb ?? c.label, c.people ? `${c.people} people` : "", c.r.confirmation ? `#${c.r.confirmation}` : ""].filter(Boolean).join(" · ")}
+                    </span>
+                  </span>
+                  {c.clock && <span className="shrink-0 text-[13px] font-semibold text-fg tabular-nums">{fmtTime(c.clock)}</span>}
+                </button>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    ) : (
     <div className="flex flex-col items-start gap-1.5 pl-9">
       {cs.map((c, i) => {
         // The trip to the airport sits right before the flight it's for
@@ -166,13 +200,13 @@ export function Section(p: Props) {
         </div>
       </div>
 
-      {chipsAt.get(0) && <div className="mt-2">{chipRow(chipsAt.get(0)!)}</div>}
+      {chipsAt.get(0) && <div className={card ? "mt-2 px-3" : "mt-2"}>{chipRow(chipsAt.get(0)!)}</div>}
       {open && (
         <div className="mt-2 space-y-0.5 px-3">
           <SortableContext items={info.items.map((i) => i.id)} strategy={verticalListSortingStrategy}>
             {info.items.map((it, idx) => (
               <div key={it.id} data-item-wrap className="scroll-mt-28">
-              {idx > 0 && chipsAt.get(idx) && <div className="pt-2 pb-1">{chipRow(chipsAt.get(idx)!)}</div>}
+              {idx > 0 && chipsAt.get(idx) && <div className={card ? "pt-1" : "pt-2 pb-1"}>{chipRow(chipsAt.get(idx)!)}</div>}
               {insertAt === idx ? (
                 <div className="py-1.5 pr-1 pl-9" data-popover>
                   <PlaceSearch
@@ -266,7 +300,7 @@ export function Section(p: Props) {
               label={p.legs.get("end")!.label}
             />
           )}
-          {chipsAt.get(info.items.length) && info.items.length > 0 && <div className="py-1.5">{chipRow(chipsAt.get(info.items.length)!)}</div>}
+          {chipsAt.get(info.items.length) && info.items.length > 0 && <div className={card ? "pt-1" : "py-1.5"}>{chipRow(chipsAt.get(info.items.length)!)}</div>}
           {info.key !== "orphan" && !p.readOnly && (
             <div className="flex items-center gap-2 pt-1.5 pl-6">
               <PlaceSearch near={p.near} countryCode={p.countryCode} onPick={p.onAddPlace} onNote={p.onAddNote} />

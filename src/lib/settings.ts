@@ -8,10 +8,12 @@ export interface Settings {
   flightPaths: "show" | "hide";
   /** Wide screens: the contents column with every day and its stops, or a thin icon rail. */
   contentsWidth: "thick" | "thin";
+  /** Bookings inside a day (flights, check-ins…): slim cards like the stops, or small pills. */
+  bookingStyle: "card" | "pill";
 }
 
 const KEY = "tp-settings";
-const DEFAULTS: Settings = { pinClick: "focus", flightPaths: "show", contentsWidth: "thick" };
+const DEFAULTS: Settings = { pinClick: "focus", flightPaths: "show", contentsWidth: "thick", bookingStyle: "card" };
 
 const read = (): Settings => {
   try {

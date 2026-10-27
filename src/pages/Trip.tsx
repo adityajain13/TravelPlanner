@@ -1004,6 +1004,7 @@ export function TripPage() {
                 searchContext={state.meta.destination}
                 countryCode={state.meta.countryCode}
                 chips={s.kind === "day" ? dayChips(state.reservations, s.date!) : []}
+                chipStyle={settings.bookingStyle}
                 legs={legsBySection.get(s.key)}
                 onLegMode={(itemId, m) =>
                   itemId === "end" || itemId.startsWith("dep:")

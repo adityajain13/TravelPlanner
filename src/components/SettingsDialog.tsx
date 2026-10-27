@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import { createPortal } from "react-dom";
-import { Crosshair, EyeOff, Moon, MoonStar, PanelBottom, PanelLeft, PanelLeftDashed, Plane, Sun, X } from "lucide-react";
+import { Crosshair, EyeOff, Moon, MoonStar, PanelBottom, PanelLeft, PanelLeftDashed, Plane, RectangleHorizontal, Pill, Sun, X } from "lucide-react";
 import { useTheme, type Theme } from "../lib/theme";
 import { useSettings, type Settings } from "../lib/settings";
 
@@ -58,6 +58,17 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
             { key: "thin", icon: <PanelLeftDashed />, short: "Thin" },
           ]}
           onPick={(k) => update({ contentsWidth: k })}
+        />
+        <div className="my-4 border-t border-line" />
+        <Row
+          title="Bookings in a day"
+          hint={settings.bookingStyle === "card" ? "Slim cards, lined up with the stops" : "Small pills under the stops"}
+          value={settings.bookingStyle}
+          options={[
+            { key: "card", icon: <RectangleHorizontal />, short: "Card" },
+            { key: "pill", icon: <Pill />, short: "Pill" },
+          ]}
+          onPick={(k) => update({ bookingStyle: k })}
         />
         <p className="mt-5 text-[12px] text-muted">Settings are saved on this device.</p>
       </div>
