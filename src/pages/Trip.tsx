@@ -67,6 +67,7 @@ import {
   isDraftSection,
 } from "../lib/trips";
 import { DayCompare } from "../components/DayCompare";
+import { autoTimes, DEFAULT_DAY_START, DEFAULT_STAY } from "../lib/autoTime";
 import { dayColor, LIST_COLOR } from "../lib/colors";
 import { RES_GLYPH } from "../lib/pinArt";
 import { flightAirports, flightArc, flightInstant, loadAirports, zoneAt, type Airport, type AirportDb } from "../lib/airports";
@@ -302,6 +303,7 @@ export function TripPage() {
       }
     const timeOf = (t?: string) => (t && /^\d{1,2}:\d{2}/.test(t) ? t.padStart(5, "0") : undefined);
     const ll = (p: { lat: number; lng: number }): [number, number] => [p.lng, p.lat];
+    const landings = new Map<string, string>(); // plan → when that day's flight lands (auto times start then)
     let ghost = false; // set by walk() below: legs of a plan that isn't shown
     const pushLeg = (s: SectionInfo, toId: string, label: string, from: [number, number], to: [number, number], at?: string, modeOverride?: TravelMode) => {
       if (Math.abs(from[0] - to[0]) + Math.abs(from[1] - to[1]) < 0.0005) return;
@@ -328,6 +330,7 @@ export function TripPage() {
         .filter((o) => !todayIn.some((f) => connects(f, o)))
         .sort((a, b) => (flightInstant(a.r, "dep") ?? 0) - (flightInstant(b.r, "dep") ?? 0))[0];
       const landed = landing ? timeOf(landing.r.endTime) : undefined;
+      if (landed) landings.set(s.writeKey ?? s.key, landed);
       if (leaving && s.kind === "day") {
         // To the departure airport: from the last stop before take-off, else from where you slept
         const depAt = timeOf(leaving.r.startTime);
@@ -398,7 +401,7 @@ export function TripPage() {
         if (r.lat != null && r.lng != null && r.type !== "flight" && !pins.some((p) => p.id === `res:${r.id}` || (p.id.startsWith("res:") && p.name === r.title)))
           // One pin per booking (several travellers' copies share it), with its type's symbol
           pins.push({ id: `res:${r.id}`, lat: r.lat, lng: r.lng, color: "#e8ece9", label: "", glyph: RES_GLYPH[r.type], name: r.title });
-    return { sections, pins, legs };
+    return { sections, pins, legs, landings };
   }, [state, focus, airportDb, dayDraft]);
 
   // Airports from flight bookings: a plane pin each, and an arc per flight (never routed like a leg)
@@ -446,6 +449,29 @@ export function TripPage() {
     }
     return m;
   }, [view, legResults]);
+
+  // Settings → Stop times: Auto. Each day's stops get times worked out from the day's start, how
+  // long each stop takes and the routes between; the cards show those instead of typed times.
+  const autoOn = settings.timing === "auto";
+  const timed = useMemo(() => {
+    const info = new Map<string, { stay: number; isDefault: boolean; nextDay: boolean }>();
+    if (!view || !state || !autoOn) return { sections: view?.sections ?? [], info };
+    const sections = view.sections.map((s) => {
+      if (s.kind !== "day") return s;
+      const ver = s.writeKey ?? s.key;
+      const t = autoTimes(s.items, legsBySection.get(ver), state.meta.dayStarts?.[s.date!] ?? DEFAULT_DAY_START, view.landings.get(ver));
+      return {
+        ...s,
+        items: s.items.map((it) => {
+          const x = t.get(it.id);
+          if (!x) return it;
+          info.set(it.id, { stay: it.stay ?? DEFAULT_STAY, isDefault: it.stay == null, nextDay: x.nextDay });
+          return { ...it, startTime: x.start, endTime: x.end };
+        }),
+      };
+    });
+    return { sections, info };
+  }, [view, state, autoOn, legsBySection]);
 
   // Suggest a cover photo once, for editable trips that don't have one
   // Hotels (and restaurants) booked without a pin — e.g. an email address the map search didn't
@@ -686,7 +712,7 @@ export function TripPage() {
   const checkedIds = flatIds.filter((x) => checked.has(x));
 
   // Place panel over the map for the open card
-  const openSection = selectedId ? view.sections.find((s) => s.items.some((i) => i.id === selectedId)) : undefined;
+  const openSection = selectedId ? timed.sections.find((s) => s.items.some((i) => i.id === selectedId)) : undefined;
   const openItem = openSection?.items.find((i) => i.id === selectedId && i.kind === "place");
   const openPlaces = openSection?.items.filter((i) => i.kind === "place") ?? [];
   const openIdx = openItem ? openPlaces.findIndex((i) => i.id === openItem.id) : -1;
@@ -1049,7 +1075,7 @@ export function TripPage() {
           </div>
           {canReview && <InboxPanel items={inbox} doc={doc} state={state} onDone={(itemId) => setInbox((xs) => xs.filter((x) => x.id !== itemId))} />}
           <DndContext sensors={readOnly ? [] : sensors} collisionDetection={closestCorners} onDragStart={onDragStart} onDragEnd={onDragEnd}>
-            {view.sections.map((s, si) => (
+            {timed.sections.map((s, si) => (
               <Fragment key={s.key}>
               {si === 0 && s.kind !== "list" && !readOnly && <AddSection onAdd={(t) => addList(doc, t)} />}
               <Section
@@ -1164,6 +1190,25 @@ export function TripPage() {
                       }
                     : undefined
                 }
+                autoTimes={autoOn && s.kind === "day" ? timed.info : undefined}
+                onStay={readOnly ? undefined : (itemId, m) => updateItem(doc, itemId, { stay: m })}
+                dayStart={
+                  autoOn && s.kind === "day"
+                    ? {
+                        value: state.meta.dayStarts?.[s.date!] ?? DEFAULT_DAY_START,
+                        isDefault: !state.meta.dayStarts?.[s.date!],
+                        landed: view.landings.get(s.writeKey ?? s.key),
+                        onChange: readOnly
+                          ? undefined
+                          : (t) => {
+                              const next = { ...(state.meta.dayStarts ?? {}) };
+                              if (t) next[s.date!] = t;
+                              else delete next[s.date!];
+                              updateMeta(doc, { dayStarts: next });
+                            },
+                      }
+                    : undefined
+                }
                 onSubtitle={(t) => {
                   const next = { ...(state.meta.subtitles ?? {}) };
                   if (t) next[s.key] = t;
@@ -1244,7 +1289,9 @@ export function TripPage() {
               readOnly={readOnly}
               versions={vers.map((v) => {
                 const ver = v.id ? draftSection(v.id) : dayKey;
-                const items = of(ver);
+                const raw = of(ver);
+                const at = autoOn ? autoTimes(raw, legsBySection.get(ver), state.meta.dayStarts?.[compareDay] ?? DEFAULT_DAY_START, view.landings.get(ver)) : null;
+                const items = at ? raw.map((it) => (at.get(it.id) ? { ...it, startTime: at.get(it.id)!.start, endTime: at.get(it.id)!.end } : it)) : raw;
                 const vlegs = view.legs.filter((l) => l.ver === ver);
                 const routes: Route[] = vlegs.map((l) => {
                   const r = legResults.get(l.req.key);

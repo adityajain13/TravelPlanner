@@ -10,10 +10,12 @@ export interface Settings {
   contentsWidth: "thick" | "thin";
   /** Bookings inside a day (flights, check-ins…): slim cards like the stops, or small pills. */
   bookingStyle: "card" | "pill";
+  /** Stop times typed in, or worked out from how long each stop takes plus the routes. */
+  timing: "set" | "auto";
 }
 
 const KEY = "tp-settings";
-const DEFAULTS: Settings = { pinClick: "focus", flightPaths: "show", contentsWidth: "thick", bookingStyle: "card" };
+const DEFAULTS: Settings = { pinClick: "focus", flightPaths: "show", contentsWidth: "thick", bookingStyle: "card", timing: "set" };
 
 const read = (): Settings => {
   try {
