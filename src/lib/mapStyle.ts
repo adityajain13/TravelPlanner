@@ -44,8 +44,22 @@ export function buildStyle(theme: Theme, mode: MapMode): StyleSpecification {
     };
     style.layers = [
       { id: "satellite", type: "raster", source: "satellite" },
-      // Labels are drawn with the dark flavour so text gets a dark halo over imagery
-      ...layers("protomaps", namedFlavor("dark"), { lang: "en", labelsOnly: true }),
+      // Labels over imagery: white text with a strong dark halo so it reads on any photo
+      // (the flavour's own grey-on-grey labels vanished over rooftops)
+      ...layers("protomaps", namedFlavor("dark"), { lang: "en", labelsOnly: true }).map((l) =>
+        l.type === "symbol"
+          ? {
+              ...l,
+              paint: {
+                ...l.paint,
+                "text-color": /road|street|highway/.test(l.id) ? "#f1f3f2" : "#ffffff",
+                "text-halo-color": "rgba(0,0,0,0.85)",
+                "text-halo-width": 1.6,
+                "text-halo-blur": 0.4,
+              },
+            }
+          : l,
+      ),
     ];
   } else {
     style.layers = layers("protomaps", fl, { lang: "en" });
