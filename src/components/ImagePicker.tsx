@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import { Photo } from "./Photo";
 import { PhotoCredit } from "./PhotoCredit";
 import { Check, ImageOff, Link2, Loader2, Search, Trash2, X } from "lucide-react";
-import { googlePhotos, searchImages, type PlaceImage, trackPick, forStorage, unsplashIssue } from "../lib/images";
+import { googlePhotos, searchImages, webImages, type PlaceImage, trackPick, forStorage, unsplashIssue } from "../lib/images";
 import { GOOGLE_KEY } from "../lib/google";
 import { inputCls } from "./NewTripDialog";
 
@@ -34,6 +34,16 @@ export function ImagePicker({
   const [link, setLink] = useState("");
   const [broken, setBroken] = useState<Set<string>>(new Set());
   const [google, setGoogle] = useState<PlaceImage[] | null>(null);
+  const [web, setWeb] = useState<PlaceImage[] | null>(null);
+  useEffect(() => {
+    if (!term.trim()) return setWeb([]);
+    const ctrl = new AbortController();
+    setWeb(null);
+    webImages(term, ctrl.signal)
+      .then(setWeb)
+      .catch(() => !ctrl.signal.aborted && setWeb([]));
+    return () => ctrl.abort();
+  }, [term]);
   // Pasted link: previewed first, used only once it actually loads
   const linkUrl = /^https?:\/\/\S+$/.test(link.trim()) ? link.trim() : "";
   const [linkState, setLinkState] = useState<"idle" | "loading" | "ok" | "bad">("idle");
@@ -69,7 +79,8 @@ export function ImagePicker({
     onClose();
   };
 
-  const shown = results && google ? [...google, ...results].filter((r) => !broken.has(r.thumb)) : null;
+  // Order: the place's own Google Maps photos, web image search (most like Google Images), then the rest
+  const shown = results && google && web ? [...google, ...web, ...results].filter((r) => !broken.has(r.thumb)) : null;
 
   return createPortal(
     <div className="fixed inset-0 z-[100] grid grid-cols-[minmax(0,1fr)] place-items-center bg-black/65 p-4 backdrop-blur-sm" onClick={onClose}>
@@ -181,7 +192,7 @@ export function ImagePicker({
             </button>
           )}
         </div>
-        <p className="-mt-2 text-[10px] text-muted/70">Photos from Google Maps, Unsplash, Wikipedia, Wikimedia Commons and Openverse, with credits kept. Check each image's license before reusing it elsewhere.</p>
+        <p className="-mt-2 text-[10px] text-muted/70">Photos from Google Maps, the web (Brave Search), Unsplash, Wikipedia, Wikimedia Commons and Openverse, with credits kept. Check each image's license before reusing it elsewhere.</p>
       </div>
     </div>,
     document.body,

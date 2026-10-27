@@ -29,7 +29,8 @@ export function Photo({ srcs, className, alt = "", onFail }: { srcs: (string | u
       src={list[i]}
       alt={alt}
       loading="lazy"
-      referrerPolicy="no-referrer"
+      // Google photo URLs carry the referrer-restricted key, so they must send the site as referrer
+      referrerPolicy={/googleapis\.com\//.test(list[i]) ? "strict-origin-when-cross-origin" : "no-referrer"}
       className={className}
       onError={() => {
         if (i + 1 >= list.length) onFail?.();
