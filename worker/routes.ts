@@ -64,7 +64,9 @@ async function japan(req: Request, env: Env, url: URL): Promise<Response> {
       start: `${body.from![1]},${body.from![0]}`,
       goal: `${body.to![1]},${body.to![0]}`,
       shape: "true",
-      limit: "1",
+      // Several candidates in one request; we keep the quickest (the first isn't always it)
+      limit: "5",
+      order: "time",
     });
     // Local Japan time, without the offset
     if (withTime && body.when) q.set("start_time", body.when.slice(0, 19));
@@ -73,7 +75,7 @@ async function japan(req: Request, env: Env, url: URL): Promise<Response> {
     });
   };
   // Kept in D1 for a year, shared by everyone: the same hop at the same hour isn't searched twice
-  const cacheKey = `${body.from.map((v) => v.toFixed(4)).join(",")}|${body.to.map((v) => v.toFixed(4)).join(",")}|${(body.when ?? "").slice(0, 13)}`;
+  const cacheKey = `v2|${body.from.map((v) => v.toFixed(4)).join(",")}|${body.to.map((v) => v.toFixed(4)).join(",")}|${(body.when ?? "").slice(0, 13)}`;
   const YEAR = 365 * 86400000;
   const hit = await env.DB.prepare("SELECT body FROM transit_cache WHERE key = ? AND created_at > ?").bind(cacheKey, Date.now() - YEAR).first<{ body: string }>();
   if (hit) return new Response(hit.body, { headers: { "content-type": "application/json" } });
@@ -82,7 +84,7 @@ async function japan(req: Request, env: Env, url: URL): Promise<Response> {
   if (!res.ok && body.when && res.status !== 429 && res.status !== 403) res = await call(false); // e.g. a date outside the timetable
   if (!res.ok) return error(res.status === 429 ? 429 : 502, res.status === 429 ? "NAVITIME monthly limit reached" : `NAVITIME ${res.status}: ${(await res.text()).slice(0, 120)}`);
   const j = (await res.json()) as { items?: NaviItem[] };
-  const it = j.items?.[0];
+  const it = [...(j.items ?? [])].filter((x) => x.summary?.move?.time).sort((a, b) => a.summary!.move!.time! - b.summary!.move!.time!)[0];
   const keep = async (r: Response) => {
     const text = await r.text();
     await env.DB.prepare("INSERT OR REPLACE INTO transit_cache (key, body, created_at) VALUES (?, ?, ?)").bind(cacheKey, text, Date.now()).run().catch(() => undefined);

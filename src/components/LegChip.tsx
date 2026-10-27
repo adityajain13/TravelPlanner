@@ -48,7 +48,7 @@ export function LegChip({ mode, state, readOnly, onMode, from, to, label }: { mo
           </span>
         )}
         <span className="shrink-0 [&>svg]:size-3.5">{state === "loading" ? <Loader2 className="animate-spin" /> : MODE_ICON[shownMode]}</span>
-        <span className="min-w-0 truncate" title={steps?.length ? `${text}\n${steps.map((st) => (st.mode === "WALK" ? `walk ${st.minutes}m` : `${st.name ?? st.mode.toLowerCase()} ${st.minutes}m`)).join(" → ")}` : text}>{text.replace(" (rough estimate)", " (rough)")}</span>
+        <span className="min-w-0 truncate" title={(res?.source === "navitime" ? "Train times: NAVITIME (average times)\n" : res?.mode === "transit" && !res.rough ? "Train times: Transitous\n" : "") + (steps?.length ? `${text}\n${steps.map((st) => (st.mode === "WALK" ? `walk ${st.minutes}m` : `${st.name ?? st.mode.toLowerCase()} ${st.minutes}m`)).join(" → ")}` : text)}>{text.replace(" (rough estimate)", " (rough)")}</span>
       </button>
       {from && to && shownMode !== "flight" && (
         <a
