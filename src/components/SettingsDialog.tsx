@@ -20,8 +20,8 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
   }, [onClose]);
 
   const options: { key: Settings["pinClick"]; icon: React.ReactNode; short: string; title: string; hint: string }[] = [
-    { key: "focus", icon: <Crosshair />, short: "Zoom", title: "Zoom to the pin", hint: "Centres and zooms on it, then opens its card" },
-    { key: "card", icon: <PanelBottom />, short: "Card", title: "Just open the card", hint: "Opens its card; the map stays where it is" },
+    { key: "focus", icon: <Crosshair />, short: "Zoom", title: "Zoom to the pin", hint: "Zooms in and opens its card" },
+    { key: "card", icon: <PanelBottom />, short: "Card", title: "Just open the card", hint: "Opens its card; map stays put" },
   ];
 
   return createPortal(
@@ -44,15 +44,27 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
   );
 }
 
-/** A setting row: label + current choice's description on the left, a segmented switch on the right. */
+/** A setting row: label + one-line description on the left, a sliding segmented switch on the right. */
 function Row<K extends string>({ title, hint, value, options, onPick }: { title: string; hint: string; value: K; options: { key: K; icon: React.ReactNode; short: string }[]; onPick: (k: K) => void }) {
+  const at = Math.max(0, options.findIndex((o) => o.key === value));
   return (
     <div className="flex items-center justify-between gap-4 max-sm:flex-col max-sm:items-stretch">
       <div className="min-w-0">
         <p className="text-[15px] font-bold">{title}</p>
-        <p className="mt-0.5 text-[13px] text-muted">{hint}</p>
+        <p className="mt-0.5 truncate text-[13px] text-muted">{hint}</p>
       </div>
-      <div className="flex shrink-0 rounded-lg border border-line bg-bg p-0.5" role="radiogroup" aria-label={title}>
+      <div
+        className="relative grid shrink-0 rounded-lg border border-line bg-bg p-0.5"
+        style={{ gridTemplateColumns: `repeat(${options.length}, minmax(0, 1fr))` }}
+        role="radiogroup"
+        aria-label={title}
+      >
+        {/* The green thumb slides between equal-width segments */}
+        <span
+          aria-hidden
+          className="absolute inset-y-0.5 left-0.5 rounded-md bg-accent transition-transform duration-300 ease-out"
+          style={{ width: `calc((100% - 4px) / ${options.length})`, transform: `translateX(${at * 100}%)` }}
+        />
         {options.map((o) => {
           const on = value === o.key;
           return (
@@ -61,7 +73,7 @@ function Row<K extends string>({ title, hint, value, options, onPick }: { title:
               role="radio"
               aria-checked={on}
               onClick={() => onPick(o.key)}
-              className={`flex flex-1 items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-[12px] font-bold tracking-wider uppercase transition-colors [&>svg]:size-3.5 ${on ? "bg-accent text-on-accent" : "text-muted hover:text-fg"}`}
+              className={`relative z-10 flex items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-[12px] font-bold tracking-wider uppercase transition-colors duration-300 [&>svg]:size-3.5 ${on ? "text-on-accent" : "text-muted hover:text-fg"}`}
             >
               {o.icon}
               {o.short}
