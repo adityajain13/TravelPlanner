@@ -49,7 +49,8 @@ interface Props {
   readOnly?: boolean;
   onEdit: (id: string | undefined) => void;
   onUse: (id: string) => void;
-  onRename: (id: string, name: string) => void;
+  /** id undefined: renames the day's plan. */
+  onRename: (id: string | undefined, name: string) => void;
   onDelete: (id: string) => void;
   onFork: (from: string | undefined) => void;
   onClose: () => void;
@@ -140,19 +141,19 @@ function Column({ v, box, ...p }: Props & { v: Version; box: Box }) {
   return (
     <div className={`flex w-[300px] shrink-0 snap-center flex-col rounded-2xl border bg-bg/60 max-sm:w-[86vw] ${isShown ? "border-accent/50" : "border-line"}`}>
       <div className="flex items-center gap-2 px-4 pt-4">
-        {v.id && !p.readOnly ? (
+        {!p.readOnly ? (
           <input
             value={name}
             onChange={(e) => setName(e.target.value)}
-            onBlur={() => (name.trim() ? name !== v.name && p.onRename(v.id!, name) : setName(v.name))}
+            onBlur={() => (name.trim() ? name !== v.name && p.onRename(v.id, name) : setName(v.name))}
             onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()}
             className="min-w-0 flex-1 rounded-md bg-transparent font-display text-[19px] outline-none focus:bg-surface-2 focus:px-1.5"
-            aria-label="Draft name"
+            aria-label="Plan name"
           />
         ) : (
           <h3 className="min-w-0 flex-1 truncate font-display text-[19px]">{v.name}</h3>
         )}
-        {!v.id && <span className="shrink-0 rounded-full bg-accent/15 px-2 py-0.5 text-[11px] font-bold tracking-wide text-accent uppercase">Current</span>}
+        {!v.id && <span className="shrink-0 rounded-full bg-accent/15 px-2 py-0.5 text-[11px] font-bold tracking-wide text-accent uppercase">Day's plan</span>}
         {isShown && v.id && <span className="shrink-0 rounded-full bg-surface-2 px-2 py-0.5 text-[11px] font-bold tracking-wide text-muted uppercase">Viewing</span>}
       </div>
 
@@ -198,8 +199,8 @@ function Column({ v, box, ...p }: Props & { v: Version; box: Box }) {
               onClick={async () => {
                 if (
                   await askConfirm({
-                    title: `Make “${v.name}” the plan?`,
-                    body: "Its stops replace the day's plan. The current plan is kept as a draft, so you can switch back.",
+                    title: `Make “${v.name}” the day's plan?`,
+                    body: `“${p.versions.find((x) => !x.id)?.name}” moves to the drafts with its name, so you can swap back any time.`,
                     confirmLabel: "Use this plan",
                     danger: false,
                     icon: <Check />,

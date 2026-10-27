@@ -120,8 +120,15 @@ export function TripMap({ pins, routes, selectedId, onSelect, theme, fitKey, fal
     });
     if (!mini) map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "bottom-right");
     // Pins may have arrived (or the panel sized itself) while the map was loading: frame them now
+    // The compact credits open expanded on wide maps; fold them into the (i) button once they've
+    // been filled in (pressing it again shows them, as MapLibre's own toggle does)
+    map.once("idle", () => {
+      const attrib = container.current?.querySelector(".maplibregl-ctrl-attrib.maplibregl-compact-show");
+      attrib?.querySelector<HTMLButtonElement>(".maplibregl-ctrl-attrib-button")?.click();
+    });
     map.once("load", () => {
       map.resize();
+
       const b = bounds();
       if (b && !latest.current.selectedId) map.fitBounds(b, { ...fit, duration: 0 });
     });

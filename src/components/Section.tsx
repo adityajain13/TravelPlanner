@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useDroppable } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
-import { ChevronDown, Columns3, Eye, GitBranch, PenLine, ListChecks, MapPin, Pencil, Plus, StickyNote } from "lucide-react";
+import { Check, ChevronDown, Columns3, Eye, GitBranch, PenLine, ListChecks, MapPin, Pencil, Plus, StickyNote } from "lucide-react";
 import type { Item, Reservation } from "../lib/trips";
 import { RES_ICON } from "./Reservations";
 import { LegChip } from "./LegChip";
@@ -205,6 +205,7 @@ export function Section(p: Props) {
                 return (
                   <button
                     key={v.id ?? "main"}
+                    title={v.id ? "Draft" : "The day's plan"}
                     role="tab"
                     aria-selected={on}
                     onClick={() => p.onVersion?.(v.id)}
@@ -212,7 +213,7 @@ export function Section(p: Props) {
                       on ? "border-accent/50 bg-accent/15 text-accent" : "border-line text-muted hover:text-fg"
                     }`}
                   >
-                    {v.id ? <GitBranch className="size-3 shrink-0" /> : null}
+                    {v.id ? <GitBranch className="size-3 shrink-0" /> : <Check className="size-3 shrink-0" aria-label="Day's plan" />}
                     <span className="truncate">{v.name}</span>
                   </button>
                 );
