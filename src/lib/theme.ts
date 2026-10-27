@@ -14,7 +14,7 @@ const read = (): Theme => {
   return c.contains("amoled") ? "amoled" : c.contains("dark") ? "dark" : "light";
 };
 
-export function useTheme(): [Theme, () => void] {
+export function useTheme(): [Theme, () => void, (t: Theme) => void] {
   const [theme, setTheme] = useState<Theme>(read);
   useEffect(() => {
     const c = document.documentElement.classList;
@@ -26,12 +26,15 @@ export function useTheme(): [Theme, () => void] {
     } catch {
       /* storage unavailable */
     }
+    window.dispatchEvent(new CustomEvent("tp-theme", { detail: theme })); // other hook users on this page
   }, [theme]);
   // Other tabs/pages using the hook stay in step
   useEffect(() => {
     const s = (e: StorageEvent) => e.key === "tp-theme" && e.newValue && setTheme(e.newValue as Theme);
+    const here = (e: Event) => setTheme((e as CustomEvent<Theme>).detail);
     window.addEventListener("storage", s);
-    return () => window.removeEventListener("storage", s);
+    window.addEventListener("tp-theme", here);
+    return () => (window.removeEventListener("storage", s), window.removeEventListener("tp-theme", here));
   }, []);
-  return [theme, () => setTheme((t) => NEXT[t])];
+  return [theme, () => setTheme((t) => NEXT[t]), setTheme];
 }

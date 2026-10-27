@@ -16,7 +16,12 @@ function expand(u: string): string[] {
 /** <img> that walks a list of URLs on error (e.g. large → API thumbnail) and reports a final failure. */
 export function Photo({ srcs, className, alt = "", onFail }: { srcs: (string | undefined)[]; className?: string; alt?: string; onFail?: () => void }) {
   const list = [...new Set(srcs.filter((s): s is string => !!s && /^https?:\/\//.test(s)).flatMap(expand))];
-  const [i, setI] = useState(0);
+  // Start over when the photo changes: a new link used to inherit the old one's failed attempts
+  // (and show nothing until a reload)
+  const key = list.join("|");
+  const [at, setAt] = useState({ key, i: 0 });
+  const i = at.key === key ? at.i : 0;
+  const setI = (n: number) => setAt({ key, i: n });
   if (!list.length || i >= list.length) return null;
   return (
     <img

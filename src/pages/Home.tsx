@@ -12,12 +12,14 @@ import { db, type TripIndexRow } from "../lib/db";
 import { formatRange, todayISO } from "../lib/dates";
 import { deleteTrip } from "../lib/trips";
 import { useTheme } from "../lib/theme";
-import { ThemeToggle } from "../components/ThemeToggle";
+import { SettingsDialog } from "../components/SettingsDialog";
+import { Settings as SettingsIcon } from "lucide-react";
 import { NewTripDialog } from "../components/NewTripDialog";
 import { WanderlogImport } from "../components/WanderlogImport";
 
 export function Home() {
-  const [theme, toggleTheme] = useTheme();
+  useTheme(); // applies the saved theme
+  const [showSettings, setShowSettings] = useState(false);
   const { email, logout } = useSession();
 
   const [unmatched, setUnmatched] = useState<InboxItem[]>([]);
@@ -46,7 +48,10 @@ export function Home() {
         <Logo size={30} />
         <div className="flex items-center gap-1">
           <span className="mr-1 hidden text-xs text-muted sm:inline">{email}</span>
-          <ThemeToggle theme={theme} toggle={toggleTheme} />
+          <button onClick={() => setShowSettings(true)} className="grid size-9 place-items-center rounded-full text-muted transition-colors hover:bg-surface-2 hover:text-fg" aria-label="Settings" title="Settings">
+            <SettingsIcon className="size-4" />
+          </button>
+          {showSettings && <SettingsDialog onClose={() => setShowSettings(false)} />}
           <button
             onClick={async () => (await askConfirm({ title: "Sign out on this device?", body: "Your trips stay saved here.", confirmLabel: "Sign out", danger: false, icon: <LogOut /> })) && logout()}
             className="grid size-9 place-items-center rounded-full text-muted transition-colors hover:bg-surface-2 hover:text-fg"
