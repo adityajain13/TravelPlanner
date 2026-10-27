@@ -108,8 +108,17 @@ export function PlaceSearch({ near, countryCode, onPick, onNote, autoFocus, onCa
     ...google.map((g) => ({ row: { kind: "google" as const, s: g }, score: textScore(term, { name: g.main, address: g.secondary }) + 0.02 })),
   ];
   const bestGoogle = Math.max(-1, ...scored.filter((x) => x.row.kind === "google").map((x) => x.score));
+  // The same place from both sources: keep Google's (it brings details and photos)
+  const fold = (t?: string) => (t ?? "").normalize("NFKD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
+  const placeWords = (t?: string) => new Set(fold(t).split(" ").filter((w) => w.length >= 4));
+  const dupOfGoogle = (r: PlaceResult) =>
+    google.some((g) => {
+      if (fold(g.main) !== fold(r.name)) return false;
+      const gw = placeWords(g.secondary);
+      return [...placeWords(r.address)].some((w) => gw.has(w));
+    });
   const ranked = scored
-    .filter((x) => !(x.row.kind === "osm" && bestGoogle >= 0.75 && x.score < 0.5))
+    .filter((x) => !(x.row.kind === "osm" && ((bestGoogle >= 0.75 && x.score < 0.5) || dupOfGoogle(x.row.r))))
     .sort((a, b) => b.score - a.score)
     .map((x) => x.row as Row);
   const rows: Row[] = [...ranked, ...(isLink ? [] : [{ kind: "note" as const }])];
