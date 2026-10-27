@@ -1,5 +1,5 @@
 import { dtf } from "../lib/intl";
-import { RichText } from "./RichText";
+import { RichField, RichText } from "./RichText";
 import { airportsNow, flightAirports, localToUtc, travelInstant } from "../lib/airports";
 import { useState } from "react";
 import { CurrencySelect } from "./CurrencySelect";
@@ -440,7 +440,7 @@ export function ReservationForm({ doc, state, initial, onClose }: { doc: Y.Doc; 
             </label>
             <label className="block space-y-1">
               <span className="text-xs text-muted">{multi ? "Notes (seat, bags…)" : "Notes"}</span>
-              <textarea rows={2} value={p.notes ?? ""} onChange={(e) => setPerson(i, { notes: e.target.value })} className={inputCls} />
+              <RichField value={p.notes ?? ""} onCommit={(t) => setPerson(i, { notes: t })} placeholder="Seat, bags, anything else" className={`${inputCls} min-h-[4.5rem] text-[15px] leading-relaxed`} editClassName="focus:border-accent" />
             </label>
           </div>
         ))}

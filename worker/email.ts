@@ -1,6 +1,7 @@
 import PostalMime from "postal-mime";
 import { sendMail, type Env } from "./util";
 import { canLogin } from "./auth";
+import { DETAILS_SCHEMA, formatBookingNotes } from "./bookingNotes";
 
 /*
  * trips@adityajain.ca → Email Routing → this handler.
@@ -21,7 +22,8 @@ export interface Booking {
   address?: string;
   from?: string;
   to?: string;
-  notes?: string; // seat, room type, cancellation deadline, etc.
+  notes?: string; // standardized: one "**Label:** value" line per detail (see bookingNotes.ts)
+  details?: Record<string, string>;
   traveler?: string; // passenger / guest name
   cost?: number; // total paid / due for this booking
   currency?: string; // ISO 4217
@@ -60,7 +62,8 @@ const TOOL = {
             address: { type: "string" },
             from: { type: "string", description: "Departure city/station. For flights include the airport's IATA code, e.g. \"Toronto (YYZ)\"." },
             to: { type: "string", description: "Arrival city/station. For flights include the IATA code, e.g. \"Osaka (KIX)\"." },
-            notes: { type: "string", description: "Useful extras only: seats, room type, check-in time, cancellation deadline, terminal." },
+            details: DETAILS_SCHEMA,
+            notes: { type: "string", description: "Only useful extras that fit none of the details fields; short. Usually empty." },
             traveler: { type: "string", description: "Passenger or guest name this booking is for, as printed (e.g. \"Aditya Jain\"). One booking entry per passenger when the email lists several." },
             cost: { type: "number", description: "Price as a plain number (taxes and fees included), if shown anywhere in the email or attachments. When one price covers several legs or segments (connections, round trips), put it on the FIRST leg only and leave cost out of the others, unless per-leg prices are printed." },
             currency: { type: "string", description: "ISO 4217 code of cost, e.g. CAD, JPY, EUR. Infer from symbols and the booking site (¥ on a Japanese site = JPY)." },
@@ -127,6 +130,11 @@ ${body.slice(0, MAX_CHARS)}`;
   if (!out) throw new Error("No structured output");
   const valid = new Set(trips.map((t) => t.id));
   dedupeLegCosts(out.bookings);
+  // Same layout for every import: details in a fixed order per type, then any other notes
+  for (const b of out.bookings) {
+    b.notes = formatBookingNotes(b.type, b.details, b.notes);
+    delete b.details;
+  }
   return { ...out, trip_id: out.trip_id && valid.has(out.trip_id) ? out.trip_id : null };
 }
 

@@ -1,4 +1,5 @@
 import { verifyShareToken, type Role } from "./trips";
+import { DETAILS_SCHEMA, formatBookingNotes } from "./bookingNotes";
 import { Budget, countryAt, GENERIC_PLACE, geocode, OUT_OF_BUDGET, search, type Hit } from "./geocode";
 import { EXPENSE_CATEGORIES, render, RES_TYPES, type Item, type ItemInput, type Op, type Rec } from "./tripOps";
 import { json, type Env } from "./util";
@@ -151,7 +152,8 @@ const TOOLS = [
               address: { type: "string", description: "For lodging/restaurants; used to place a map pin." },
               cost: { type: "number" },
               cost_currency: { type: "string", description: "ISO code, e.g. JPY. Defaults to the trip currency." },
-              notes: { type: "string" },
+              details: DETAILS_SCHEMA,
+              notes: { type: "string", description: "Anything that fits none of the details fields." },
             },
             required: ["type", "title"],
           },
@@ -503,7 +505,8 @@ async function callTool(env: Env, name: string, a: Args): Promise<string> {
             address: str(x, "address"),
             cost: num(x, "cost"),
             costCurrency: str(x, "cost_currency")?.toUpperCase(),
-            notes: str(x, "notes"),
+            // Same standard layout as emailed bookings
+            notes: formatBookingNotes(type, x.details, str(x, "notes")),
           };
           if ((type === "lodging" || type === "restaurant") && (rec.address || rec.title)) {
             const hit = await geocode(String(rec.address ?? rec.title), { countries: resCountry ? [resCountry] : [], near: snap.meta.center, budget: resBudget });
