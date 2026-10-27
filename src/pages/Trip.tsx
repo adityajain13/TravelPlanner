@@ -1117,7 +1117,8 @@ export function TripPage() {
                 onRename={s.listId ? (t) => renameList(doc, s.listId!, t) : undefined}
                 onAddPlace={(p, index) => {
                   const newId = addItem(doc, s.writeKey ?? s.key, { kind: "place", name: p.name, address: p.address || undefined, category: p.category || undefined, lat: p.lat, lng: p.lng, osmId: p.osmId, googlePlaceId: p.googlePlaceId }, undefined, index);
-                  setSelectedId(newId);
+                  // Lists (Places to visit…) collect ideas: add them closed; a day's new stop opens
+                  if (s.kind === "day") setSelectedId(newId);
                   revealAdded(newId);
                   // Already on the trip elsewhere with a photo: reuse that photo
                   const all = readTrip(doc).items;
