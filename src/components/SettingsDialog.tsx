@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import { createPortal } from "react-dom";
-import { Crosshair, EyeOff, Moon, MoonStar, PanelBottom, Plane, Sun, X } from "lucide-react";
+import { Crosshair, EyeOff, Moon, MoonStar, PanelBottom, PanelLeft, PanelLeftDashed, Plane, Sun, X } from "lucide-react";
 import { useTheme, type Theme } from "../lib/theme";
 import { useSettings, type Settings } from "../lib/settings";
 
@@ -47,6 +47,17 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
             { key: "hide", icon: <EyeOff />, short: "Hide" },
           ]}
           onPick={(k) => update({ flightPaths: k })}
+        />
+        <div className="my-4 border-t border-line" />
+        <Row
+          title="Contents column"
+          hint={settings.contentsWidth === "thick" ? "Every day with its stops" : "Icons and day numbers only"}
+          value={settings.contentsWidth}
+          options={[
+            { key: "thick", icon: <PanelLeft />, short: "Thick" },
+            { key: "thin", icon: <PanelLeftDashed />, short: "Thin" },
+          ]}
+          onPick={(k) => update({ contentsWidth: k })}
         />
         <p className="mt-5 text-[12px] text-muted">Settings are saved on this device.</p>
       </div>

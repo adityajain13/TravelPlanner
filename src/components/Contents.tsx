@@ -1,6 +1,6 @@
 import { dtf } from "../lib/intl";
 import { useEffect, useState, type RefObject } from "react";
-import { ChevronDown, ChevronsLeft, ChevronsRight, PiggyBank, X } from "lucide-react";
+import { CalendarDays, ChevronDown, ChevronsLeft, ChevronsRight, PiggyBank, Ticket, X } from "lucide-react";
 import type { Reservation, ReservationType } from "../lib/trips";
 import type { SectionInfo } from "./Section";
 import { RES_ICON, RES_LABEL } from "./Reservations";
@@ -117,6 +117,69 @@ export function Contents(p: Props) {
       <button onClick={p.onHide} className="flex items-center gap-3 border-t border-line px-6 py-4 text-[16px] text-muted hover:text-fg">
         {p.variant === "drawer" ? <X className="size-5" /> : <ChevronsLeft className="size-5" />}
         {p.variant === "drawer" ? "Close" : "Hide sidebar"}
+      </button>
+    </nav>
+  );
+}
+
+/**
+ * Thin contents column (Settings → Contents column: Thin): the three tabs as icon buttons,
+ * then one dot per day (day-of-month, in the day's colour) that jumps to that day.
+ */
+export function ContentsThin(p: Omit<Props, "variant" | "subtitles">) {
+  const active = useScrollSpy(p.scrollRef, p.tab);
+  const days = p.sections.filter((s) => s.kind === "day");
+  const tabBtn = (tab: Tab, label: string, icon: React.ReactNode, targetId?: string) => {
+    const on = p.tab === tab;
+    return (
+      <button
+        key={tab}
+        onClick={() => p.go(tab, targetId)}
+        title={label}
+        className={`flex w-full flex-col items-center gap-1 rounded-xl py-2 text-[11px] font-semibold transition-colors [&>svg]:size-5 ${
+          on ? "bg-accent/15 text-accent" : "text-muted hover:bg-surface-2/60 hover:text-fg"
+        }`}
+      >
+        {icon}
+        {label}
+      </button>
+    );
+  };
+  return (
+    <nav className="flex h-full w-[76px] flex-col items-center" aria-label="Trip contents">
+      {p.header}
+      <div className="flex w-full flex-col gap-1 px-2 pt-3">
+        {tabBtn("plan", "Plan", <CalendarDays />)}
+        {tabBtn("bookings", "Bookings", <Ticket />)}
+        {tabBtn("budget", "Budget", <PiggyBank />, "budget-top")}
+      </div>
+      {days.length > 0 && <div className="mx-auto my-3 h-px w-8 bg-line" />}
+      {/* Days: scrolls on its own when the trip is long */}
+      <div className="flex min-h-0 w-full flex-1 flex-col items-center gap-1.5 overflow-y-auto px-2 pb-3 [scrollbar-width:none]">
+        {days.map((s) => {
+          const id = `sec-${s.key}`;
+          const on = p.tab === "plan" && active === id;
+          const d = parseISODate(s.date!);
+          return (
+            <button
+              key={s.key}
+              onClick={() => p.go("plan", id)}
+              title={`${dayLabel(s.date!)}${s.items.length ? ` · ${s.items.filter((i) => i.kind === "place").map((i) => i.name).join(" • ")}` : ""}`}
+              className={`flex w-full shrink-0 flex-col items-center rounded-xl py-1.5 transition-colors ${on ? "bg-surface-2 text-fg" : "text-muted hover:bg-surface-2/60 hover:text-fg"}`}
+            >
+              <span className="text-[10px] font-semibold tracking-wide uppercase">{dtf(undefined, { weekday: "short", timeZone: "UTC" }).format(d)}</span>
+              <span
+                className={`mt-0.5 grid size-8 place-items-center rounded-full text-[14px] font-bold tabular-nums ${on ? "text-on-accent" : "text-fg"}`}
+                style={on ? { background: s.color } : { boxShadow: `inset 0 0 0 2px ${s.color}` }}
+              >
+                {d.getUTCDate()}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+      <button onClick={p.onHide} title="Hide sidebar" aria-label="Hide sidebar" className="grid h-14 w-full shrink-0 place-items-center border-t border-line text-muted hover:text-fg">
+        <ChevronsLeft className="size-5" />
       </button>
     </nav>
   );

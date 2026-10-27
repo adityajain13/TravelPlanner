@@ -18,7 +18,7 @@ import {
 } from "@dnd-kit/core";
 import { sortableKeyboardCoordinates } from "@dnd-kit/sortable";
 import { ArrowLeft, Camera, Redo2, Undo2, Copy, FolderInput, Trash2, X, Cloud, CloudOff, Eye, ImagePlus, List, Loader2, Map as MapIcon, PanelLeft, Share2 } from "lucide-react";
-import { Contents, type Tab } from "../components/Contents";
+import { Contents, ContentsThin, type Tab } from "../components/Contents";
 import { useConverter } from "../lib/fx";
 import { budgetLines, lineForItem, totals, travelersOf } from "../lib/budget";
 import { bestImage, coverFor, firstPhoto, googlePhotos, sameSubject } from "../lib/images";
@@ -692,6 +692,23 @@ export function TripPage() {
       </button>
     </div>
   );
+  const thinBar = (
+    <div className="flex w-full flex-col items-center gap-1 border-b border-line py-3">
+      <Link to="/" title="All trips" className="mb-1">
+        <LogoMark size={30} />
+      </Link>
+      {!readOnly && (
+        <div className="flex gap-0.5">
+          <button onClick={history.undo} disabled={!history.canUndo} title={`Undo (${mod}Z)`} aria-label="Undo" className="grid size-8 place-items-center rounded-full text-muted hover:bg-surface-2 hover:text-fg disabled:opacity-40 disabled:hover:bg-transparent">
+            <Undo2 className="size-4" />
+          </button>
+          <button onClick={history.redo} disabled={!history.canRedo} title={`Redo (${mod}⇧Z)`} aria-label="Redo" className="grid size-8 place-items-center rounded-full text-muted hover:bg-surface-2 hover:text-fg disabled:opacity-40 disabled:hover:bg-transparent">
+            <Redo2 className="size-4" />
+          </button>
+        </div>
+      )}
+    </div>
+  );
   const contentsProps = {
     sections: view.sections.filter((s) => s.key !== ORPHAN),
     reservations: state.reservations,
@@ -706,9 +723,13 @@ export function TripPage() {
     <div className="flex h-full flex-col md:flex-row">
       {/* Contents column (wide screens); a drawer below that */}
       <div className={`hidden shrink-0 border-r border-line bg-bg ${planHidden || contentsHidden ? "" : "lg:block"}`}>
-        <div className="h-full w-[250px] xl:w-[280px]">
-          <Contents {...contentsProps} variant="column" header={undoBar} onHide={() => hideContents(true)} />
-        </div>
+        {settings.contentsWidth === "thin" ? (
+          <ContentsThin {...contentsProps} header={thinBar} onHide={() => hideContents(true)} />
+        ) : (
+          <div className="h-full w-[250px] xl:w-[280px]">
+            <Contents {...contentsProps} variant="column" header={undoBar} onHide={() => hideContents(true)} />
+          </div>
+        )}
       </div>
       {contentsDrawer && (
         <div className="fixed inset-0 z-[90] lg:hidden" onClick={() => setContentsDrawer(false)}>
