@@ -200,7 +200,8 @@ async function japanTransit(a: [number, number], b: [number, number], when?: str
   return {
     mode: "transit",
     coords: route.coords.length > 1 ? route.coords : [a, b],
-    distance: route.distance || distanceKm(a, b) * 1000,
+    // Never shorter than the straight line (older cached answers had only the walking part)
+    distance: Math.max(route.distance || 0, distanceKm(a, b) * 1000),
     duration: route.duration,
     steps: route.steps,
     transfers: route.transfers,
@@ -300,7 +301,8 @@ export function useLegs(requests: LegRequest[]): Map<string, LegState> {
         // NAVITIME answers (Japan) keep a year: the free plan only has a few hundred searches
         const ttl = r.mode !== "transit" ? TTL.other : typeof c?.result === "object" && c.result.source === "navitime" ? 365 * 864e5 : TTL.transit;
         const fresh = c && Date.now() - c.fetchedAt < ttl;
-        if (c && (fresh || !navigator.onLine)) set(r.key, c.result);
+        if (c && (fresh || !navigator.onLine))
+          set(r.key, typeof c.result === "object" && c.result.source === "navitime" ? { ...c.result, distance: Math.max(c.result.distance, distanceKm(r.from, r.to) * 1000) } : c.result);
         else todo.push(r);
       });
       for (const r of todo) {
