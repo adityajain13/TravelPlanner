@@ -171,7 +171,7 @@ export function Section(p: Props) {
         <div className="mt-2 space-y-0.5 px-3">
           <SortableContext items={info.items.map((i) => i.id)} strategy={verticalListSortingStrategy}>
             {info.items.map((it, idx) => (
-              <div key={it.id}>
+              <div key={it.id} data-item-wrap className="scroll-mt-28">
               {idx > 0 && chipsAt.get(idx) && <div className="pt-2 pb-1">{chipRow(chipsAt.get(idx)!)}</div>}
               {insertAt === idx ? (
                 <div className="py-1.5 pr-1 pl-9" data-popover>

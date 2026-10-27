@@ -32,7 +32,7 @@ import { autocomplete, findPlaceId, getDetails, GOOGLE_KEY, photoUrl, suggestion
 import { searchPlaces } from "../lib/photon";
 import { edit } from "../lib/trips";
 import { parseISODate } from "../lib/dates";
-import { scrollToId } from "../lib/scroll";
+import { scrollToEl, scrollToId } from "../lib/scroll";
 import { useUndo } from "../lib/undo";
 import { db } from "../lib/db";
 import { useSession } from "../lib/api";
@@ -632,6 +632,17 @@ export function TripPage() {
   const openItem = openSection?.items.find((i) => i.id === selectedId && i.kind === "place");
   const openPlaces = openSection?.items.filter((i) => i.kind === "place") ?? [];
   const openIdx = openItem ? openPlaces.findIndex((i) => i.id === openItem.id) : -1;
+  // After adding a stop: scroll so the leg into the stop above it sits at the top, i.e.
+  // route → previous stop → route → new stop (the add box stays just below)
+  const revealAdded = (newId: string) =>
+    requestAnimationFrame(() =>
+      requestAnimationFrame(() => {
+        const wrap = document.getElementById(`item-${newId}`)?.closest<HTMLElement>("[data-item-wrap]");
+        const prev = wrap?.previousElementSibling as HTMLElement | null;
+        const target = prev?.matches("[data-item-wrap]") ? prev : wrap;
+        if (target && scrollRef.current) scrollToEl(scrollRef.current, target, "start");
+      }),
+    );
   const goTo = (itemId: string) => {
     setSelectedId(itemId);
     requestAnimationFrame(() => scrollToId(scrollRef.current, `item-${itemId}`, "center"));
@@ -985,6 +996,7 @@ export function TripPage() {
                 onAddPlace={(p, index) => {
                   const newId = addItem(doc, s.key, { kind: "place", name: p.name, address: p.address || undefined, category: p.category || undefined, lat: p.lat, lng: p.lng, osmId: p.osmId, googlePlaceId: p.googlePlaceId }, undefined, index);
                   setSelectedId(newId);
+                  revealAdded(newId);
                   // Already on the trip elsewhere with a photo: reuse that photo
                   const all = readTrip(doc).items;
                   const added = all.find((x) => x.id === newId);
