@@ -1,7 +1,7 @@
 import { dtf } from "../lib/intl";
 import { useEffect, useRef, useState } from "react";
 import { Clock, Hourglass, X } from "lucide-react";
-import { DEFAULT_STAY, fmtStay, parseStay, STAY_OPTIONS } from "../lib/autoTime";
+import { DEFAULT_STAY, fmtStay, parseStay } from "../lib/autoTime";
 import { Popover } from "./DatePicker";
 
 /** "13:05" → "1:05 PM" (or "13:05" where the locale uses a 24-hour clock). */
@@ -288,15 +288,27 @@ export function TimeRangeField({
   );
 }
 
-/** "How long will you be here": pick a duration or type one ("1h30"). */
+/** Durations offered in the list: every 15 minutes up to 12 h. */
+const STAY_SLOTS = Array.from({ length: 48 }, (_, i) => (i + 1) * 15);
+
+/** "How long will you be here": the same look as the time picker — type one, or pick from the list. */
 export function StayField({ value, isDefault, onChange, disabled, className = "", children }: { value: number; isDefault?: boolean; onChange: (min: number | undefined) => void; disabled?: boolean; className?: string; children?: React.ReactNode }) {
   const btn = useRef<HTMLButtonElement>(null);
+  const list = useRef<HTMLUListElement>(null);
   const [open, setOpen] = useState(false);
   const [text, setText] = useState("");
   const [bad, setBad] = useState(false);
   useEffect(() => {
-    if (open) (setText(""), setBad(false));
-  }, [open]);
+    if (!open) return;
+    setText("");
+    setBad(false);
+    // Open on the current length, in the second row (one shorter option stays visible above it)
+    const idx = Math.max(0, Math.min(STAY_SLOTS.length - 1, Math.ceil(value / 15) - 1));
+    requestAnimationFrame(() => {
+      const el = list.current?.children[idx] as HTMLElement | undefined;
+      if (el && list.current) list.current.scrollTop += el.getBoundingClientRect().top - list.current.getBoundingClientRect().top - el.clientHeight - 4;
+    });
+  }, [open, value]);
   const commit = (v: number | undefined) => (onChange(v), setOpen(false));
   return (
     <>
@@ -317,8 +329,7 @@ export function StayField({ value, isDefault, onChange, disabled, className = ""
       </button>
       {open && btn.current && (
         <Popover anchor={btn.current} onClose={() => setOpen(false)}>
-          <div className="w-60 p-2" onClick={(e) => e.stopPropagation()}>
-            <p className="px-1 pb-1.5 text-[12px] font-semibold text-muted">How long will you be here?</p>
+          <div className="w-52 p-2" onClick={(e) => e.stopPropagation()}>
             <input
               autoFocus
               value={text}
@@ -329,21 +340,25 @@ export function StayField({ value, isDefault, onChange, disabled, className = ""
                 const m = parseStay(text);
                 m ? commit(m) : setBad(true);
               }}
-              placeholder="Type, e.g. 1h 30m"
+              placeholder="Type, e.g. 1h 20m"
               className={`w-full rounded-lg border bg-bg px-2.5 py-1.5 text-[14px] outline-none ${bad ? "border-danger" : "border-line focus:border-accent"}`}
             />
-            <div className="mt-2 grid grid-cols-3 gap-1">
-              {STAY_OPTIONS.map((m) => (
-                <button
-                  key={m}
-                  type="button"
-                  onClick={() => commit(m)}
-                  className={`rounded-lg px-1 py-1.5 text-[13px] ${!isDefault && m === value ? "bg-accent font-bold text-on-accent" : "text-fg hover:bg-surface-2"}`}
-                >
-                  {fmtStay(m)}
-                </button>
-              ))}
-            </div>
+            <ul ref={list} className="mt-2 h-56 overflow-y-auto pr-1 [scrollbar-width:thin]">
+              {STAY_SLOTS.map((m) => {
+                const on = !isDefault && m === value;
+                return (
+                  <li key={m}>
+                    <button
+                      type="button"
+                      onClick={() => commit(m)}
+                      className={`w-full rounded-lg px-2.5 py-1.5 text-left text-[14px] ${on ? "bg-accent font-bold text-on-accent" : m % 60 === 0 ? "text-fg hover:bg-surface-2" : "text-muted hover:bg-surface-2 hover:text-fg"}`}
+                    >
+                      {fmtStay(m)}
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
             {!isDefault && (
               <button type="button" onClick={() => commit(undefined)} className="mt-1.5 flex items-center gap-1 rounded-full px-2.5 py-1 text-[13px] font-semibold text-muted hover:bg-surface-2 hover:text-fg">
                 <X className="size-3.5" /> Reset to {fmtStay(DEFAULT_STAY)}
