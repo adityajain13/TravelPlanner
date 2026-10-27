@@ -1191,7 +1191,7 @@ export function TripPage() {
                         if (
                           await askConfirm({
                             title: `Make “${name}” the day's plan?`,
-                            body: `“${s.versions?.[0]?.name}” moves to the drafts with its name, so you can swap back any time.`,
+                            body: `“${s.versions?.[0]?.name}” moves to the drafts, so you can swap back any time.`,
                             confirmLabel: "Use this plan",
                             danger: false,
                           })
