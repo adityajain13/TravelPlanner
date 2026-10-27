@@ -106,10 +106,19 @@ async function japan(req: Request, env: Env, url: URL): Promise<Response> {
     if (g?.type === "LineString") coords.push(...(g.coordinates as [number, number][]));
     else if (g?.type === "MultiLineString") for (const line of g.coordinates as [number, number][][]) coords.push(...line);
   }
+  // NAVITIME's summary distance can leave out the rail part; the drawn route's length can't
+  const R = 6371000;
+  let shapeLen = 0;
+  for (let i = 1; i < coords.length; i++) {
+    const [a, b] = [coords[i - 1], coords[i]];
+    const dLat = ((b[1] - a[1]) * Math.PI) / 180;
+    const dLng = ((b[0] - a[0]) * Math.PI) / 180;
+    shapeLen += 2 * R * Math.asin(Math.sqrt(Math.sin(dLat / 2) ** 2 + Math.cos((a[1] * Math.PI) / 180) * Math.cos((b[1] * Math.PI) / 180) * Math.sin(dLng / 2) ** 2));
+  }
   return keep(Response.json({
     route: {
       duration: it.summary.move.time * 60,
-      distance: it.summary.move.distance ?? 0,
+      distance: Math.max(it.summary.move.distance ?? 0, Math.round(shapeLen)),
       transfers: it.summary.move.transit_count ?? Math.max(0, steps.filter((x) => x.mode !== "WALK").length - 1),
       steps,
       coords,

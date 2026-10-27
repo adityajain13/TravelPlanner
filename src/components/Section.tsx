@@ -185,7 +185,7 @@ export function Section(p: Props) {
                   />
                 </div>
               ) : (
-                idx > 0 &&
+                // A "+" before every stop, the first included (e.g. between a booking and stop 1)
                 canInsert && (
                   <div className="group/gap relative">
                     <button
@@ -219,7 +219,7 @@ export function Section(p: Props) {
                   </div>
                 )
               )}
-              {(insertAt === idx || idx === 0 || !canInsert) && p.legs?.has(it.id) && (
+              {(insertAt === idx || !canInsert) && p.legs?.has(it.id) && (
                 <LegChip
                   mode={p.legs.get(it.id)!.mode}
                   state={p.legs.get(it.id)!.state}
