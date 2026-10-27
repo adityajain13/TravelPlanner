@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import { createPortal } from "react-dom";
-import { Crosshair, Moon, MoonStar, PanelBottom, Sun, X } from "lucide-react";
+import { Crosshair, EyeOff, Moon, MoonStar, PanelBottom, Plane, Sun, X } from "lucide-react";
 import { useTheme, type Theme } from "../lib/theme";
 import { useSettings, type Settings } from "../lib/settings";
 
@@ -37,6 +37,17 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
         <Row title="Appearance" hint={themes.find((t) => t.key === theme)!.hint} value={theme} options={themes} onPick={setTheme} />
         <div className="my-4 border-t border-line" />
         <Row title="Clicking a pin on the map" hint={options.find((o) => o.key === settings.pinClick)!.hint} value={settings.pinClick} options={options} onPick={(k) => update({ pinClick: k })} />
+        <div className="my-4 border-t border-line" />
+        <Row
+          title="Flight paths on the map"
+          hint={settings.flightPaths === "show" ? "Arcs between the airports you fly" : "Airport pins only, no arcs"}
+          value={settings.flightPaths}
+          options={[
+            { key: "show", icon: <Plane />, short: "Show" },
+            { key: "hide", icon: <EyeOff />, short: "Hide" },
+          ]}
+          onPick={(k) => update({ flightPaths: k })}
+        />
         <p className="mt-5 text-[12px] text-muted">Settings are saved on this device.</p>
       </div>
     </div>,
