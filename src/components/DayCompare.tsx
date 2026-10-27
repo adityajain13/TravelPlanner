@@ -200,7 +200,7 @@ function Column({ v, box, ...p }: Props & { v: Version; box: Box }) {
                 if (
                   await askConfirm({
                     title: `Make “${v.name}” the day's plan?`,
-                    body: `“${p.versions.find((x) => !x.id)?.name}” moves to the drafts with its name, so you can swap back any time.`,
+                    body: `“${p.versions.find((x) => !x.id)?.name}” moves to the drafts, so you can swap back any time.`,
                     confirmLabel: "Use this plan",
                     danger: false,
                     icon: <Check />,
