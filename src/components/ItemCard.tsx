@@ -1,3 +1,4 @@
+import { inkOn } from "../lib/colors";
 import { hasLink, Linkified } from "./Linkified";
 import { useEffect, useState } from "react";
 import { CurrencySelect } from "./CurrencySelect";
@@ -48,7 +49,7 @@ export function PinMarker({ color, label, size = 28 }: { color: string; label?: 
   return (
     <svg width={size} height={size * 1.2} viewBox="0 0 28 34" className="shrink-0 drop-shadow-sm" aria-hidden>
       <path d="M14 33c-1-3.2-3.4-6-6.2-8.8A12.5 12.5 0 1 1 26.5 14c0 3.7-1.6 7-4.3 10.2C19.4 27 17 29.8 14 33z" fill={color} stroke="rgb(0 0 0 / .35)" strokeWidth="1" />
-      <text x="14" y="18.3" textAnchor="middle" fontSize={String(label ?? "").length > 1 ? 10.5 : 12.5} fontWeight="700" fill="#0e1110" fontFamily="Source Sans 3 Variable, system-ui">
+      <text x="14" y="18.3" textAnchor="middle" fontSize={String(label ?? "").length > 1 ? 10.5 : 12.5} fontWeight="700" fill={inkOn(color)} fontFamily="Source Sans 3 Variable, system-ui">
         {label ?? "•"}
       </text>
     </svg>

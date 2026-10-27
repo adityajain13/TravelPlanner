@@ -32,3 +32,27 @@ export const DAY_SWATCHES = [
 /** Kept for older imports: the first few defaults. */
 export const SECTION_COLORS = Array.from({ length: 12 }, (_, i) => defaultDayColor(i));
 export const LIST_COLOR = "#9aa59f";
+
+const lum = (hex: string) => {
+  const m = /^#?([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(hex.trim());
+  if (!m) return null;
+  const h = m[1].length === 3 ? [...m[1]].map((c) => c + c).join("") : m[1];
+  const [r, g, b] = [0, 2, 4].map((i) => {
+    const c = parseInt(h.slice(i, i + 2), 16) / 255;
+    return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+  });
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+};
+const ratio = (a: number, b: number) => (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+const DARK_INK = "#0e1110";
+
+/**
+ * Text colour for a label on `bg` (pin numbers, filled day dots): the usual near-black, unless it
+ * falls short of WCAG's 4.5:1 and white reads better (deep greens, blues, purples).
+ */
+export function inkOn(bg: string) {
+  const l = lum(bg);
+  if (l == null) return DARK_INK;
+  const dark = ratio(l, lum(DARK_INK)!);
+  return dark >= 4.5 || dark >= ratio(l, 1) ? DARK_INK : "#ffffff";
+}

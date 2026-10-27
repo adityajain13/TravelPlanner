@@ -6,6 +6,7 @@ import type { SectionInfo } from "./Section";
 import { RES_ICON, RES_LABEL } from "./Reservations";
 import { parseISODate } from "../lib/dates";
 import { formatMoney } from "../lib/fx";
+import { inkOn } from "../lib/colors";
 
 export type Tab = "plan" | "bookings" | "budget";
 
@@ -169,8 +170,8 @@ export function ContentsThin(p: Omit<Props, "variant" | "subtitles">) {
             >
               <span className="text-[10px] font-semibold tracking-wide uppercase">{dtf(undefined, { weekday: "short", timeZone: "UTC" }).format(d)}</span>
               <span
-                className={`mt-0.5 grid size-8 place-items-center rounded-full text-[14px] font-bold tabular-nums ${on ? "text-on-accent" : "text-fg"}`}
-                style={on ? { background: s.color } : { boxShadow: `inset 0 0 0 2px ${s.color}` }}
+                className={`mt-0.5 grid size-8 place-items-center rounded-full text-[14px] font-bold tabular-nums ${on ? "" : "text-fg"}`}
+                style={on ? { background: s.color, color: inkOn(s.color) } : { boxShadow: `inset 0 0 0 2px ${s.color}` }}
               >
                 {d.getUTCDate()}
               </span>
