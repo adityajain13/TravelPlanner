@@ -292,7 +292,7 @@ export function TripPage() {
     // Legs between consecutive pinned stops of each day; routed in useLegs below
     // ver: which plan the leg belongs to (the day's key or a draft section); ghost legs are for plans
     // not shown, routed only so Compare can total their travel
-    const legs: { section: string; ver: string; ghost?: boolean; toId: string; color: string; req: LegRequest; label?: string }[] = [];
+    const legs: { section: string; ver: string; ghost?: boolean; who?: string[]; toId: string; color: string; req: LegRequest; label?: string }[] = [];
     const defaultMode: TravelMode = state.meta.travelMode ?? "drive";
     // Where you slept / sleep: lodging bookings with a pin, for legs from and back to the hotel
     const hotels = state.reservations.filter((r) => r.type === "lodging" && r.lat != null && r.lng != null && r.startDate);
@@ -316,12 +316,14 @@ export function TripPage() {
       if (Math.abs(from[0] - to[0]) + Math.abs(from[1] - to[1]) < 0.0005) return;
       const mode = modeOverride ?? defaultMode;
       const when = mode === "transit" ? departureTime(s.date!, at, to[0]) : undefined;
-      legs.push({ section: s.key, ver: s.writeKey ?? s.key, ghost, toId, color: s.color, label, req: { key: legKey(mode, from, to, when), mode, from, to, when } });
+      legs.push({ section: s.key, ver: s.writeKey ?? s.key, ghost, who: lane ? [lane] : undefined, toId, color: s.color, label, req: { key: legKey(mode, from, to, when), mode, from, to, when } });
     };
 
-    const walk = (s: SectionInfo, asGhost: boolean) => {
+    // One route per person when some stops are only theirs (each from their own home to the
+    // airport…); `lane` is whose route is being walked, undefined = everyone together
+    let lane: string | undefined;
+    const walkLane = (s: SectionInfo, asGhost: boolean, items: Item[]) => {
       ghost = asGhost;
-      let n = 0;
       let prev: Item | null = null;
       let first = true;
       // Today's flights. A landing followed by another flight out of the same airport is a
@@ -351,18 +353,16 @@ export function TripPage() {
       if (leaving && s.kind === "day") {
         // To the departure airport: from the last stop before take-off, else from where you slept
         const depAt = timeOf(leaving.r.startTime);
-        const placed = s.items.filter((i) => i.kind === "place" && i.lat != null);
+        const placed = items.filter((i) => i.kind === "place" && i.lat != null);
         const timed = placed.some((i) => stopTime(i));
         // Untimed stops on a day you fly out (and don't also land): the flight comes after them
         const before = timed || leaving === landing ? placed.filter((i) => depAt && stopTime(i) && stopTime(i)! < depAt).at(-1) : placed.at(-1);
         const from = before ? ([before.lng!, before.lat!] as [number, number]) : morningHotel(s.date!) ? ll({ lat: morningHotel(s.date!)!.lat!, lng: morningHotel(s.date!)!.lng! }) : undefined;
         if (from) pushLeg(s, `dep:${leaving.r.title}|${leaving.r.startDate}`, `To ${leaving.dep.name} (${leaving.dep.code})`, from, ll(leaving.dep), depAt ? `${String(Math.max(0, +depAt.slice(0, 2) - 3)).padStart(2, "0")}${depAt.slice(2)}` : undefined, state.meta.hotelLegModes?.[`${s.key}|dep`]);
       }
-      for (const it of s.items) {
+      for (const it of items) {
         if (it.kind !== "place") continue;
-        n++;
         if (it.lat == null || it.lng == null) continue;
-        if (!ghost && (!focus || s.key === focus)) pins.push({ id: it.id, lat: it.lat, lng: it.lng, color: s.color, label: String(n), name: it.name, image: it.image?.thumb, unsplash: it.image?.source === "unsplash" ? { name: it.image.authorName ?? "Unknown", author: it.image.author } : undefined });
         if (s.kind === "day" && first && landing && !(landed && stopTime(it) && stopTime(it)! < landed)) {
           // First stop after landing: from the arrival airport instead of a hotel
           first = false;
@@ -376,7 +376,7 @@ export function TripPage() {
             const from: [number, number] = [h.lng!, h.lat!];
             const to: [number, number] = [it.lng, it.lat];
             const when = mode === "transit" ? departureTime(s.date!, it.startTime, it.lng) : undefined;
-            legs.push({ section: s.key, ver: s.writeKey ?? s.key, ghost, toId: it.id, color: s.color, label: `From ${h.title}`, req: { key: legKey(mode, from, to, when), mode, from, to, when } });
+            legs.push({ section: s.key, ver: s.writeKey ?? s.key, ghost, who: lane ? [lane] : undefined, toId: it.id, color: s.color, label: `From ${h.title}`, req: { key: legKey(mode, from, to, when), mode, from, to, when } });
           }
         }
         if (s.kind === "day" && prev) {
@@ -384,7 +384,7 @@ export function TripPage() {
           const from: [number, number] = [prev.lng!, prev.lat!];
           const to: [number, number] = [it.lng, it.lat];
           const when = mode === "transit" ? departureTime(s.date!, prev.endTime ?? prev.startTime ?? it.startTime, it.lng) : undefined;
-          legs.push({ section: s.key, ver: s.writeKey ?? s.key, ghost, toId: it.id, color: s.color, req: { key: legKey(mode, from, to, when), mode, from, to, when } });
+          legs.push({ section: s.key, ver: s.writeKey ?? s.key, ghost, who: lane ? [lane] : undefined, toId: it.id, color: s.color, req: { key: legKey(mode, from, to, when), mode, from, to, when } });
         }
         prev = it;
       }
@@ -401,9 +401,51 @@ export function TripPage() {
         const to: [number, number] = [night.lng!, night.lat!];
         if (Math.abs(from[0] - to[0]) + Math.abs(from[1] - to[1]) > 0.0005) {
           const when = mode === "transit" ? departureTime(s.date!, prev.endTime ?? prev.startTime ?? "18:00", to[0]) : undefined;
-          legs.push({ section: s.key, ver: s.writeKey ?? s.key, ghost, toId: "end", color: s.color, label: `To ${night.title}`, req: { key: legKey(mode, from, to, when), mode, from, to, when } });
+          legs.push({ section: s.key, ver: s.writeKey ?? s.key, ghost, who: lane ? [lane] : undefined, toId: "end", color: s.color, label: `To ${night.title}`, req: { key: legKey(mode, from, to, when), mode, from, to, when } });
         }
       }
+    };
+    const walk = (s: SectionInfo, asGhost: boolean) => {
+      if (!asGhost) {
+        let n = 0;
+        for (const it of s.items) {
+          if (it.kind !== "place") continue;
+          n++;
+          if (it.lat != null && it.lng != null && (!focus || s.key === focus))
+            pins.push({ id: it.id, lat: it.lat, lng: it.lng, color: s.color, label: String(n), name: it.name, image: it.image?.thumb, unsplash: it.image?.source === "unsplash" ? { name: it.image.authorName ?? "Unknown", author: it.image.author } : undefined });
+        }
+      }
+      const people = state.meta.travelers ?? [];
+      const split = s.kind === "day" && people.length > 1 && s.items.some((i) => i.kind === "place" && i.who?.length);
+      lane = undefined;
+      if (!split) return walkLane(s, asGhost, s.items);
+      const startAt = legs.length;
+      for (const person of people) {
+        lane = person;
+        walkLane(s, asGhost, s.items.filter((i) => i.kind !== "place" || !i.who?.length || i.who.includes(person)));
+      }
+      lane = undefined;
+      // The same leg on several people's routes is one leg (theirs together)
+      const mine = legs.splice(startAt);
+      const merged: typeof mine = [];
+      for (const l of mine) {
+        const same = merged.find((m) => m.toId === l.toId && m.req.key === l.req.key);
+        if (same) same.who = [...(same.who ?? []), ...(l.who ?? [])];
+        else merged.push({ ...l });
+      }
+      // Different legs into the same place (each from their own home): one chip per person, keyed
+      // "<id>#1", "<id>#2"… after the first
+      const byTo = new Map<string, typeof merged>();
+      for (const l of merged) byTo.set(l.toId, [...(byTo.get(l.toId) ?? []), l]);
+      for (const group of byTo.values()) {
+        if (group.length > 1)
+          group.forEach((l, i) => {
+            l.label = `${(l.who ?? []).join(" & ")}${l.label ? ` · ${l.label}` : ""}`;
+            if (i) l.toId = `${l.toId}#${i}`;
+          });
+        else group[0].who = undefined; // everyone's leg: no name
+      }
+      legs.push(...merged);
     };
     for (const s of sections) walk(s, false);
     // The plans not shown (the day's plan while a draft is up, other drafts)
@@ -1117,12 +1159,14 @@ export function TripPage() {
                 countryCode={state.meta.countryCode}
                 chips={s.kind === "day" ? dayChips(state.reservations, s.date!) : []}
                 chipStyle={settings.bookingStyle}
+                people={state.meta.travelers}
                 legs={legsBySection.get(s.writeKey ?? s.key)}
-                onLegMode={(itemId, m) =>
-                  itemId === "end" || itemId.startsWith("dep:")
+                onLegMode={(legId, m) => {
+                  const itemId = legId.replace(/#\d+$/, ""); // a person's own leg into the stop
+                  return itemId === "end" || itemId.startsWith("dep:")
                     ? updateMeta(doc, { hotelLegModes: { ...(state.meta.hotelLegModes ?? {}), [itemId === "end" ? s.key : `${s.key}|dep`]: m } })
-                    : updateItem(doc, itemId, { travelMode: m === (state.meta.travelMode ?? "drive") ? undefined : m })
-                }
+                    : updateItem(doc, itemId, { travelMode: m === (state.meta.travelMode ?? "drive") ? undefined : m });
+                }}
                 onChipClick={(r) => !readOnly && setEditingRes(r)}
                 onFocus={() => setFocus((f) => (f === s.key ? null : s.key))}
                 onSelect={(itemId) => setSelectedId((cur) => (cur === itemId ? null : itemId))}

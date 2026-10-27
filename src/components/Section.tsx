@@ -78,6 +78,8 @@ interface Props {
   /** Auto stop times (Settings → Stop times: Auto): per stop how long, and when the day starts. */
   autoTimes?: Map<string, { stay: number; isDefault: boolean; nextDay: boolean }>;
   onStay?: (itemId: string, min: number | undefined) => void;
+  /** The trip's people, for "who goes here" on a day's stops. */
+  people?: string[];
   /** Saved collapsed state (trip-wide) and how to change it. */
   collapsed?: boolean;
   onCollapsed?: (collapsed: boolean) => void;
@@ -106,15 +108,21 @@ export function Section(p: Props) {
   let n = 0;
   const chipsAt = placeChips(p.chips ?? [], info.items);
   const card = p.chipStyle === "card";
+  // A leg and, when people go separately (each from their own home), theirs: "<key>#1"…
+  const legKeys = (key: string) => (p.legs ? [...p.legs.keys()].filter((k) => k === key || k.startsWith(`${key}#`)).sort() : []);
+  const legChips = (key: string) =>
+    legKeys(key).map((k) => {
+      const l = p.legs!.get(k)!;
+      return <LegChip key={k} mode={l.mode} state={l.state} readOnly={p.readOnly} onMode={(m) => p.onLegMode?.(k, m)} from={l.from} to={l.to} label={l.label} />;
+    });
   const chipRow = (cs: NonNullable<Props["chips"]>) =>
     card ? (
       <div className="space-y-0.5">
         {cs.map((c, i) => {
           const depKey = c.r.type === "flight" && c.r.startDate === info.date ? `dep:${c.r.title}|${c.r.startDate}` : "";
-          const dep = depKey ? p.legs?.get(depKey) : undefined;
           return (
             <div key={`${c.r.id}-${i}`}>
-              {dep && <LegChip mode={dep.mode} state={dep.state} readOnly={p.readOnly} onMode={(m) => p.onLegMode?.(depKey, m)} from={dep.from} to={dep.to} label={dep.label} />}
+              {depKey && legChips(depKey)}
               {/* Same columns as a stop: empty pin column, then the card */}
               <div className="flex items-start gap-2 py-1">
                 <div className="w-7 shrink-0" />
@@ -142,14 +150,9 @@ export function Section(p: Props) {
       {cs.map((c, i) => {
         // The trip to the airport sits right before the flight it's for
         const depKey = c.r.type === "flight" && c.r.startDate === info.date ? `dep:${c.r.title}|${c.r.startDate}` : "";
-        const dep = depKey ? p.legs?.get(depKey) : undefined;
         return (
           <div key={`${c.r.id}-${i}`} className="flex flex-col items-start gap-1.5">
-            {dep && (
-              <div className="-ml-6">
-                <LegChip mode={dep.mode} state={dep.state} readOnly={p.readOnly} onMode={(m) => p.onLegMode?.(depKey, m)} from={dep.from} to={dep.to} label={dep.label} />
-              </div>
-            )}
+            {depKey && legKeys(depKey).length > 0 && <div className="-ml-6">{legChips(depKey)}</div>}
             <button onClick={() => p.onChipClick?.(c.r)} className="flex items-center gap-1.5 rounded-full bg-surface-2 px-2.5 py-1 text-xs text-muted hover:text-fg">
               <span className="[&>svg]:size-3.5">{RES_ICON[c.r.type]}</span>
               {c.label}
@@ -318,31 +321,11 @@ export function Section(p: Props) {
                       />
                     )}
                     {!p.legs?.has(it.id) && <div className="h-3.5" />}
-                    {p.legs?.has(it.id) && (
-                      <LegChip
-                        mode={p.legs.get(it.id)!.mode}
-                        state={p.legs.get(it.id)!.state}
-                        readOnly={p.readOnly}
-                        onMode={(m) => p.onLegMode?.(it.id, m)}
-                        from={p.legs.get(it.id)!.from}
-                        to={p.legs.get(it.id)!.to}
-                        label={p.legs.get(it.id)!.label}
-                      />
-                    )}
+                    {p.legs?.has(it.id) && legChips(it.id)}
                   </div>
                 )
               )}
-              {(insertAt === idx || !canInsert) && p.legs?.has(it.id) && (
-                <LegChip
-                  mode={p.legs.get(it.id)!.mode}
-                  state={p.legs.get(it.id)!.state}
-                  readOnly={p.readOnly}
-                  onMode={(m) => p.onLegMode?.(it.id, m)}
-                  from={p.legs.get(it.id)!.from}
-                  to={p.legs.get(it.id)!.to}
-                  label={p.legs.get(it.id)!.label}
-                />
-              )}
+              {(insertAt === idx || !canInsert) && p.legs?.has(it.id) && legChips(it.id)}
               <ItemCard
                 key={it.id}
                 item={it}
@@ -366,21 +349,12 @@ export function Section(p: Props) {
                 sections={p.sectionsOf?.(it.id)}
                 onToggleSection={p.onToggleSection ? (k) => p.onToggleSection!(it.id, k) : undefined}
                 onCostDetails={p.onCostDetails ? () => p.onCostDetails!(it.id) : undefined}
+                people={info.kind === "day" ? p.people : undefined}
               />
               </div>
             ))}
           </SortableContext>
-          {p.legs?.has("end") && (
-            <LegChip
-              mode={p.legs.get("end")!.mode}
-              state={p.legs.get("end")!.state}
-              readOnly={p.readOnly}
-              onMode={(m) => p.onLegMode?.("end", m)}
-              from={p.legs.get("end")!.from}
-              to={p.legs.get("end")!.to}
-              label={p.legs.get("end")!.label}
-            />
-          )}
+          {p.legs?.has("end") && legChips("end")}
           {chipsAt.get(info.items.length) && info.items.length > 0 && <div className={card ? "pt-1" : "py-1.5"}>{chipRow(chipsAt.get(info.items.length)!)}</div>}
           {info.key !== "orphan" && !p.readOnly && (
             <div className="flex items-center gap-2 pt-1.5 pl-6">
