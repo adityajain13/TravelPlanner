@@ -189,6 +189,7 @@ async function transitWithFallback(a: [number, number], b: [number, number], whe
 }
 
 const JAPAN_ORDER_CHANGED = Date.UTC(2026, 9, 27, 2, 0);
+const NAVITIME_QUICKEST = Date.UTC(2026, 9, 27, 1, 50);
 
 const pathKm = (c: [number, number][]) => c.slice(1).reduce((s, p, i) => s + distanceKm(c[i], p), 0);
 
@@ -310,7 +311,9 @@ export function useLegs(requests: LegRequest[]): Map<string, LegState> {
         const ttl = r.mode !== "transit" ? TTL.other : typeof c?.result === "object" && c.result.source === "navitime" ? 365 * 864e5 : TTL.transit;
         // Japan answers saved before NAVITIME came first get one fresh look
         const preNavitime = r.mode === "transit" && inJapan(r.from) && inJapan(r.to) && typeof c?.result === "object" && c.result.source !== "navitime" && c.fetchedAt < JAPAN_ORDER_CHANGED;
-        const fresh = c && !preNavitime && Date.now() - c.fetchedAt < ttl;
+        // NAVITIME answers from before "quickest of 5 routes" get one refresh too
+        const oldNavitime = typeof c?.result === "object" && c.result.source === "navitime" && c.fetchedAt < NAVITIME_QUICKEST;
+        const fresh = c && !preNavitime && !oldNavitime && Date.now() - c.fetchedAt < ttl;
         if (c && (fresh || !navigator.onLine))
           set(r.key, typeof c.result === "object" && c.result.mode === "transit" ? { ...c.result, distance: Math.max(c.result.distance, pathKm(c.result.coords), distanceKm(r.from, r.to) * 1000) } : c.result);
         else todo.push(r);
