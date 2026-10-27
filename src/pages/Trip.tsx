@@ -35,7 +35,8 @@ import { parseISODate } from "../lib/dates";
 import { scrollToEl, scrollToId } from "../lib/scroll";
 import { useUndo } from "../lib/undo";
 import { db } from "../lib/db";
-import { api, useSession } from "../lib/api";
+import { useSession } from "../lib/api";
+import { needsTidy, tidyNotes } from "../lib/tidyNotes";
 import { useSync } from "../lib/sync";
 import { useTrip } from "../lib/useTrip";
 import { useTheme } from "../lib/theme";
@@ -495,17 +496,10 @@ export function TripPage() {
   const tidyTried = useRef(new Set<string>());
   useEffect(() => {
     if (!doc || !state || readOnly || !navigator.onLine || auth !== "in") return;
-    const todo = state.reservations.filter((r) => r.inboxId && r.notes?.trim() && !r.notes.trimStart().startsWith("**") && !r.notesTidy && !tidyTried.current.has(r.id));
+    const todo = state.reservations.filter((r) => needsTidy(r) && !tidyTried.current.has(r.id));
     if (!todo.length) return;
     todo.forEach((r) => tidyTried.current.add(r.id));
-    (async () => {
-      for (const r of todo) {
-        const out = await api<{ notes: string }>("/notes/tidy", { method: "POST", body: JSON.stringify({ type: r.type, title: r.title, notes: r.notes }) }).catch(() => null);
-        const cur = readTrip(doc).reservations.find((x) => x.id === r.id);
-        if (!out || !cur || cur.notes !== r.notes) continue; // edited meanwhile: leave it
-        saveReservation(doc, { ...cur, notes: out.notes || cur.notes, notesTidy: 1 }, { by: "claude", label: "Tidy notes" }); // not an undo step of yours
-      }
-    })();
+    void tidyNotes(doc, todo);
   }, [doc, state, readOnly, auth]);
 
   // Hotels (and restaurants) booked without a pin — e.g. an email address the map search didn't

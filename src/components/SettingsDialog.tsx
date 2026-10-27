@@ -1,6 +1,9 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
-import { Crosshair, EyeOff, Moon, MoonStar, PanelBottom, PanelLeft, PanelLeftDashed, Plane, RectangleHorizontal, Pill, Clock, Hourglass, Sun, X } from "lucide-react";
+import { Crosshair, EyeOff, Moon, MoonStar, PanelBottom, PanelLeft, PanelLeftDashed, Plane, RectangleHorizontal, Pill, Clock, Hourglass, Sun, X, Sparkles, Loader2, Check } from "lucide-react";
+import type * as Y from "yjs";
+import { readTrip } from "../lib/trips";
+import { importedWithNotes, tidyNotes } from "../lib/tidyNotes";
 import { useTheme, type Theme } from "../lib/theme";
 import { useSettings, type Settings, type SettingsScope } from "../lib/settings";
 
@@ -81,12 +84,55 @@ export function SettingsDialog({ onClose, scope }: { onClose: () => void; scope?
           ]}
           onPick={(k) => update({ timing: k })}
         />
+        {scope && <TidyNotesRow doc={scope.doc} />}
         <p className="mt-5 text-[12px] text-muted">
           {where === "trip" ? "Saved to your account for this trip; appearance is saved on this device." : "Settings are saved on this device."}
         </p>
       </div>
     </div>,
     document.body,
+  );
+}
+
+/** One-off action: put every emailed booking's notes in the standard layout again. */
+function TidyNotesRow({ doc }: { doc: Y.Doc }) {
+  const [run, setRun] = useState<{ done: number; total: number; changed?: number } | null>(null);
+  const count = importedWithNotes(readTrip(doc).reservations).length;
+  const busy = run != null && run.changed == null;
+  const go = async () => {
+    const list = importedWithNotes(readTrip(doc).reservations);
+    setRun({ done: 0, total: list.length });
+    const changed = await tidyNotes(doc, list, (done, total) => setRun({ done, total }));
+    setRun({ done: list.length, total: list.length, changed });
+  };
+  return (
+    <>
+      <div className="my-4 border-t border-line" />
+      <div className="flex items-center justify-between gap-4 max-sm:flex-col max-sm:items-stretch">
+        <div className="min-w-0">
+          <p className="text-[15px] font-bold">Imported booking notes</p>
+          <p className="mt-0.5 text-[13px] text-muted">
+            {busy
+              ? `Formatting ${run.done + 1} of ${run.total}…`
+              : run?.changed != null
+                ? run.changed
+                  ? `Reformatted ${run.changed} of ${run.total}`
+                  : "Already in the standard layout"
+                : count
+                  ? `Seat, class, baggage… in one layout (${count} from email)`
+                  : "No bookings from email yet"}
+          </p>
+        </div>
+        <button
+          onClick={go}
+          disabled={busy || !count || !navigator.onLine}
+          className="flex shrink-0 items-center justify-center gap-1.5 rounded-lg border border-line bg-bg px-3 py-1.5 text-[12px] font-bold tracking-wider text-fg uppercase transition-colors hover:border-accent/60 disabled:opacity-50 [&>svg]:size-3.5"
+        >
+          {busy ? <Loader2 className="animate-spin" /> : run?.changed != null ? <Check className="text-accent" /> : <Sparkles className="text-accent" />}
+          {busy ? "Working" : "Format now"}
+        </button>
+      </div>
+    </>
   );
 }
 
