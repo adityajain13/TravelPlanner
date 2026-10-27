@@ -9,7 +9,7 @@
 export interface PlaceImage {
   url: string; // large, for headers / viewers
   thumb: string; // ~320px, for cards and pins
-  source: "unsplash" | "wikipedia" | "commons" | "openverse" | "google" | "link";
+  source: "unsplash" | "wikipedia" | "commons" | "openverse" | "google" | "web" | "link";
   credit?: string; // "Photo: Jane Doe, CC BY-SA 4.0"
   link?: string; // page the image came from
   title?: string;
@@ -298,4 +298,11 @@ export async function googlePhotos(q: { placeId?: string; name: string; address?
     link: ph.attributions[0]?.uri,
     title: d.name,
   }));
+}
+
+/** Web image search through the Worker (Brave; Google Images-style relevance). [] when not set up. */
+export async function webImages(query: string, signal?: AbortSignal): Promise<PlaceImage[]> {
+  const res = await fetch(`/travelplanner/api/photos/web?${new URLSearchParams({ q: query, ...shareQuery() })}`, { credentials: "same-origin", signal });
+  if (!res.ok) return [];
+  return ((await res.json()) as { photos?: PlaceImage[] }).photos ?? [];
 }

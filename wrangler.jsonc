@@ -40,5 +40,6 @@
   //   SHARE_SECRET    any long random string (signs share links)
   //   ANTHROPIC_API_KEY  Claude API key for reading forwarded booking emails
   //   UNSPLASH_ACCESS_KEY  optional: Unsplash app Access Key for travel-quality photos in the picker
+  //   BRAVE_SEARCH_KEY  optional: Brave Search API key for web image search in the photo picker
   //   NAVITIME_RAPIDAPI_KEY  optional: RapidAPI key subscribed to "NAVITIME Route(totalnavi)" for Japanese train routes
 }

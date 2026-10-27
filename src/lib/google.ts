@@ -100,7 +100,7 @@ export async function getDetails(id: string): Promise<GoogleDetails> {
     phone: p.internationalPhoneNumber,
     website: p.websiteUri,
     mapsUri: p.googleMapsUri,
-    photos: (p.photos ?? []).slice(0, 4).map((ph) => ({ name: ph.name, attributions: ph.authorAttributions ?? [] })),
+    photos: (p.photos ?? []).slice(0, 10).map((ph) => ({ name: ph.name, attributions: ph.authorAttributions ?? [] })),
   };
   cache.set(id, d);
   return d;

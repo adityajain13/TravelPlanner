@@ -29,6 +29,7 @@ async function allowed(req: Request, env: Env, url: URL) {
 
 export async function handlePhotos(req: Request, env: Env, url: URL, ctx: ExecutionContext): Promise<Response | null> {
   if (!url.pathname.startsWith(`${API}/photos`)) return null;
+  if (url.pathname === `${API}/photos/web`) return webImages(req, env, url);
   if (!env.UNSPLASH_ACCESS_KEY) return error(501, "Unsplash not configured");
   if (!(await allowed(req, env, url))) return error(401, "Sign in");
   const headers = { Authorization: `Client-ID ${env.UNSPLASH_ACCESS_KEY}`, "Accept-Version": "v1" };
@@ -69,4 +70,37 @@ export async function handlePhotos(req: Request, env: Env, url: URL, ctx: Execut
     return out;
   }
   return error(404, "Not found");
+}
+
+/*
+ * Web image search (Brave Search API), the closest thing to Google Images that's still open to
+ * new developers (Google's Custom Search API is closed to new sign-ups). Results cached a week.
+ */
+async function webImages(req: Request, env: Env, url: URL): Promise<Response> {
+  if (!env.BRAVE_SEARCH_KEY) return error(501, "Web image search isn't set up (BRAVE_SEARCH_KEY)");
+  if (!(await allowed(req, env, url))) return error(401, "Sign in");
+  const q = (url.searchParams.get("q") ?? "").trim().slice(0, 120);
+  if (!q) return error(400, "Missing q");
+  const cacheKey = new Request(`https://cache.travelplanner/web-images?q=${encodeURIComponent(q.toLowerCase())}`);
+  const hit = await caches.default.match(cacheKey);
+  if (hit) return hit;
+  const up = new URL("https://api.search.brave.com/res/v1/images/search");
+  up.search = new URLSearchParams({ q, count: "20", safesearch: "strict", spellcheck: "0" }).toString();
+  const res = await fetch(up, { headers: { Accept: "application/json", "X-Subscription-Token": env.BRAVE_SEARCH_KEY } });
+  if (!res.ok) return error(res.status === 429 ? 429 : 502, `Brave ${res.status}`);
+  type R = { title?: string; url?: string; source?: string; thumbnail?: { src?: string }; properties?: { url?: string; width?: number; height?: number }; meta_url?: { hostname?: string } };
+  const data = (await res.json()) as { results?: R[] };
+  const photos = (data.results ?? [])
+    .filter((r) => r.properties?.url && r.thumbnail?.src)
+    .map((r) => ({
+      url: r.properties!.url!,
+      thumb: r.thumbnail!.src!,
+      source: "web",
+      credit: r.meta_url?.hostname ?? r.source ?? "Web",
+      link: r.url,
+      title: r.title,
+    }));
+  const out = json({ photos }, { headers: { "Cache-Control": "public, max-age=604800" } });
+  await caches.default.put(cacheKey, out.clone()).catch(() => undefined);
+  return out;
 }

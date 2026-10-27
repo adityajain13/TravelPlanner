@@ -15,6 +15,8 @@ export interface Env {
   GOOGLE_ROUTES_KEY?: string;
   /** RapidAPI key subscribed to NAVITIME Route (totalnavi): Japanese train routes. */
   NAVITIME_RAPIDAPI_KEY?: string;
+  /** Brave Search API key: web image search in the photo picker (like Google Images). */
+  BRAVE_SEARCH_KEY?: string;
 }
 
 export const BASE = "/travelplanner";

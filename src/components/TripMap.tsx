@@ -207,7 +207,7 @@ export function TripMap({ pins, routes, selectedId, onSelect, theme, fitKey, fal
       if (p.image) {
         const img = document.createElement("img");
         img.src = p.image;
-        img.referrerPolicy = "no-referrer";
+        img.referrerPolicy = /googleapis\.com\//.test(p.image) ? "strict-origin-when-cross-origin" : "no-referrer";
         img.alt = "";
         img.onerror = () => img.remove();
         el.append(img);
