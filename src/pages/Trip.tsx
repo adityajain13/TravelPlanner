@@ -1279,6 +1279,7 @@ export function TripPage() {
           onSelect={selectFromMap}
           theme={theme}
           fitKey={`${id}:${focus ?? "all"}`}
+          frameAll={!!focus}
           frame={dayFrame}
           fallbackCenter={near}
           inset={openItem ? (panelInset ?? { top: 0, bottom: 0 }) : null}
