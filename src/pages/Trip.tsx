@@ -59,7 +59,14 @@ import {
   updateItem,
   updateMeta,
   type Item,
+  forkDay,
+  renameDraft,
+  deleteDraft,
+  adoptDraft,
+  draftSection,
+  isDraftSection,
 } from "../lib/trips";
+import { DayCompare } from "../components/DayCompare";
 import { dayColor, LIST_COLOR } from "../lib/colors";
 import { RES_GLYPH } from "../lib/pinArt";
 import { flightAirports, flightArc, flightInstant, loadAirports, zoneAt, type Airport, type AirportDb } from "../lib/airports";
@@ -123,6 +130,27 @@ export function TripPage() {
   const [panelInset, setPanelInset] = useState<{ top: number; bottom: number } | null>(null);
   const [costFor, setCostFor] = useState<string | null>(null); // stop whose cost details are open
   const [focus, setFocus] = useState<string | null>(null); // section shown alone on the map
+  // Day drafts: which draft each day shows (by date; absent = the day's plan), kept per device
+  const [dayDraft, setDayDraftState] = useState<Record<string, string>>(() => {
+    try {
+      return JSON.parse(localStorage.getItem(`tp-drafts-${id}`) ?? "{}");
+    } catch {
+      return {};
+    }
+  });
+  const setDayDraft = (date: string, draft: string | undefined) =>
+    setDayDraftState((cur) => {
+      const next = { ...cur };
+      if (draft) next[date] = draft;
+      else delete next[date];
+      try {
+        localStorage.setItem(`tp-drafts-${id}`, JSON.stringify(next));
+      } catch {
+        /* private mode */
+      }
+      return next;
+    });
+  const [compareDay, setCompareDay] = useState<string | null>(null);
   const [mobileView, setMobileView] = useState<"plan" | "map">("plan");
   const [dragging, setDragging] = useState<Item | null>(null);
   const [sharing, setSharing] = useState(false);
@@ -224,7 +252,10 @@ export function TripPage() {
     const days = daysBetween(state.meta.startDate, state.meta.endDate);
     const bySection = new Map<string, Item[]>(order.map((s) => [s, []]));
     const orphans: Item[] = [];
-    for (const it of state.items) (bySection.get(it.section) ?? orphans).push(it);
+    const draftItems = new Map<string, Item[]>();
+    for (const it of state.items)
+      if (isDraftSection(it.section)) (draftItems.get(it.section) ?? draftItems.set(it.section, []).get(it.section)!).push(it);
+      else (bySection.get(it.section) ?? orphans).push(it);
 
     const sections: SectionInfo[] = order.map((key) => {
       if (key.startsWith("list:")) {
@@ -233,14 +264,28 @@ export function TripPage() {
       }
       const date = key.slice(4);
       const i = days.indexOf(date);
-      return { key, kind: "day", date, dayNumber: i + 1, color: dayColor(i, date, state.meta.dayColors), items: bySection.get(key)! };
+      const drafts = state.drafts.filter((d) => d.date === date);
+      const shown = drafts.find((d) => d.id === dayDraft[date]);
+      return {
+        key,
+        kind: "day",
+        date,
+        dayNumber: i + 1,
+        color: dayColor(i, date, state.meta.dayColors),
+        items: shown ? (draftItems.get(draftSection(shown.id)) ?? []) : bySection.get(key)!,
+        writeKey: shown ? draftSection(shown.id) : key,
+        versions: drafts.length ? [{ name: "Main", id: undefined }, ...drafts.map((d) => ({ id: d.id, name: d.name }))] : undefined,
+        draftId: shown?.id,
+      };
     });
     if (orphans.length)
       sections.push({ key: ORPHAN, kind: "list", title: "Outside trip dates", color: LIST_COLOR, items: orphans, readonlyTitle: true });
 
     const pins: Pin[] = [];
     // Legs between consecutive pinned stops of each day; routed in useLegs below
-    const legs: { section: string; toId: string; color: string; req: LegRequest; label?: string }[] = [];
+    // ver: which plan the leg belongs to (the day's key or a draft section); ghost legs are for plans
+    // not shown, routed only so Compare can total their travel
+    const legs: { section: string; ver: string; ghost?: boolean; toId: string; color: string; req: LegRequest; label?: string }[] = [];
     const defaultMode: TravelMode = state.meta.travelMode ?? "drive";
     // Where you slept / sleep: lodging bookings with a pin, for legs from and back to the hotel
     const hotels = state.reservations.filter((r) => r.type === "lodging" && r.lat != null && r.lng != null && r.startDate);
@@ -257,14 +302,16 @@ export function TripPage() {
       }
     const timeOf = (t?: string) => (t && /^\d{1,2}:\d{2}/.test(t) ? t.padStart(5, "0") : undefined);
     const ll = (p: { lat: number; lng: number }): [number, number] => [p.lng, p.lat];
+    let ghost = false; // set by walk() below: legs of a plan that isn't shown
     const pushLeg = (s: SectionInfo, toId: string, label: string, from: [number, number], to: [number, number], at?: string, modeOverride?: TravelMode) => {
       if (Math.abs(from[0] - to[0]) + Math.abs(from[1] - to[1]) < 0.0005) return;
       const mode = modeOverride ?? defaultMode;
       const when = mode === "transit" ? departureTime(s.date!, at, to[0]) : undefined;
-      legs.push({ section: s.key, toId, color: s.color, label, req: { key: legKey(mode, from, to, when), mode, from, to, when } });
+      legs.push({ section: s.key, ver: s.writeKey ?? s.key, ghost, toId, color: s.color, label, req: { key: legKey(mode, from, to, when), mode, from, to, when } });
     };
 
-    for (const s of sections) {
+    const walk = (s: SectionInfo, asGhost: boolean) => {
+      ghost = asGhost;
       let n = 0;
       let prev: Item | null = null;
       let first = true;
@@ -295,7 +342,7 @@ export function TripPage() {
         if (it.kind !== "place") continue;
         n++;
         if (it.lat == null || it.lng == null) continue;
-        if (!focus || s.key === focus) pins.push({ id: it.id, lat: it.lat, lng: it.lng, color: s.color, label: String(n), name: it.name, image: it.image?.thumb, unsplash: it.image?.source === "unsplash" ? { name: it.image.authorName ?? "Unknown", author: it.image.author } : undefined });
+        if (!ghost && (!focus || s.key === focus)) pins.push({ id: it.id, lat: it.lat, lng: it.lng, color: s.color, label: String(n), name: it.name, image: it.image?.thumb, unsplash: it.image?.source === "unsplash" ? { name: it.image.authorName ?? "Unknown", author: it.image.author } : undefined });
         if (s.kind === "day" && first && landing && !(landed && stopTime(it) && stopTime(it)! < landed)) {
           // First stop after landing: from the arrival airport instead of a hotel
           first = false;
@@ -309,7 +356,7 @@ export function TripPage() {
             const from: [number, number] = [h.lng!, h.lat!];
             const to: [number, number] = [it.lng, it.lat];
             const when = mode === "transit" ? departureTime(s.date!, it.startTime, it.lng) : undefined;
-            legs.push({ section: s.key, toId: it.id, color: s.color, label: `From ${h.title}`, req: { key: legKey(mode, from, to, when), mode, from, to, when } });
+            legs.push({ section: s.key, ver: s.writeKey ?? s.key, ghost, toId: it.id, color: s.color, label: `From ${h.title}`, req: { key: legKey(mode, from, to, when), mode, from, to, when } });
           }
         }
         if (s.kind === "day" && prev) {
@@ -317,7 +364,7 @@ export function TripPage() {
           const from: [number, number] = [prev.lng!, prev.lat!];
           const to: [number, number] = [it.lng, it.lat];
           const when = mode === "transit" ? departureTime(s.date!, prev.endTime ?? prev.startTime ?? it.startTime, it.lng) : undefined;
-          legs.push({ section: s.key, toId: it.id, color: s.color, req: { key: legKey(mode, from, to, when), mode, from, to, when } });
+          legs.push({ section: s.key, ver: s.writeKey ?? s.key, ghost, toId: it.id, color: s.color, req: { key: legKey(mode, from, to, when), mode, from, to, when } });
         }
         prev = it;
       }
@@ -334,10 +381,17 @@ export function TripPage() {
         const to: [number, number] = [night.lng!, night.lat!];
         if (Math.abs(from[0] - to[0]) + Math.abs(from[1] - to[1]) > 0.0005) {
           const when = mode === "transit" ? departureTime(s.date!, prev.endTime ?? prev.startTime ?? "18:00", to[0]) : undefined;
-          legs.push({ section: s.key, toId: "end", color: s.color, label: `To ${night.title}`, req: { key: legKey(mode, from, to, when), mode, from, to, when } });
+          legs.push({ section: s.key, ver: s.writeKey ?? s.key, ghost, toId: "end", color: s.color, label: `To ${night.title}`, req: { key: legKey(mode, from, to, when), mode, from, to, when } });
         }
       }
-    }
+    };
+    for (const s of sections) walk(s, false);
+    // The plans not shown (the day's plan while a draft is up, other drafts)
+    for (const s of sections)
+      for (const v of s.versions ?? []) {
+        const ver = v.id ? draftSection(v.id) : s.key;
+        if (ver !== s.writeKey) walk({ ...s, writeKey: ver, items: v.id ? (draftItems.get(ver) ?? []) : bySection.get(s.key)! }, true);
+      }
     // Lodging and restaurant bookings with a location get their own pins
     if (!focus)
       for (const r of state.reservations)
@@ -345,7 +399,7 @@ export function TripPage() {
           // One pin per booking (several travellers' copies share it), with its type's symbol
           pins.push({ id: `res:${r.id}`, lat: r.lat, lng: r.lng, color: "#e8ece9", label: "", glyph: RES_GLYPH[r.type], name: r.title });
     return { sections, pins, legs };
-  }, [state, focus, airportDb]);
+  }, [state, focus, airportDb, dayDraft]);
 
   // Airports from flight bookings: a plane pin each, and an arc per flight (never routed like a leg)
   const flights = useMemo(() => {
@@ -372,7 +426,7 @@ export function TripPage() {
   const routes: Route[] = useMemo(
     () =>
       (view?.legs ?? [])
-        .filter((l) => !focus || l.section === focus)
+        .filter((l) => !l.ghost && (!focus || l.section === focus))
         .map((l) => {
           const r = legResults.get(l.req.key);
           if (typeof r === "object") {
@@ -387,8 +441,8 @@ export function TripPage() {
   const legsBySection = useMemo(() => {
     const m = new Map<string, Map<string, { mode: TravelMode; state?: ReturnType<typeof legResults.get>; from: [number, number]; to: [number, number]; label?: string }>>();
     for (const l of view?.legs ?? []) {
-      if (!m.has(l.section)) m.set(l.section, new Map());
-      m.get(l.section)!.set(l.toId, { mode: l.req.mode, state: legResults.get(l.req.key), from: l.req.from, to: l.req.to, label: l.label });
+      if (!m.has(l.ver)) m.set(l.ver, new Map());
+      m.get(l.ver)!.set(l.toId, { mode: l.req.mode, state: legResults.get(l.req.key), from: l.req.from, to: l.req.to, label: l.label });
     }
     return m;
   }, [view, legResults]);
@@ -577,14 +631,18 @@ export function TripPage() {
     const overIdx = target.items.findIndex((i) => i.id === overId);
     // Dropped on the section itself → end; on an item → that item's slot
     const index = overIdx === -1 ? target.items.filter((i) => i.id !== activeId).length : overIdx;
-    moveItem(doc!, activeId, target.key, index);
+    moveItem(doc!, activeId, target.writeKey ?? target.key, index);
   }
 
+  // A day showing a draft: edits and moves into "that day" land in the draft
+  const writeOf = (key: string) => view.sections.find((s) => s.key === key)?.writeKey ?? key;
+  const shownKey = (section: string) => (isDraftSection(section) ? (view.sections.find((s) => s.writeKey === section)?.key ?? section) : section);
   // A place can sit on several days/lists (as copies); the day menu ticks and toggles them
   const copiesOf = (itemId: string) => copyGroups.get(itemId) ?? [];
-  const sectionsOf = (itemId: string) => [...new Set(copiesOf(itemId).map((x) => x.section))];
-  const toggleSection = (itemId: string, key: string) => {
+  const sectionsOf = (itemId: string) => [...new Set(copiesOf(itemId).map((x) => shownKey(x.section)))];
+  const toggleSection = (itemId: string, shown: string) => {
     if (!doc) return;
+    const key = writeOf(shown);
     const copies = copiesOf(itemId);
     const there = copies.filter((x) => x.section === key);
     if (!there.length) return void copyItems(doc, [itemId], key);
@@ -838,10 +896,10 @@ export function TripPage() {
                 <X className="size-4" />
               </button>
               <span className="mr-auto tabular-nums">{checked.size} selected</span>
-              <SectionPicker targets={targets} onPick={(k) => (copyItems(doc, checkedIds, k), clearChecked())} align="right" className="rounded-full px-2.5 py-1.5 text-muted hover:bg-surface-2 hover:text-fg">
+              <SectionPicker targets={targets} onPick={(k) => (copyItems(doc, checkedIds, writeOf(k)), clearChecked())} align="right" className="rounded-full px-2.5 py-1.5 text-muted hover:bg-surface-2 hover:text-fg">
                 <Copy className="size-4" /> Copy to
               </SectionPicker>
-              <SectionPicker targets={targets} onPick={(k) => (moveItems(doc, checkedIds, k), clearChecked())} align="right" className="rounded-full px-2.5 py-1.5 text-muted hover:bg-surface-2 hover:text-fg">
+              <SectionPicker targets={targets} onPick={(k) => (moveItems(doc, checkedIds, writeOf(k)), clearChecked())} align="right" className="rounded-full px-2.5 py-1.5 text-muted hover:bg-surface-2 hover:text-fg">
                 <FolderInput className="size-4" /> Move to
               </SectionPicker>
               <button
@@ -1005,7 +1063,7 @@ export function TripPage() {
                 countryCode={state.meta.countryCode}
                 chips={s.kind === "day" ? dayChips(state.reservations, s.date!) : []}
                 chipStyle={settings.bookingStyle}
-                legs={legsBySection.get(s.key)}
+                legs={legsBySection.get(s.writeKey ?? s.key)}
                 onLegMode={(itemId, m) =>
                   itemId === "end" || itemId.startsWith("dep:")
                     ? updateMeta(doc, { hotelLegModes: { ...(state.meta.hotelLegModes ?? {}), [itemId === "end" ? s.key : `${s.key}|dep`]: m } })
@@ -1016,7 +1074,7 @@ export function TripPage() {
                 onSelect={(itemId) => setSelectedId((cur) => (cur === itemId ? null : itemId))}
                 onRename={s.listId ? (t) => renameList(doc, s.listId!, t) : undefined}
                 onAddPlace={(p, index) => {
-                  const newId = addItem(doc, s.key, { kind: "place", name: p.name, address: p.address || undefined, category: p.category || undefined, lat: p.lat, lng: p.lng, osmId: p.osmId, googlePlaceId: p.googlePlaceId }, undefined, index);
+                  const newId = addItem(doc, s.writeKey ?? s.key, { kind: "place", name: p.name, address: p.address || undefined, category: p.category || undefined, lat: p.lat, lng: p.lng, osmId: p.osmId, googlePlaceId: p.googlePlaceId }, undefined, index);
                   setSelectedId(newId);
                   revealAdded(newId);
                   // Already on the trip elsewhere with a photo: reuse that photo
@@ -1048,8 +1106,8 @@ export function TripPage() {
                       .catch(() => undefined);
                   if (!near) updateMeta(doc, { center: [p.lng, p.lat] });
                 }}
-                onAddNote={(text, index) => addItem(doc, s.key, { kind: "note", name: text }, undefined, index)}
-                onAddChecklist={(index) => addItem(doc, s.key, { kind: "checklist", name: "", checks: [{ id: Math.random().toString(36).slice(2, 10), text: "" }] }, undefined, index)}
+                onAddNote={(text, index) => addItem(doc, s.writeKey ?? s.key, { kind: "note", name: text }, undefined, index)}
+                onAddChecklist={(index) => addItem(doc, s.writeKey ?? s.key, { kind: "checklist", name: "", checks: [{ id: Math.random().toString(36).slice(2, 10), text: "" }] }, undefined, index)}
                 onChange={(itemId, patch) => {
                   // A new photo goes on every stop at the same place
                   if ("image" in patch) {
@@ -1062,7 +1120,7 @@ export function TripPage() {
                 checked={readOnly ? undefined : checked}
                 onCheck={readOnly ? undefined : onCheck}
                 targets={readOnly ? undefined : targets}
-                onMoveTo={readOnly ? undefined : (itemId, k) => moveItems(doc, [itemId], k)}
+                onMoveTo={readOnly ? undefined : (itemId, k) => moveItems(doc, [itemId], writeOf(k))}
                 sectionsOf={sectionsOf}
                 onToggleSection={readOnly ? undefined : toggleSection}
                 onCostDetails={readOnly ? undefined : setCostFor}
@@ -1074,6 +1132,35 @@ export function TripPage() {
                         if (c) next[s.date!] = c;
                         else delete next[s.date!];
                         updateMeta(doc, { dayColors: next });
+                      }
+                    : undefined
+                }
+                onFork={
+                  s.kind === "day" && !readOnly
+                    ? () => {
+                        const n = (s.versions?.length ?? 1);
+                        const d = forkDay(doc, s.date!, s.writeKey ?? s.key, `Draft ${n}`);
+                        setDayDraft(s.date!, d);
+                      }
+                    : undefined
+                }
+                onVersion={(d) => setDayDraft(s.date!, d)}
+                onCompare={() => setCompareDay(s.date!)}
+                onUseDraft={
+                  s.draftId && !readOnly
+                    ? async () => {
+                        const name = s.versions?.find((v) => v.id === s.draftId)?.name ?? "this draft";
+                        if (
+                          await askConfirm({
+                            title: `Make “${name}” the plan?`,
+                            body: "Its stops replace the day's plan. The current plan is kept as a draft, so you can switch back.",
+                            confirmLabel: "Use this plan",
+                            danger: false,
+                          })
+                        ) {
+                          adoptDraft(doc, s.draftId!, "Previous plan");
+                          setDayDraft(s.date!, undefined);
+                        }
                       }
                     : undefined
                 }
@@ -1140,6 +1227,53 @@ export function TripPage() {
           holdView={settings.pinClick === "card" && !!selectedId && mapPicked === selectedId}
         />
         </Suspense>
+        {compareDay && (() => {
+          const sec = view.sections.find((x) => x.kind === "day" && x.date === compareDay);
+          if (!sec) return null;
+          const dayKey = sec.key;
+          const vers = sec.versions ?? [{ id: undefined, name: "Main" }];
+          const of = (section: string) => state.items.filter((i) => i.section === section);
+          return (
+            <DayCompare
+              date={compareDay}
+              color={sec.color}
+              shown={sec.draftId}
+              currency={state.meta.currency ?? "CAD"}
+              convert={fx.convert}
+              readOnly={readOnly}
+              versions={vers.map((v) => {
+                const ver = v.id ? draftSection(v.id) : dayKey;
+                return {
+                  id: v.id,
+                  name: v.id ? v.name : "Main plan",
+                  items: of(ver),
+                  legs: view.legs.filter((l) => l.ver === ver).map((l) => legResults.get(l.req.key)).filter((x) => x != null),
+                };
+              })}
+              onEdit={(d) => {
+                setDayDraft(compareDay, d);
+                setCompareDay(null);
+                setTab("plan");
+                setTimeout(() => scrollToId(scrollRef.current, `sec-${dayKey}`), 60);
+              }}
+              onUse={(d) => {
+                adoptDraft(doc, d, "Previous plan");
+                setDayDraft(compareDay, undefined);
+              }}
+              onRename={(d, n) => renameDraft(doc, d, n)}
+              onDelete={(d) => {
+                deleteDraft(doc, d);
+                if (sec.draftId === d) setDayDraft(compareDay, undefined);
+                if (vers.length <= 2) setCompareDay(null);
+              }}
+              onFork={(from) => {
+                const d = forkDay(doc, compareDay, from ? draftSection(from) : dayKey, `Draft ${vers.length}`);
+                setDayDraft(compareDay, d);
+              }}
+              onClose={() => setCompareDay(null)}
+            />
+          );
+        })()}
         {openItem && (
           <PlacePanel
             key={panelMode}
@@ -1154,7 +1288,7 @@ export function TripPage() {
             mode={panelMode}
             onMode={setPanelMode}
             targets={targets}
-            onMoveTo={(k) => moveItems(doc, [openItem.id], k)}
+            onMoveTo={(k) => moveItems(doc, [openItem.id], writeOf(k))}
             sections={sectionsOf(openItem.id)}
             onToggleSection={readOnly ? undefined : (k) => toggleSection(openItem.id, k)}
             onLink={(googlePlaceId) => updateItem(doc, openItem.id, { googlePlaceId })}

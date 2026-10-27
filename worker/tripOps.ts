@@ -97,7 +97,7 @@ export function snapshot(doc: Y.Doc): Snapshot {
   ];
   const byKey = new Map(sections.map((s) => [s.key, s]));
   const outsideDates: Item[] = [];
-  for (const it of items) (byKey.get(it.section)?.items ?? outsideDates).push(it);
+  for (const it of items) if (!it.section.startsWith("draft:")) (byKey.get(it.section)?.items ?? outsideDates).push(it); // day drafts stay out
   const reservations = recs(doc, "reservations").sort((a, b) => String(a.startDate ?? "9999").localeCompare(String(b.startDate ?? "9999")));
   const expenses = recs(doc, "expenses").sort((a, b) => String(a.date ?? "").localeCompare(String(b.date ?? "")));
   return { meta, sections, outsideDates, reservations, expenses };

@@ -12,6 +12,8 @@ import { daysBetween } from "./dates";
  *   meta:  Y.Map  { title, destination, startDate, endDate, center? [lng, lat] }
  *   lists: Y.Map  listId -> Y.Map { title, order }        e.g. "Places to visit"
  *   items: Y.Map  itemId -> Y.Map { ...Item fields }
+ *   drafts: Y.Map draftId -> Y.Map { date, name, createdAt }   alternative plans for a day; their
+ *          stops are ordinary items in section "draft:<draftId>"
  *
  * Items are a flat map with a `section` ("day:YYYY-MM-DD" | "list:<id>") and a fractional
  * `order` key, instead of nested arrays. Two people moving items at once can't corrupt the
@@ -184,9 +186,18 @@ export interface ListMeta {
   order: string;
 }
 
+/** An alternative plan for one day ("forked" from the day or another draft). */
+export interface DayDraft {
+  id: string;
+  date: string;
+  name: string;
+  createdAt: number;
+}
+
 export interface TripState {
   meta: TripMeta;
   lists: ListMeta[];
+  drafts: DayDraft[];
   items: Item[];
   reservations: Reservation[];
   expenses: Expense[];
@@ -197,6 +208,8 @@ export const ME: EditOrigin = { by: "me" };
 
 export const daySection = (date: string) => `day:${date}`;
 export const listSection = (id: string) => `list:${id}`;
+export const draftSection = (id: string) => `draft:${id}`;
+export const isDraftSection = (section: string) => section.startsWith("draft:");
 
 interface OpenTrip {
   doc: Y.Doc;
@@ -297,7 +310,8 @@ export function readTrip(doc: Y.Doc): TripState {
   const expenses = records<Expense>(doc, "expenses").sort(
     (a, b) => (b.date ?? "").localeCompare(a.date ?? "") || b.createdAt - a.createdAt,
   );
-  return { meta, lists, items, reservations, expenses };
+  const drafts = records<DayDraft>(doc, "drafts").sort((a, b) => a.createdAt - b.createdAt);
+  return { meta, lists, drafts, items, reservations, expenses };
 }
 
 const records = <T,>(doc: Y.Doc, name: string) =>
@@ -499,6 +513,80 @@ export function copyItems(doc: Y.Doc, ids: string[], section: string, origin: Ed
     origin,
   );
   return out;
+}
+
+/* ---- Day drafts: fork a day, edit the copy, compare, then make one the day's plan ---- */
+
+/** Copy the stops of `fromSection` (the day, or another draft) into a new draft for `date`. */
+export function forkDay(doc: Y.Doc, date: string, fromSection: string, name: string, origin: EditOrigin = ME): string {
+  const id = nanoid(8);
+  const items = doc.getMap<Y.Map<unknown>>("items");
+  edit(
+    doc,
+    () => {
+      const d = new Y.Map<unknown>();
+      d.set("date", date);
+      d.set("name", name);
+      d.set("createdAt", Date.now());
+      doc.getMap<Y.Map<unknown>>("drafts").set(id, d);
+      for (const it of itemsIn(doc, fromSection)) {
+        const m = new Y.Map<unknown>();
+        const copy = { ...it, id: nanoid(10), section: draftSection(id), createdAt: Date.now() };
+        for (const [k, v] of Object.entries(copy)) if (v !== undefined) m.set(k, v);
+        items.set(copy.id, m);
+      }
+    },
+    origin,
+  );
+  return id;
+}
+
+export function renameDraft(doc: Y.Doc, id: string, name: string, origin: EditOrigin = ME) {
+  const d = doc.getMap<Y.Map<unknown>>("drafts").get(id);
+  if (d && name.trim()) edit(doc, () => d.set("name", name.trim()), origin);
+}
+
+/** Throw a draft away, with its stops. */
+export function deleteDraft(doc: Y.Doc, id: string, origin: EditOrigin = ME) {
+  const items = doc.getMap<Y.Map<unknown>>("items");
+  edit(
+    doc,
+    () => {
+      for (const it of itemsIn(doc, draftSection(id))) items.delete(it.id);
+      doc.getMap("drafts").delete(id);
+    },
+    origin,
+  );
+}
+
+/**
+ * "Push to main": the draft's stops become the day's plan. The day's current stops are kept as a
+ * draft (named `keepAs`) unless `keepAs` is empty, so nothing is lost; one undo step either way.
+ */
+export function adoptDraft(doc: Y.Doc, id: string, keepAs: string | null, origin: EditOrigin = ME) {
+  const drafts = doc.getMap<Y.Map<unknown>>("drafts");
+  const meta = drafts.get(id)?.toJSON() as DayDraft | undefined;
+  if (!meta) return;
+  const items = doc.getMap<Y.Map<unknown>>("items");
+  const day = daySection(meta.date);
+  edit(
+    doc,
+    () => {
+      const current = itemsIn(doc, day);
+      if (keepAs && current.length) {
+        const keepId = nanoid(8);
+        const d = new Y.Map<unknown>();
+        d.set("date", meta.date);
+        d.set("name", keepAs);
+        d.set("createdAt", Date.now());
+        drafts.set(keepId, d);
+        for (const it of current) items.get(it.id)!.set("section", draftSection(keepId));
+      } else for (const it of current) items.delete(it.id);
+      for (const it of itemsIn(doc, draftSection(id))) items.get(it.id)!.set("section", day);
+      drafts.delete(id);
+    },
+    origin,
+  );
 }
 
 // Keep trip order when moving a selection that spans days: by section, then position

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useDroppable } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
-import { ChevronDown, Eye, PenLine, ListChecks, MapPin, Pencil, Plus, StickyNote } from "lucide-react";
+import { ChevronDown, Columns3, Eye, GitBranch, PenLine, ListChecks, MapPin, Pencil, Plus, StickyNote } from "lucide-react";
 import type { Item, Reservation } from "../lib/trips";
 import { RES_ICON } from "./Reservations";
 import { LegChip } from "./LegChip";
@@ -26,6 +26,11 @@ export interface SectionInfo {
   color: string;
   items: Item[];
   readonlyTitle?: boolean;
+  /** Where edits land: the day itself, or the draft being viewed ("draft:<id>"). */
+  writeKey?: string;
+  /** Days with drafts: the day's plan (id undefined) and each draft, plus the one shown. */
+  versions?: { id?: string; name: string }[];
+  draftId?: string;
 }
 
 interface Props {
@@ -64,6 +69,11 @@ interface Props {
   onSubtitle?: (text: string) => void;
   /** Days: pick this day's colour (undefined resets to the default). */
   onColor?: (hex: string | undefined) => void;
+  /** Day drafts: start one from what's shown, switch which plan is shown, compare them all. */
+  onFork?: () => void;
+  onVersion?: (draftId: string | undefined) => void;
+  onCompare?: () => void;
+  onUseDraft?: () => void;
 }
 
 export function Section(p: Props) {
@@ -172,6 +182,40 @@ export function Section(p: Props) {
             />
           )}
           <Subheading value={p.subtitle} onSave={p.readOnly ? undefined : p.onSubtitle} editing={subEditing} setEditing={setSubEditing} />
+          {info.versions && info.versions.length > 1 && (
+            <div className="mt-2 flex flex-wrap items-center gap-1.5" role="tablist" aria-label="Plans for this day">
+              {info.versions.map((v) => {
+                const on = v.id === info.draftId;
+                return (
+                  <button
+                    key={v.id ?? "main"}
+                    role="tab"
+                    aria-selected={on}
+                    onClick={() => p.onVersion?.(v.id)}
+                    className={`flex max-w-[160px] items-center gap-1.5 rounded-full border px-2.5 py-1 text-[12px] font-semibold transition-colors ${
+                      on ? "border-accent/50 bg-accent/15 text-accent" : "border-line text-muted hover:text-fg"
+                    }`}
+                  >
+                    {v.id ? <GitBranch className="size-3 shrink-0" /> : null}
+                    <span className="truncate">{v.name}</span>
+                  </button>
+                );
+              })}
+              {p.onFork && (
+                <button onClick={p.onFork} title="New draft from the plan shown" aria-label="New draft" className="grid size-7 place-items-center rounded-full border border-dashed border-line text-muted hover:border-accent/60 hover:text-accent">
+                  <Plus className="size-3.5" />
+                </button>
+              )}
+              <button onClick={p.onCompare} className="flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[12px] font-semibold text-muted hover:bg-surface-2 hover:text-fg">
+                <Columns3 className="size-3.5" /> Compare
+              </button>
+              {info.draftId && p.onUseDraft && (
+                <button onClick={p.onUseDraft} className="rounded-full bg-accent px-2.5 py-1 text-[12px] font-bold text-on-accent">
+                  Use this plan
+                </button>
+              )}
+            </div>
+          )}
         </div>
         {/* One row, centred on the 28px buttons, level with the title's first line */}
         <div className="flex h-8 shrink-0 items-center gap-1.5 text-xs text-muted tabular-nums">
@@ -186,6 +230,16 @@ export function Section(p: Props) {
               aria-label="Add a subheading"
             >
               <PenLine className="size-3.5" />
+            </button>
+          )}
+          {p.onFork && !(info.versions && info.versions.length > 1) && (
+            <button
+              onClick={p.onFork}
+              className="grid size-7 place-items-center rounded-md text-muted opacity-0 transition-opacity group-hover/section:opacity-100 hover:bg-surface-2 hover:text-fg focus-visible:opacity-100 max-md:opacity-60"
+              title="Try another plan for this day (draft)"
+              aria-label="New draft of this day"
+            >
+              <GitBranch className="size-3.5" />
             </button>
           )}
           <button
