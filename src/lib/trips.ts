@@ -92,6 +92,8 @@ export interface TripMeta {
   hotelLegModes?: Record<string, import("./routing").TravelMode>;
   /** When each day starts (auto stop times), by ISO date. */
   dayStarts?: Record<string, string>;
+  /** Name of the plan each day uses now (days with drafts), by ISO date; default "Original". */
+  planNames?: Record<string, string>;
 }
 
 export type ReservationType = "flight" | "lodging" | "car" | "train" | "restaurant" | "other";
@@ -545,6 +547,15 @@ export function forkDay(doc: Y.Doc, date: string, fromSection: string, name: str
   return id;
 }
 
+export const DEFAULT_PLAN_NAME = "Original";
+export const mainPlanName = (meta: TripMeta, date: string) => meta.planNames?.[date] || DEFAULT_PLAN_NAME;
+
+/** "Draft 3": one past the highest draft number used on that day, so names never repeat. */
+export function nextDraftName(drafts: DayDraft[], date: string) {
+  const used = drafts.filter((d) => d.date === date).map((d) => Number(/^Draft (\d+)$/.exec(d.name)?.[1] ?? 0));
+  return `Draft ${Math.max(0, ...used) + 1}`;
+}
+
 export function renameDraft(doc: Y.Doc, id: string, name: string, origin: EditOrigin = ME) {
   const d = doc.getMap<Y.Map<unknown>>("drafts").get(id);
   if (d && name.trim()) edit(doc, () => d.set("name", name.trim()), origin);
@@ -564,20 +575,25 @@ export function deleteDraft(doc: Y.Doc, id: string, origin: EditOrigin = ME) {
 }
 
 /**
- * "Push to main": the draft's stops become the day's plan. The day's current stops are kept as a
- * draft (named `keepAs`) unless `keepAs` is empty, so nothing is lost; one undo step either way.
+ * "Push to main": swap the draft with the day's plan. Each keeps its own name: the draft's stops
+ * (and name) become the day's plan, the old plan (and its name) becomes a draft. One undo step.
  */
-export function adoptDraft(doc: Y.Doc, id: string, keepAs: string | null, origin: EditOrigin = ME) {
+export function adoptDraft(doc: Y.Doc, id: string, origin: EditOrigin = ME) {
   const drafts = doc.getMap<Y.Map<unknown>>("drafts");
   const meta = drafts.get(id)?.toJSON() as DayDraft | undefined;
   if (!meta) return;
   const items = doc.getMap<Y.Map<unknown>>("items");
   const day = daySection(meta.date);
+  const tripMeta = doc.getMap("meta");
+  const names = { ...((tripMeta.get("planNames") as Record<string, string> | undefined) ?? {}) };
+  const keepAs = names[meta.date] || DEFAULT_PLAN_NAME;
   edit(
     doc,
     () => {
       const current = itemsIn(doc, day);
-      if (keepAs && current.length) {
+      names[meta.date] = meta.name;
+      tripMeta.set("planNames", names);
+      if (current.length) {
         const keepId = nanoid(8);
         const d = new Y.Map<unknown>();
         d.set("date", meta.date);

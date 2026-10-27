@@ -65,6 +65,8 @@ import {
   adoptDraft,
   draftSection,
   isDraftSection,
+  mainPlanName,
+  nextDraftName,
 } from "../lib/trips";
 import { DayCompare, type Bookend } from "../components/DayCompare";
 import { autoTimes, DEFAULT_DAY_START, DEFAULT_STAY } from "../lib/autoTime";
@@ -275,7 +277,7 @@ export function TripPage() {
         color: dayColor(i, date, state.meta.dayColors),
         items: shown ? (draftItems.get(draftSection(shown.id)) ?? []) : bySection.get(key)!,
         writeKey: shown ? draftSection(shown.id) : key,
-        versions: drafts.length ? [{ name: "Main", id: undefined }, ...drafts.map((d) => ({ id: d.id, name: d.name }))] : undefined,
+        versions: drafts.length ? [{ name: mainPlanName(state.meta, date), id: undefined }, ...drafts.map((d) => ({ id: d.id, name: d.name }))] : undefined,
         draftId: shown?.id,
       };
     });
@@ -1175,8 +1177,7 @@ export function TripPage() {
                 onFork={
                   s.kind === "day" && !readOnly
                     ? () => {
-                        const n = (s.versions?.length ?? 1);
-                        const d = forkDay(doc, s.date!, s.writeKey ?? s.key, `Draft ${n}`);
+                        const d = forkDay(doc, s.date!, s.writeKey ?? s.key, nextDraftName(state.drafts, s.date!));
                         setDayDraft(s.date!, d);
                       }
                     : undefined
@@ -1189,13 +1190,13 @@ export function TripPage() {
                         const name = s.versions?.find((v) => v.id === s.draftId)?.name ?? "this draft";
                         if (
                           await askConfirm({
-                            title: `Make “${name}” the plan?`,
-                            body: "Its stops replace the day's plan. The current plan is kept as a draft, so you can switch back.",
+                            title: `Make “${name}” the day's plan?`,
+                            body: `“${s.versions?.[0]?.name}” moves to the drafts with its name, so you can swap back any time.`,
                             confirmLabel: "Use this plan",
                             danger: false,
                           })
                         ) {
-                          adoptDraft(doc, s.draftId!, "Previous plan");
+                          adoptDraft(doc, s.draftId!);
                           setDayDraft(s.date!, undefined);
                         }
                       }
@@ -1287,7 +1288,7 @@ export function TripPage() {
           const sec = view.sections.find((x) => x.kind === "day" && x.date === compareDay);
           if (!sec) return null;
           const dayKey = sec.key;
-          const vers = sec.versions ?? [{ id: undefined, name: "Main" }];
+          const vers = sec.versions ?? [{ id: undefined, name: mainPlanName(state.meta, compareDay) }];
           const of = (section: string) => state.items.filter((i) => i.section === section);
           return (
             <DayCompare
@@ -1323,7 +1324,7 @@ export function TripPage() {
                     pins.push(x);
                 return {
                   id: v.id,
-                  name: v.id ? v.name : "Main plan",
+                  name: v.name,
                   items,
                   legs: vlegs.map((l) => legResults.get(l.req.key)).filter((x) => x != null),
                   pins,
@@ -1338,17 +1339,17 @@ export function TripPage() {
                 setTimeout(() => scrollToId(scrollRef.current, `sec-${dayKey}`), 60);
               }}
               onUse={(d) => {
-                adoptDraft(doc, d, "Previous plan");
+                adoptDraft(doc, d);
                 setDayDraft(compareDay, undefined);
               }}
-              onRename={(d, n) => renameDraft(doc, d, n)}
+              onRename={(d, n) => (d ? renameDraft(doc, d, n) : updateMeta(doc, { planNames: { ...(state.meta.planNames ?? {}), [compareDay]: n.trim() } }))}
               onDelete={(d) => {
                 deleteDraft(doc, d);
                 if (sec.draftId === d) setDayDraft(compareDay, undefined);
                 if (vers.length <= 2) setCompareDay(null);
               }}
               onFork={(from) => {
-                const d = forkDay(doc, compareDay, from ? draftSection(from) : dayKey, `Draft ${vers.length}`);
+                const d = forkDay(doc, compareDay, from ? draftSection(from) : dayKey, nextDraftName(state.drafts, compareDay));
                 setDayDraft(compareDay, d);
               }}
               onClose={() => setCompareDay(null)}
