@@ -408,9 +408,22 @@ export function ReservationForm({ doc, state, initial, onClose }: { doc: Y.Doc; 
  * (a flight's arrival uses its arrival time). Check-outs open the day and check-ins close it
  * (you check in after the travel that gets you there), "staying at" comes first.
  */
+export interface DayChip {
+  r: Reservation;
+  label: string;
+  at: string;
+  /** The event's clock time, when known (slots the chip between stops). */
+  time?: string;
+  /** What happens: "Departs", "Check-in"… (the card view shows it under the title). */
+  verb: string;
+  /** Clock time to show on the card (check-in/out included). */
+  clock?: string;
+  people?: number;
+}
+
 export function dayChips(reservations: Reservation[], date: string) {
   // time: the event's real clock time, when known (used to slot the chip between stops)
-  const chips: { r: Reservation; label: string; at: string; time?: string }[] = [];
+  const chips: DayChip[] = [];
   for (const r of sortReservations(reservations)) {
     const s = r.startDate;
     const e = r.endDate;
@@ -419,20 +432,20 @@ export function dayChips(reservations: Reservation[], date: string) {
     switch (r.type) {
       case "flight":
       case "train":
-        if (s === date) chips.push({ r, label: `${r.title} departs${t(r.startTime)}`, at: at(r.startTime), time: r.startTime });
-        if (e === date && e !== s) chips.push({ r, label: `${r.title} arrives${t(r.endTime)}`, at: at(r.endTime), time: r.endTime });
+        if (s === date) chips.push({ r, label: `${r.title} departs${t(r.startTime)}`, at: at(r.startTime), time: r.startTime, verb: "Departs", clock: r.startTime });
+        if (e === date && e !== s) chips.push({ r, label: `${r.title} arrives${t(r.endTime)}`, at: at(r.endTime), time: r.endTime, verb: "Arrives", clock: r.endTime });
         break;
       case "lodging":
-        if (s === date) chips.push({ r, label: `Check-in ${r.title}${t(r.startTime)}`, at: "~2" + at(r.startTime) });
-        else if (e === date) chips.push({ r, label: `Check-out ${r.title}${t(r.endTime)}`, at: "!" + at(r.endTime, "10:00") });
-        else if (s && e && s < date && date < e) chips.push({ r, label: `Staying at ${r.title}`, at: "!" });
+        if (s === date) chips.push({ r, label: `Check-in ${r.title}${t(r.startTime)}`, at: "~2" + at(r.startTime), verb: "Check-in", clock: r.startTime });
+        else if (e === date) chips.push({ r, label: `Check-out ${r.title}${t(r.endTime)}`, at: "!" + at(r.endTime, "10:00"), verb: "Check-out", clock: r.endTime });
+        else if (s && e && s < date && date < e) chips.push({ r, label: `Staying at ${r.title}`, at: "!", verb: "Staying" });
         break;
       case "car":
-        if (s === date) chips.push({ r, label: `Pick up ${r.title}${t(r.startTime)}`, at: at(r.startTime), time: r.startTime });
-        if (e === date && e !== s) chips.push({ r, label: `Drop off ${r.title}${t(r.endTime)}`, at: at(r.endTime), time: r.endTime });
+        if (s === date) chips.push({ r, label: `Pick up ${r.title}${t(r.startTime)}`, at: at(r.startTime), time: r.startTime, verb: "Pick up", clock: r.startTime });
+        if (e === date && e !== s) chips.push({ r, label: `Drop off ${r.title}${t(r.endTime)}`, at: at(r.endTime), time: r.endTime, verb: "Drop off", clock: r.endTime });
         break;
       default:
-        if (s === date) chips.push({ r, label: `${r.title}${t(r.startTime)}`, at: at(r.startTime), time: r.startTime });
+        if (s === date) chips.push({ r, label: `${r.title}${t(r.startTime)}`, at: at(r.startTime), time: r.startTime, verb: r.type === "restaurant" ? "Reservation" : "Booking", clock: r.startTime });
     }
   }
   // "!" sorts before digits (morning hotel), "~" after them (evening check-in)
@@ -460,7 +473,7 @@ export function dayChips(reservations: Reservation[], date: string) {
     return a.at < b.at ? -1 : a.at > b.at ? 1 : 0; // plain code-point order (localeCompare ignores "!"/"~")
   });
   // One chip per booking when several travellers each have their own copy
-  const merged: { r: Reservation; label: string; at: string; time?: string }[] = [];
+  const merged: DayChip[] = [];
   const count = new Map<string, number>();
   for (const c of chips) count.set(c.label, (count.get(c.label) ?? 0) + 1);
   const seen = new Set<string>();
@@ -468,7 +481,7 @@ export function dayChips(reservations: Reservation[], date: string) {
     if (seen.has(c.label)) continue;
     seen.add(c.label);
     const n = count.get(c.label)!;
-    merged.push(n > 1 ? { ...c, label: `${c.label} · ${n} people` } : c);
+    merged.push(n > 1 ? { ...c, label: `${c.label} · ${n} people`, people: n } : c);
   }
   return merged;
 }
