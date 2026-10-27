@@ -32,7 +32,7 @@ const positionProp = {
   position: { type: "integer", minimum: 1, description: "1-based position within the section. Omit to append at the end." },
 };
 const itemFields = {
-  notes: { type: "string", description: "Free text: tips, booking refs, links." },
+  notes: { type: "string", description: "Free text: tips, booking refs, links. Optional formatting: **bold**, *italic*, ++underline++, ~~strike~~, lines starting \"- \" or \"1. \" are lists (a leading tab nests them)." },
   start_time: { type: "string", pattern: "^\\d{2}:\\d{2}$", description: "HH:MM, 24-hour, local time." },
   end_time: { type: "string", pattern: "^\\d{2}:\\d{2}$", description: "HH:MM, 24-hour, local time." },
   cost: { type: "number", description: "Entry fee, meal, tickets; counted in the budget." },

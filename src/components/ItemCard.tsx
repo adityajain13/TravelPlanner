@@ -1,5 +1,5 @@
 import { inkOn } from "../lib/colors";
-import { hasLink, Linkified } from "./Linkified";
+import { RichEditor, RichField, RichLine, RichText } from "./RichText";
 import { useEffect, useState } from "react";
 import { CurrencySelect } from "./CurrencySelect";
 import { useSortable } from "@dnd-kit/sortable";
@@ -207,7 +207,7 @@ function ItemCardView({
             </div>
           </div>
           {isPlace && subtitle && <p className="mt-0.5 truncate text-sm text-muted">{subtitle}</p>}
-          {isPlace && !selected && item.notes && <Linkified text={item.notes} className="mt-1.5 line-clamp-3 block text-[15px] leading-snug whitespace-pre-line text-muted" />}
+          {isPlace && !selected && item.notes && <RichText text={item.notes} className="mt-1.5 line-clamp-3 text-[15px] leading-snug text-muted" />}
 
           {isPlace && !selected && (auto || item.startTime || item.endTime || item.cost != null) && (
             <div className="mt-2.5 flex flex-wrap gap-1.5 text-[13px] font-semibold">
@@ -371,37 +371,16 @@ function CostInput({ amount, currency, disabled, onCommit }: { amount?: number; 
 }
 
 
-/** Local draft while typing; writes to the doc on blur so remote edits don't fight the cursor. */
+/** Stop notes: formatted text; click to edit in place (bold, lists… from the selection bar). */
 function NotesInput({ value, onCommit, disabled }: { value: string; onCommit: (v: string) => void; disabled?: boolean }) {
-  const [draft, setDraft] = useState(value);
-  const [focused, setFocused] = useState(false);
-  useEffect(() => {
-    if (!focused) setDraft(value);
-  }, [value, focused]);
-  // With a link in it, show the note with clickable links; click elsewhere on it to edit
-  if (!focused && hasLink(value))
-    return (
-      <div
-        onClick={() => !disabled && setFocused(true)}
-        className={`w-full rounded-lg bg-surface px-2.5 py-1.5 text-sm whitespace-pre-line text-fg ${disabled ? "" : "cursor-text"}`}
-      >
-        <Linkified text={value} />
-      </div>
-    );
   return (
-    <textarea
-      autoFocus={hasLink(value)}
+    <RichField
+      value={value}
       readOnly={disabled}
-      value={draft}
-      onChange={(e) => setDraft(e.target.value)}
-      onFocus={() => setFocused(true)}
-      onBlur={() => {
-        setFocused(false);
-        if (draft !== value) onCommit(draft);
-      }}
-      rows={Math.min(6, Math.max(1, draft.split("\n").length))}
+      onCommit={onCommit}
       placeholder="Add notes, links, reservation numbers…"
-      className="w-full resize-none rounded-lg bg-surface px-2.5 py-1.5 text-sm text-fg outline-none placeholder:text-muted/60 focus:ring-1 focus:ring-accent/50"
+      className="w-full rounded-lg bg-surface px-2.5 py-1.5 text-sm leading-relaxed text-fg"
+      editClassName="focus:ring-1 focus:ring-accent/50"
     />
   );
 }
@@ -414,28 +393,15 @@ const newId = () => Math.random().toString(36).slice(2, 10);
 
 /** A note: edits in place; empty notes remove themselves. */
 function NoteBody({ text, readOnly, onCommit }: { text: string; readOnly?: boolean; onCommit: (t: string) => void }) {
-  const [draft, setDraft] = useState(text);
-  const [focused, setFocused] = useState(false);
-  useEffect(() => {
-    if (!focused) setDraft(text);
-  }, [text, focused]);
-  if (readOnly || (!focused && hasLink(text)))
-    return (
-      <p onClick={(e) => !readOnly && (e.stopPropagation(), setFocused(true))} className={`min-w-0 flex-1 text-[15px] leading-relaxed whitespace-pre-line ${readOnly ? "" : "cursor-text"}`}>
-        <Linkified text={text} />
-      </p>
-    );
   return (
-    <textarea
-      value={draft}
-      autoFocus={!text || hasLink(text)}
-      onChange={(e) => setDraft(e.target.value)}
-      onFocus={() => setFocused(true)}
-      onBlur={() => (setFocused(false), onCommit(draft))}
-      onKeyDown={(e) => e.key === "Escape" && (e.target as HTMLTextAreaElement).blur()}
-      rows={Math.max(1, draft.split("\n").length)}
+    <RichField
+      value={text}
+      readOnly={readOnly}
+      autoFocus={!text}
+      onCommit={() => undefined}
+      onDone={onCommit}
       placeholder="Write a note…"
-      className="min-w-0 flex-1 resize-none bg-transparent text-[15px] leading-relaxed outline-none placeholder:text-muted/60 [field-sizing:content]"
+      className="min-w-0 flex-1 text-[15px] leading-relaxed"
     />
   );
 }
@@ -471,33 +437,29 @@ function ChecklistBody({ item, readOnly, onChange, onDelete }: { item: Item; rea
               className="size-[17px] shrink-0 cursor-pointer accent-[var(--accent)]"
               aria-label={c.text || "Item"}
             />
-            <LinkOrInput text={c.text} done={!!c.done} readOnly={readOnly}>
-            <input
-              disabled={readOnly}
-              defaultValue={c.text}
-              key={`${c.id}:${c.text}`}
-              autoFocus={focusId === c.id || hasLink(c.text)}
-              placeholder="List item"
-              onFocus={() => setFocusId(null)}
-              onBlur={(e) => e.target.value !== c.text && save(checks.map((x) => (x.id === c.id ? { ...x, text: e.target.value } : x)))}
-              onKeyDown={(e) => {
-                const el = e.target as HTMLInputElement;
-                if (e.key === "Enter") {
-                  e.preventDefault();
-                  const id = newId();
-                  const next = checks.map((x) => (x.id === c.id ? { ...x, text: el.value } : x));
-                  next.splice(i + 1, 0, { id, text: "" });
-                  setFocusId(id);
-                  save(next);
-                } else if (e.key === "Backspace" && !el.value && checks.length > 1) {
-                  e.preventDefault();
-                  setFocusId(checks[i - 1]?.id ?? checks[i + 1]?.id ?? null);
-                  save(checks.filter((x) => x.id !== c.id));
-                }
+            <CheckText
+              text={c.text}
+              done={!!c.done}
+              readOnly={readOnly}
+              focus={focusId === c.id}
+              onFocused={() => setFocusId(null)}
+              onCommit={(t) => save(checks.map((x) => (x.id === c.id ? { ...x, text: t } : x)))}
+              onEnter={(t) => {
+                const id = newId();
+                const next = checks.map((x) => (x.id === c.id ? { ...x, text: t } : x));
+                next.splice(i + 1, 0, { id, text: "" });
+                setFocusId(id);
+                save(next);
               }}
-              className={`min-w-0 flex-1 bg-transparent py-0.5 text-[15px] outline-none placeholder:text-muted/50 ${c.done ? "text-muted line-through" : ""}`}
+              onBackspaceEmpty={
+                checks.length > 1
+                  ? () => {
+                      setFocusId(checks[i - 1]?.id ?? checks[i + 1]?.id ?? null);
+                      save(checks.filter((x) => x.id !== c.id));
+                    }
+                  : undefined
+              }
             />
-            </LinkOrInput>
             {!readOnly && (
               <button onClick={() => save(checks.filter((x) => x.id !== c.id))} className="text-muted opacity-0 group-hover/row:opacity-100 hover:text-danger" aria-label="Remove item">
                 <X className="size-3.5" />
@@ -527,13 +489,37 @@ function ChecklistBody({ item, readOnly, onChange, onDelete }: { item: Item; rea
   );
 }
 
-/** A checklist row: its text with clickable links when it has one; click the text to edit. */
-function LinkOrInput({ text, done, readOnly, children }: { text: string; done: boolean; readOnly?: boolean; children: React.ReactNode }) {
-  const [editing, setEditing] = useState(false);
-  if (editing || !hasLink(text)) return <span className="contents" onBlur={() => setEditing(false)}>{children}</span>;
+/** A checklist row's text: formatted (ticked rows struck through); click to edit, caret where you clicked. */
+function CheckText(p: { text: string; done: boolean; readOnly?: boolean; focus: boolean; onFocused: () => void; onCommit: (t: string) => void; onEnter: (t: string) => void; onBackspaceEmpty?: () => void }) {
+  const [editing, setEditing] = useState<{ x: number; y: number } | null | false>(false);
+  // A row just added with Enter: take over its focus so it stays in edit mode until you leave it
+  useEffect(() => {
+    if (p.focus) (setEditing(null), p.onFocused());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [p.focus]);
+  const tone = `min-w-0 flex-1 py-0.5 text-[15px] ${p.done ? "text-muted line-through" : ""}`;
+  const edit = p.focus || editing !== false || (!p.text && !p.readOnly);
+  if (!edit)
+    return (
+      <span
+        onClick={(e) => !p.readOnly && !(e.target as HTMLElement).closest("a") && setEditing({ x: e.clientX, y: e.clientY })}
+        className={`${tone} ${p.readOnly ? "" : "cursor-text"}`}
+      >
+        <RichLine text={p.text} />
+      </span>
+    );
   return (
-    <span onClick={() => !readOnly && setEditing(true)} className={`min-w-0 flex-1 py-0.5 text-[15px] ${done ? "text-muted line-through" : ""} ${readOnly ? "" : "cursor-text"}`}>
-      <Linkified text={text} />
-    </span>
+    <RichEditor
+      singleLine
+      value={p.text}
+      autoFocus={p.focus || editing !== false}
+      caretAt={editing || null}
+      placeholder="List item"
+      onCommit={p.onCommit}
+      onEnter={p.onEnter}
+      onBackspaceEmpty={p.onBackspaceEmpty}
+      onBlur={() => setEditing(false)}
+      className={tone}
+    />
   );
 }
