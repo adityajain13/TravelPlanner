@@ -50,6 +50,8 @@ interface Props {
   holdView?: boolean;
   /** Small embedded map (Compare plans): no controls, framed on every pin and route. */
   mini?: boolean;
+  /** Frame every pin, not just the core of the trip (one day shown alone with the eye). */
+  frameAll?: boolean;
 }
 
 maplibregl.setWorkerUrl(workerUrl);
@@ -94,7 +96,7 @@ const readMode = (): MapMode => {
   }
 };
 
-export function TripMap({ pins, routes, selectedId, onSelect, theme, fitKey, fallbackCenter, inset, frame, focusColor, holdView, mini }: Props) {
+export function TripMap({ pins, routes, selectedId, onSelect, theme, fitKey, fallbackCenter, inset, frame, focusColor, holdView, mini, frameAll }: Props) {
   const container = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const [mode, setMode] = useState<MapMode>(readMode);
@@ -192,7 +194,7 @@ export function TripMap({ pins, routes, selectedId, onSelect, theme, fitKey, fal
       map.easeTo({ center: [pins[0].lng, pins[0].lat], zoom: Math.max(map.getZoom(), 13) });
       return;
     }
-    map.fitBounds(coreBounds(pins)!, { ...FIT, duration: 600 });
+    map.fitBounds((frameAll ? allBounds(pins, []) : coreBounds(pins))!, { ...FIT, duration: 600 });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fitKey, pins.length > 0]);
 

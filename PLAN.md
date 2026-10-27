@@ -156,3 +156,4 @@ Hosted at **adityajain.ca/travelplanner** by the `travelplanner` Cloudflare Work
 - Oct 26: 'How long' picker redesigned to match the time picker (type box + 15-min list to 12 h, opens on the current length).
 - Oct 26: Day plans keep their names when swapped: meta.planNames[date] is the day's plan name (default 'Original'); adoptDraft swaps names with stops (no more 'Previous plan'). Main tab gets a check, renamable in Compare; drafts numbered past the highest used. Map credits (i) start folded (first idle presses MapLibre's own toggle).
 - Oct 27: Trip settings (pin click, flight paths, contents width, bookings style, stop times) saved per account per trip in the trip doc (map 'prefs': email → settings; outside the undo scope). View-only/signed-out and the home screen use the device copy, which is also where an unset trip starts. Theme stays per device.
+- Oct 27: Eye (one day alone on the map) frames every pin of that day, not the ~75% core.
