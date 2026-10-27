@@ -4,10 +4,12 @@ import { useEffect, useState } from "react";
 export interface Settings {
   /** Clicking a pin on the map: zoom to it and open its card, or just open the card. */
   pinClick: "focus" | "card";
+  /** Draw flight arcs between airports on the map. */
+  flightPaths: "show" | "hide";
 }
 
 const KEY = "tp-settings";
-const DEFAULTS: Settings = { pinClick: "focus" };
+const DEFAULTS: Settings = { pinClick: "focus", flightPaths: "show" };
 
 const read = (): Settings => {
   try {

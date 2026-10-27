@@ -1093,7 +1093,7 @@ export function TripPage() {
         <Suspense fallback={<div className="h-full w-full bg-surface-2" />}>
         <TripMap
           pins={flights.pins.length ? [...view.pins, ...flights.pins] : view.pins}
-          routes={flights.arcs.length ? [...flights.arcs, ...routes] : routes}
+          routes={flights.arcs.length && settings.flightPaths !== "hide" ? [...flights.arcs, ...routes] : routes}
           selectedId={selectedId}
           onSelect={selectFromMap}
           theme={theme}
