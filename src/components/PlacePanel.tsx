@@ -5,6 +5,7 @@ import { googleMapsLink } from "../lib/photon";
 import { placeSummary } from "../lib/images";
 import { formatMoney } from "../lib/fx";
 import { Photo } from "./Photo";
+import { Linkified } from "./Linkified";
 import { PhotoCredit } from "./PhotoCredit";
 import { PinMarker } from "./ItemCard";
 import { GoogleDetails } from "./GoogleDetails";
@@ -212,7 +213,7 @@ export function PlacePanel(p: Props) {
           )}
           {item.notes && (
             <li className="flex gap-2">
-              <StickyNote className="mt-0.5 size-4 shrink-0" /> <span className="whitespace-pre-line text-fg/90">{item.notes}</span>
+              <StickyNote className="mt-0.5 size-4 shrink-0" /> <Linkified text={item.notes} className="min-w-0 whitespace-pre-line text-fg/90" />
             </li>
           )}
         </ul>
