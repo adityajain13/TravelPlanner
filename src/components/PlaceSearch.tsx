@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Loader2, MapPin, Search, StickyNote } from "lucide-react";
 import { searchPlaces, type PlaceResult } from "../lib/photon";
+import { textScore } from "../lib/geocode";
 import { isMapsLink, placeFromSuggestion, placesFromLink } from "../lib/gmaps";
 import { autocomplete, GOOGLE_KEY, type GoogleSuggestion } from "../lib/google";
 
@@ -98,7 +99,20 @@ export function PlaceSearch({ near, countryCode, onPick, onNote, autoFocus, onCa
     reset();
   };
 
-  const rows: Row[] = [...results.map((r) => ({ kind: "osm" as const, r })), ...google.map((s) => ({ kind: "google" as const, s })), ...(isLink ? [] : [{ kind: "note" as const }])];
+  // One list ranked by how well each name matches what was typed, wherever it came from: a
+  // Google suggestion named exactly "Drum Tao Theater Kyoto" beats OSM's "Sugi Drug". Loose OSM
+  // matches are dropped when Google has a good one.
+  const term = q.trim();
+  const scored = [
+    ...results.map((r) => ({ row: { kind: "osm" as const, r }, score: textScore(term, r) })),
+    ...google.map((g) => ({ row: { kind: "google" as const, s: g }, score: textScore(term, { name: g.main, address: g.secondary }) + 0.02 })),
+  ];
+  const bestGoogle = Math.max(-1, ...scored.filter((x) => x.row.kind === "google").map((x) => x.score));
+  const ranked = scored
+    .filter((x) => !(x.row.kind === "osm" && bestGoogle >= 0.75 && x.score < 0.5))
+    .sort((a, b) => b.score - a.score)
+    .map((x) => x.row as Row);
+  const rows: Row[] = [...ranked, ...(isLink ? [] : [{ kind: "note" as const }])];
   const choose = (row: Row) => (row.kind === "osm" ? pick(row.r) : row.kind === "google" ? void pickGoogle(row.s) : note());
 
   function onKey(e: React.KeyboardEvent) {
@@ -129,34 +143,29 @@ export function PlaceSearch({ near, countryCode, onPick, onNote, autoFocus, onCa
       </div>
       {showMenu && (
         <ul data-popover className="absolute inset-x-0 top-full z-30 mt-1 max-h-[22rem] overflow-y-auto rounded-xl border border-line bg-surface py-1 shadow-2xl">
-          {results.map((r, i) => (
-            <li key={r.osmId}>
-              <button onMouseDown={(e) => e.preventDefault()} onClick={() => pick(r)} onMouseEnter={() => setActive(i)} className={rowCls(i)}>
-                <MapPin className="mt-0.5 size-4 shrink-0 text-accent" />
-                <span className="min-w-0">
-                  <span className="block truncate text-[15px]">{r.name}</span>
-                  <span className="block truncate text-xs text-muted">{[r.category && r.category[0].toUpperCase() + r.category.slice(1), r.address].filter(Boolean).join(" · ")}</span>
-                </span>
-              </button>
-            </li>
-          ))}
-          {google.length > 0 && (
-            <li className="mt-1 border-t border-line px-3 pt-2 pb-1 text-[11px] font-bold tracking-wider text-muted uppercase">More places</li>
-          )}
-          {google.map((s, j) => {
-            const i = results.length + j;
-            return (
-              <li key={s.placeId}>
-                <button disabled={!!resolving} onMouseDown={(e) => e.preventDefault()} onClick={() => pickGoogle(s)} onMouseEnter={() => setActive(i)} className={rowCls(i)}>
-                  {resolving === s.placeId ? <Loader2 className="mt-0.5 size-4 shrink-0 animate-spin text-muted" /> : <MapPin className="mt-0.5 size-4 shrink-0 text-muted" />}
+          {rows.map((row, i) =>
+            row.kind === "osm" ? (
+              <li key={`o-${row.r.osmId}`}>
+                <button onMouseDown={(e) => e.preventDefault()} onClick={() => pick(row.r)} onMouseEnter={() => setActive(i)} className={rowCls(i)}>
+                  <MapPin className="mt-0.5 size-4 shrink-0 text-accent" />
                   <span className="min-w-0">
-                    <span className="block truncate text-[15px]">{s.main}</span>
-                    {s.secondary && <span className="block truncate text-xs text-muted">{s.secondary}</span>}
+                    <span className="block truncate text-[15px]">{row.r.name}</span>
+                    <span className="block truncate text-xs text-muted">{[row.r.category && row.r.category[0].toUpperCase() + row.r.category.slice(1), row.r.address].filter(Boolean).join(" · ")}</span>
                   </span>
                 </button>
               </li>
-            );
-          })}
+            ) : row.kind === "google" ? (
+              <li key={`g-${row.s.placeId}`}>
+                <button disabled={!!resolving} onMouseDown={(e) => e.preventDefault()} onClick={() => pickGoogle(row.s)} onMouseEnter={() => setActive(i)} className={rowCls(i)}>
+                  {resolving === row.s.placeId ? <Loader2 className="mt-0.5 size-4 shrink-0 animate-spin text-muted" /> : <MapPin className="mt-0.5 size-4 shrink-0 text-accent" />}
+                  <span className="min-w-0">
+                    <span className="block truncate text-[15px]">{row.s.main}</span>
+                    {row.s.secondary && <span className="block truncate text-xs text-muted">{row.s.secondary}</span>}
+                  </span>
+                </button>
+              </li>
+            ) : null,
+          )}
           {isLink && loading && <li className="px-3 py-2 text-xs text-muted">Opening Google Maps link…</li>}
           {error && <li className="px-3 py-2 text-xs text-muted">{error}</li>}
           {!isLink && (
@@ -173,7 +182,7 @@ export function PlaceSearch({ near, countryCode, onPick, onNote, autoFocus, onCa
             </li>
           )}
           <li className="px-3 pt-1 pb-1.5 text-[10px] text-muted/70">
-            Search © OpenStreetMap contributors · Photon{GOOGLE_KEY && google.length > 0 ? " · More places powered by Google" : ""}
+            Search © OpenStreetMap contributors · Photon{GOOGLE_KEY && google.length > 0 ? " · Places by Google" : ""}
           </li>
         </ul>
       )}
