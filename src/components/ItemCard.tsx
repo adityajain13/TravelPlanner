@@ -45,6 +45,8 @@ interface Props {
   onToggleSection?: (section: string) => void;
   /** Open the budget editor (category, who paid, split) for this stop's cost. */
   onCostDetails?: () => void;
+  /** The trip's people (days only): pick who goes to this stop. */
+  people?: string[];
 }
 
 /** Wanderlog-style teardrop marker with the stop number, in the day's colour. */
@@ -108,6 +110,7 @@ function ItemCardView({
   sections,
   onToggleSection,
   onCostDetails,
+  people,
   sortable,
   overlay,
 }: Props & { sortable?: ReturnType<typeof useSortable>; overlay?: boolean }) {
@@ -209,8 +212,13 @@ function ItemCardView({
           {isPlace && subtitle && <p className="mt-0.5 truncate text-sm text-muted">{subtitle}</p>}
           {isPlace && !selected && item.notes && <RichText text={item.notes} className="mt-1.5 line-clamp-3 text-[15px] leading-snug text-muted" />}
 
-          {isPlace && !selected && (auto || item.startTime || item.endTime || item.cost != null) && (
+          {isPlace && !selected && (auto || item.startTime || item.endTime || item.cost != null || !!item.who?.length) && (
             <div className="mt-2.5 flex flex-wrap gap-1.5 text-[13px] font-semibold">
+              {!!item.who?.length && (
+                <span className="flex items-center gap-1.5 rounded-full bg-surface-2 px-2.5 py-1 text-muted" title="Only they go here; their route is drawn on its own">
+                  <Users className="size-3.5" /> {item.who.join(" & ")}
+                </span>
+              )}
               {auto && <AutoTimeChips item={item} auto={auto} onStay={onStay} readOnly={readOnly} chip={chip} />}
               {!auto && (item.startTime || item.endTime) && (
                 <TimeRangeField
@@ -262,6 +270,30 @@ function ItemCardView({
                       <CheckSquare className="size-3.5" /> Select
                     </button>
                   )}
+                </div>
+              )}
+              {isPlace && people && people.length > 1 && !readOnly && (
+                <div className="flex flex-wrap items-center gap-1.5 text-[13px]">
+                  <Users className="size-3.5 text-muted" />
+                  {[undefined, ...people].map((t) => {
+                    const on = t === undefined ? !item.who?.length : !!item.who?.includes(t);
+                    return (
+                      <button
+                        key={t ?? "everyone"}
+                        type="button"
+                        onClick={() => {
+                          if (t === undefined) return onChange({ who: undefined });
+                          const next = on ? (item.who ?? []).filter((x) => x !== t) : [...(item.who ?? []), t];
+                          // Everyone ticked = everyone
+                          onChange({ who: next.length && next.length < people.length ? next : undefined });
+                        }}
+                        title={t ? `Only ${t} goes here (their own route)` : "Everyone goes here"}
+                        className={`rounded-full px-2.5 py-1 font-semibold ${on ? "bg-accent text-on-accent" : "bg-surface-2 text-muted hover:text-fg"}`}
+                      >
+                        {t ?? "Everyone"}
+                      </button>
+                    );
+                  })}
                 </div>
               )}
               {isPlace && auto && (

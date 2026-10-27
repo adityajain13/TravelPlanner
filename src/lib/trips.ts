@@ -54,6 +54,8 @@ export interface Item extends CostSplit {
   costCurrency?: string;
   /** Photo shown on the card and the pin popup (URL + credit only). */
   image?: import("./images").PlaceImage;
+  /** Only these trip people go here (e.g. each person's own home on the day you fly); none = everyone. */
+  who?: string[];
   /** How you get here from the previous stop of the day; falls back to the trip default. */
   travelMode?: import("./routing").TravelMode;
   /** The forwarded email (inbox row) this came from. */
