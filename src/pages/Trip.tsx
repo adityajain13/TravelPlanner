@@ -77,6 +77,9 @@ import { HeroPill } from "../components/HeroPill";
 import { AddSection } from "../components/AddSection";
 import { ChipScroller } from "../components/ChipScroller";
 import { TripOverview } from "../components/TripOverview";
+import { SettingsDialog } from "../components/SettingsDialog";
+import { useSettings } from "../lib/settings";
+import { Settings as SettingsIcon } from "lucide-react";
 import { LogoMark } from "../components/Logo";
 import { PlacePanel, type PanelMode } from "../components/PlacePanel";
 import { SectionPicker, type SectionTarget } from "../components/SectionPicker";
@@ -133,6 +136,9 @@ export function TripPage() {
     }
   });
   const [contentsDrawer, setContentsDrawer] = useState(false);
+  const [settings] = useSettings();
+  const [showSettings, setShowSettings] = useState(false);
+  const [mapPicked, setMapPicked] = useState<string | null>(null);
   const [dayFrame, setDayFrame] = useState<{ ids: string[]; nonce: number } | null>(null);
   const [planHidden, setPlanHidden] = useState(() => {
     try {
@@ -593,6 +599,7 @@ export function TripPage() {
       setMobileView("plan");
       return;
     }
+    setMapPicked(itemId);
     setSelectedId(itemId);
     setMobileView("plan");
     requestAnimationFrame(() =>
@@ -753,6 +760,7 @@ export function TripPage() {
                 )}
                 {isOwner && <HeroPill icon={<Share2 />} label="Share" onClick={() => setSharing(true)} />}
                 <HeroPill icon={<ThemeIcon theme={theme} />} label={THEME_LABEL[NEXT[theme]]} onClick={toggleTheme} />
+                <HeroPill icon={<SettingsIcon />} label="Settings" onClick={() => setShowSettings(true)} />
               </div>
             </div>
             {/* Same bottom inset as the dates row, so the cover button lines up with it */}
@@ -1096,6 +1104,8 @@ export function TripPage() {
           fallbackCenter={near}
           inset={openItem ? (panelInset ?? { top: 0, bottom: 0 }) : null}
           focusColor={openSection?.color}
+          // Settings → "Just open the card": a pin clicked on the map doesn't move the map
+          holdView={settings.pinClick === "card" && !!selectedId && mapPicked === selectedId}
         />
         </Suspense>
         {openItem && (
@@ -1150,6 +1160,7 @@ export function TripPage() {
       )}
       {editingRes && <ReservationForm doc={doc} state={state} initial={editingRes} onClose={() => setEditingRes(null)} />}
       {sharing && id && <ShareDialog tripId={id} onClose={() => setSharing(false)} />}
+      {showSettings && <SettingsDialog onClose={() => setShowSettings(false)} />}
 
       {/* Mobile plan/map switch */}
       <button

@@ -46,6 +46,8 @@ interface Props {
   frame?: { ids: string[]; nonce: number } | null;
   /** Colour of the selected stop's day: road shared by several days shows in this colour. */
   focusColor?: string;
+  /** Open the selected pin's card without moving the map. */
+  holdView?: boolean;
 }
 
 maplibregl.setWorkerUrl(workerUrl);
@@ -80,7 +82,7 @@ const readMode = (): MapMode => {
   }
 };
 
-export function TripMap({ pins, routes, selectedId, onSelect, theme, fitKey, fallbackCenter, inset, frame, focusColor }: Props) {
+export function TripMap({ pins, routes, selectedId, onSelect, theme, fitKey, fallbackCenter, inset, frame, focusColor, holdView }: Props) {
   const container = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const [mode, setMode] = useState<MapMode>(readMode);
@@ -192,7 +194,8 @@ export function TripMap({ pins, routes, selectedId, onSelect, theme, fitKey, fal
     // Frame a pin once when it's selected (and once more if the panel's size wasn't known yet).
     // Shrinking or expanding the place panel afterwards leaves the map where it is.
     const insetKnown = !inset || inset.bottom > 0;
-    if (!(centered.current?.id === p.id && centered.current.insetKnown)) {
+    if (holdView) centered.current = { id: p.id, insetKnown: true };
+    else if (!(centered.current?.id === p.id && centered.current.insetKnown)) {
       const pad = { top: (inset?.top ?? 0) + 40, bottom: (inset?.bottom ?? 0) + 40, left: 40, right: 40 };
       map.easeTo({ center: [p.lng, p.lat], zoom: Math.max(map.getZoom(), 14), duration: 500, padding: pad });
       centered.current = { id: p.id, insetKnown };
