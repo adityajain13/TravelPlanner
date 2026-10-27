@@ -1,4 +1,5 @@
 import { handleAuth } from "./auth";
+import { handleNotes } from "./bookingNotes";
 import { handleTrips } from "./trips";
 import { handleMcp } from "./mcp";
 import { handleInbox } from "./inbox";
@@ -28,7 +29,7 @@ export default {
       }
       try {
         if (url.pathname.startsWith(`${API}/auth/`)) return (await handleAuth(request, env, url)) ?? error(404, "Not found");
-        return (await handleRoutes(request, env, url)) ?? (await handleMapsLink(request, env, url)) ?? (await handlePhotos(request, env, url, ctx)) ?? (await handleInbox(request, env, url)) ?? (await handleTrips(request, env, url)) ?? error(404, "Not found");
+        return (await handleRoutes(request, env, url)) ?? (await handleMapsLink(request, env, url)) ?? (await handlePhotos(request, env, url, ctx)) ?? (await handleNotes(request, env, url)) ?? (await handleInbox(request, env, url)) ?? (await handleTrips(request, env, url)) ?? error(404, "Not found");
       } catch (e) {
         console.error(e);
         return error(500, "Server error");
