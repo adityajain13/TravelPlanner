@@ -1077,6 +1077,7 @@ export function TripPage() {
           frame={dayFrame}
           fallbackCenter={near}
           inset={openItem ? (panelInset ?? { top: 0, bottom: 0 }) : null}
+          focusColor={openSection?.color}
         />
         </Suspense>
         {openItem && (

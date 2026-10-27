@@ -142,3 +142,4 @@ Hosted at **adityajain.ca/travelplanner** by the `travelplanner` Cloudflare Work
 - Oct 26: imported bookings located via locateBooking (Google text search → OSM name match ≥0.8 → address); older imported stops re-checked once and moved if >500 m off (Item.located).
 - Oct 26: NAVITIME answers kept a year: D1 transit_cache (shared) + device cache.
 - Oct 26: imported passenger names map to trip people (matchTraveler: titles dropped, all of the person's name words in the printed name, or a remembered alias); picking a person for a printed name saves meta.travelerAliases and fixes the trip's other bookings; manual reservation geocoding uses locateBooking.
+- Oct 26: road shared by several days' routes is striped in all their colours (line-pattern, ~10 m segment matching, drawn once); selecting a stop paints shared stretches in its day's colour.

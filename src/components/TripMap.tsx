@@ -44,6 +44,8 @@ interface Props {
   inset?: { top: number; bottom: number } | null;
   /** Frame just these pins (a day chip was clicked); a new nonce re-frames even for the same day. */
   frame?: { ids: string[]; nonce: number } | null;
+  /** Colour of the selected stop's day: road shared by several days shows in this colour. */
+  focusColor?: string;
 }
 
 maplibregl.setWorkerUrl(workerUrl);
@@ -78,12 +80,12 @@ const readMode = (): MapMode => {
   }
 };
 
-export function TripMap({ pins, routes, selectedId, onSelect, theme, fitKey, fallbackCenter, inset, frame }: Props) {
+export function TripMap({ pins, routes, selectedId, onSelect, theme, fitKey, fallbackCenter, inset, frame, focusColor }: Props) {
   const container = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const [mode, setMode] = useState<MapMode>(readMode);
-  const latest = useRef({ pins, routes, selectedId, onSelect });
-  latest.current = { pins, routes, selectedId, onSelect };
+  const latest = useRef({ pins, routes, selectedId, onSelect, focusColor });
+  latest.current = { pins, routes, selectedId, onSelect, focusColor };
   const firstStyle = useRef(true);
 
   // Create the map once
@@ -147,7 +149,7 @@ export function TripMap({ pins, routes, selectedId, onSelect, theme, fitKey, fal
   useEffect(() => {
     const map = mapRef.current;
     if (map?.isStyleLoaded()) pushData(map, latest.current);
-  }, [pins, routes, selectedId]);
+  }, [pins, routes, selectedId, focusColor]);
 
   // Re-frame
   useEffect(() => {
@@ -299,6 +301,15 @@ function addOverlay(map: maplibregl.Map) {
   routeLayer("dotted", { "line-width": 3, "line-dasharray": [0.1, 2] });
   routeLayer("dashed", { "line-width": 2, "line-opacity": 0.6, "line-dasharray": [1.5, 1.5] });
   routeLayer("arc", { "line-width": 2, "line-opacity": 0.75, "line-dasharray": [2, 2] });
+  // Stretches several days share: striped in all their colours (pattern images made in pushData)
+  map.addLayer({
+    id: "trip-routes-shared",
+    type: "line",
+    source: "trip-routes",
+    filter: ["==", ["get", "style"], "shared"],
+    layout: { "line-cap": "butt", "line-join": "round" },
+    paint: { "line-pattern": ["get", "pattern"], "line-width": 4, "line-opacity": 0.95 },
+  } as maplibregl.LineLayerSpecification);
   // Each pin is one image with its number (or plane) drawn in, made on first use. With the number
   // as separate text, MapLibre draws all text above all icons, so numbers of pins underneath
   // showed through the pin on top.
@@ -330,7 +341,75 @@ function onMissingImage(map: maplibregl.Map) {
 // Drawn at 3x so the enlarged selected pin stays sharp on retina screens
 const pinImage = (color: string, label: string, glyph: string) => drawPin(color, label, glyph, 3);
 
-function pushData(map: maplibregl.Map, d: Pick<Props, "pins" | "routes" | "selectedId">) {
+/** Stripes of each colour in turn, for line-pattern (repeats along the line). */
+function stripeImage(colors: string[]) {
+  const seg = 14; // px per colour at 2x
+  const c = document.createElement("canvas");
+  c.width = seg * colors.length;
+  c.height = 8;
+  const g = c.getContext("2d")!;
+  colors.forEach((col, i) => ((g.fillStyle = col), g.fillRect(i * seg, 0, seg, 8)));
+  return g.getImageData(0, 0, c.width, c.height);
+}
+
+const segKey = (a: [number, number], b: [number, number]) => {
+  const k = (p: [number, number]) => `${p[0].toFixed(4)},${p[1].toFixed(4)}`;
+  const x = k(a);
+  const y = k(b);
+  return x < y ? `${x}|${y}` : `${y}|${x}`;
+};
+
+/**
+ * Splits routes where days overlap. Segments (rounded to ~10 m, either direction) used by routes
+ * of different colours become "shared" runs, striped in those colours, or drawn in the selected
+ * day's colour when it's one of them. Each shared run is drawn once.
+ */
+function splitShared(routes: Route[], focusColor?: string) {
+  const users = new Map<string, Set<string>>();
+  const roads = routes.filter((r) => r.coords.length > 1 && (r.style === "solid" || r.style === "dotted"));
+  for (const r of roads)
+    for (let i = 1; i < r.coords.length; i++) {
+      const k = segKey(r.coords[i - 1], r.coords[i]);
+      (users.get(k) ?? users.set(k, new Set()).get(k)!).add(r.color);
+    }
+  const out: { coords: [number, number][]; color: string; style: string; pattern?: string }[] = [];
+  const drawnShared = new Set<string>();
+  for (const r of routes) {
+    if (r.coords.length < 2) continue;
+    if (!roads.includes(r)) {
+      out.push({ coords: r.coords, color: r.color, style: r.style ?? "dashed" });
+      continue;
+    }
+    let run: [number, number][] = [r.coords[0]];
+    let runSet = "";
+    const flush = () => {
+      if (run.length < 2) return;
+      const colors = runSet.split("|");
+      if (colors.length < 2) out.push({ coords: run, color: r.color, style: r.style! });
+      else if (focusColor && colors.includes(focusColor)) out.push({ coords: run, color: focusColor, style: "solid" });
+      else out.push({ coords: run, color: r.color, style: "shared", pattern: `tp-stripe|${runSet}` });
+    };
+    for (let i = 1; i < r.coords.length; i++) {
+      const k = segKey(r.coords[i - 1], r.coords[i]);
+      const set = [...(users.get(k) ?? [r.color])].sort().join("|");
+      const shared = set.includes("|");
+      // A shared stretch another route already drew: leave a gap in this one
+      const skip = shared && drawnShared.has(k);
+      const key = skip ? "skip" : set;
+      if (key !== runSet) {
+        if (runSet !== "skip") flush();
+        run = [r.coords[i - 1]];
+        runSet = key;
+      }
+      run.push(r.coords[i]);
+      if (shared) drawnShared.add(k);
+    }
+    if (runSet !== "skip") flush();
+  }
+  return out;
+}
+
+function pushData(map: maplibregl.Map, d: Pick<Props, "pins" | "routes" | "selectedId" | "focusColor">) {
   const pinSrc = map.getSource("trip-pins") as GeoJSONSource | undefined;
   const routeSrc = map.getSource("trip-routes") as GeoJSONSource | undefined;
   if (!pinSrc || !routeSrc) return;
@@ -347,15 +426,16 @@ function pushData(map: maplibregl.Map, d: Pick<Props, "pins" | "routes" | "selec
       properties: { id: p.id, color: p.color, label: p.glyph ? "" : p.label, glyph: p.glyph ?? "", selected: p.id === d.selectedId },
     })),
   });
+  const parts = splitShared(d.routes, d.focusColor);
+  for (const p of parts)
+    if (p.pattern && !map.hasImage(p.pattern)) map.addImage(p.pattern, stripeImage(p.pattern.split("|").slice(1)), { pixelRatio: 2 });
   routeSrc.setData({
     type: "FeatureCollection",
-    features: d.routes
-      .filter((r) => r.coords.length > 1)
-      .map((r) => ({
-        type: "Feature",
-        geometry: { type: "LineString", coordinates: r.coords },
-        properties: { color: r.color, style: r.style ?? "dashed" },
-      })),
+    features: parts.map((p) => ({
+      type: "Feature",
+      geometry: { type: "LineString", coordinates: p.coords },
+      properties: { color: p.color, style: p.style, pattern: p.pattern ?? "" },
+    })),
   });
 }
 
