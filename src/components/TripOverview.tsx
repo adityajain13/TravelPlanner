@@ -283,7 +283,7 @@ export function TripOverview(p: Props) {
           {keyBookings.length > 0 && phase !== "after" && (
             <div className={`${card} sm:col-span-2`}>
               <div className="flex items-center justify-between">
-                <p className={label}>{phase === "after" ? "Bookings" : "Coming up"}</p>
+                <p className={label}>Coming up</p>
                 <button onClick={() => p.onGo("bookings")} className="-mt-2 text-[12px] font-semibold text-muted hover:text-fg">
                   All reservations →
                 </button>
