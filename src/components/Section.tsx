@@ -9,7 +9,7 @@ import { formatDistance, formatDuration, type LegState, type TravelMode } from "
 import type { PlaceResult } from "../lib/photon";
 import { formatDayHeading } from "../lib/dates";
 import { ItemCard } from "./ItemCard";
-import { fmtTime } from "./TimeField";
+import { fmtTime, TimeField } from "./TimeField";
 import { PlaceSearch } from "./PlaceSearch";
 import type { SectionTarget } from "./SectionPicker";
 import { Popover } from "./DatePicker";
@@ -74,6 +74,10 @@ interface Props {
   onVersion?: (draftId: string | undefined) => void;
   onCompare?: () => void;
   onUseDraft?: () => void;
+  /** Auto stop times (Settings → Stop times: Auto): per stop how long, and when the day starts. */
+  autoTimes?: Map<string, { stay: number; isDefault: boolean; nextDay: boolean }>;
+  onStay?: (itemId: string, min: number | undefined) => void;
+  dayStart?: { value: string; isDefault: boolean; landed?: string; onChange?: (t: string | undefined) => void };
 }
 
 export function Section(p: Props) {
@@ -182,6 +186,18 @@ export function Section(p: Props) {
             />
           )}
           <Subheading value={p.subtitle} onSave={p.readOnly ? undefined : p.onSubtitle} editing={subEditing} setEditing={setSubEditing} />
+          {p.dayStart && info.items.some((i) => i.kind === "place") && (
+            <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px] text-muted">
+              <span>Day starts</span>
+              <TimeField
+                value={p.dayStart.value}
+                onChange={(t) => p.dayStart?.onChange?.(t)}
+                disabled={!p.dayStart.onChange}
+                className={`rounded-full border border-line px-2.5 py-0.5 font-semibold ${p.dayStart.isDefault ? "[&]:text-muted" : ""} hover:border-accent/60`}
+              />
+              {p.dayStart.landed && p.dayStart.landed > p.dayStart.value && <span>· after you land at {fmtTime(p.dayStart.landed)}</span>}
+            </div>
+          )}
           {info.versions && info.versions.length > 1 && (
             <div className="mt-2 flex flex-wrap items-center gap-1.5" role="tablist" aria-label="Plans for this day">
               {info.versions.map((v) => {
@@ -328,6 +344,8 @@ export function Section(p: Props) {
                 currency={p.currency}
                 searchContext={p.searchContext}
                 timeBefore={info.kind === "day" ? latestBefore(info.items, idx) : undefined}
+                auto={p.autoTimes?.get(it.id)}
+                onStay={p.onStay ? (m) => p.onStay!(it.id, m) : undefined}
                 onSelect={() => p.onSelect(it.id)}
                 onChange={(patch) => p.onChange(it.id, patch)}
                 onDelete={() => p.onDelete(it.id)}

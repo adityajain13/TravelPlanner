@@ -39,6 +39,8 @@ export interface Item extends CostSplit {
   notes?: string;
   startTime?: string; // "HH:MM"
   endTime?: string;
+  /** How long you'll be here, in minutes (Settings → Stop times: Auto works times out from it). */
+  stay?: number;
   lat?: number;
   lng?: number;
   address?: string;
@@ -88,6 +90,8 @@ export interface TripMeta {
   dayColors?: Record<string, string>;
   /** Travel mode for the leg back to the hotel, per day section. */
   hotelLegModes?: Record<string, import("./routing").TravelMode>;
+  /** When each day starts (auto stop times), by ISO date. */
+  dayStarts?: Record<string, string>;
 }
 
 export type ReservationType = "flight" | "lodging" | "car" | "train" | "restaurant" | "other";

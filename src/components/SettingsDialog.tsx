@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import { createPortal } from "react-dom";
-import { Crosshair, EyeOff, Moon, MoonStar, PanelBottom, PanelLeft, PanelLeftDashed, Plane, RectangleHorizontal, Pill, Sun, X } from "lucide-react";
+import { Crosshair, EyeOff, Moon, MoonStar, PanelBottom, PanelLeft, PanelLeftDashed, Plane, RectangleHorizontal, Pill, Clock, Hourglass, Sun, X } from "lucide-react";
 import { useTheme, type Theme } from "../lib/theme";
 import { useSettings, type Settings } from "../lib/settings";
 
@@ -26,7 +26,7 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
 
   return createPortal(
     <div className="fixed inset-0 z-[100] grid grid-cols-[minmax(0,1fr)] place-items-center bg-black/60 p-4 backdrop-blur-sm" onClick={onClose}>
-      <div role="dialog" aria-label="Settings" onClick={(e) => e.stopPropagation()} className="w-full max-w-md rounded-3xl border border-line bg-surface p-6 shadow-2xl max-sm:p-5">
+      <div role="dialog" aria-label="Settings" onClick={(e) => e.stopPropagation()} className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-3xl border border-line bg-surface p-6 shadow-2xl max-sm:p-5">
         <div className="mb-5 flex items-center justify-between">
           <h2 className="font-display text-2xl">Settings</h2>
           <button onClick={onClose} className="grid size-9 place-items-center rounded-full border border-line text-muted hover:text-fg" aria-label="Close">
@@ -69,6 +69,17 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
             { key: "pill", icon: <Pill />, short: "Pill" },
           ]}
           onPick={(k) => update({ bookingStyle: k })}
+        />
+        <div className="my-4 border-t border-line" />
+        <Row
+          title="Stop times"
+          hint={settings.timing === "set" ? "You type each stop's start and end" : "From how long each stop takes + travel"}
+          value={settings.timing}
+          options={[
+            { key: "set", icon: <Clock />, short: "Set" },
+            { key: "auto", icon: <Hourglass />, short: "Auto" },
+          ]}
+          onPick={(k) => update({ timing: k })}
         />
         <p className="mt-5 text-[12px] text-muted">Settings are saved on this device.</p>
       </div>

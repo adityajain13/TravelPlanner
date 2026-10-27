@@ -10,7 +10,7 @@ import { Photo } from "./Photo";
 import { PhotoCredit } from "./PhotoCredit";
 import { formatMoney } from "../lib/fx";
 import type { CheckItem, Item } from "../lib/trips";
-import { fmtTime, TimeRangeField } from "./TimeField";
+import { fmtTime, StayField, TimeRangeField } from "./TimeField";
 import { googleMapsLink } from "../lib/photon";
 import { GoogleDetails } from "./GoogleDetails";
 import { SectionPicker, type SectionTarget } from "./SectionPicker";
@@ -27,6 +27,9 @@ interface Props {
   searchContext?: string;
   /** Latest time on any stop above this one that day (where an empty time picker opens). */
   timeBefore?: string;
+  /** Auto stop times: item.startTime/endTime are the worked-out times; you set how long instead. */
+  auto?: { stay: number; isDefault: boolean; nextDay: boolean };
+  onStay?: (min: number | undefined) => void;
   onSelect: () => void;
   onChange: (patch: Partial<Item>) => void;
   onDelete: () => void;
@@ -56,6 +59,19 @@ export function PinMarker({ color, label, size = 28 }: { color: string; label?: 
   );
 }
 
+/** Auto times: the worked-out arrival–leave time (read-only) and the "how long" pill you edit. */
+function AutoTimeChips({ item, auto, onStay, readOnly, chip }: { item: Item; auto: NonNullable<Props["auto"]>; onStay?: (m: number | undefined) => void; readOnly?: boolean; chip: string }) {
+  return (
+    <>
+      <span className={chip} title="Worked out from the day's start, how long each stop takes and the travel between">
+        <Clock className="size-3.5 text-accent" /> {fmtTime(item.startTime)} – {fmtTime(item.endTime)}
+        {auto.nextDay && <span className="text-[11px] text-muted">+1</span>}
+      </span>
+      <StayField value={auto.stay} isDefault={auto.isDefault} disabled={readOnly || !onStay} onChange={(m) => onStay?.(m)} className={`${chip} ${readOnly ? "" : "hover:bg-accent/20"}`} />
+    </>
+  );
+}
+
 export function ItemCard(props: Props) {
   const sortable = useSortable({ id: props.item.id, disabled: props.readOnly });
   return <ItemCardView {...props} sortable={sortable} />;
@@ -79,6 +95,8 @@ function ItemCardView({
   currency = "CAD",
   searchContext,
   timeBefore,
+  auto,
+  onStay,
   onSelect,
   onChange,
   onDelete,
@@ -191,9 +209,10 @@ function ItemCardView({
           {isPlace && subtitle && <p className="mt-0.5 truncate text-sm text-muted">{subtitle}</p>}
           {isPlace && !selected && item.notes && <Linkified text={item.notes} className="mt-1.5 line-clamp-3 block text-[15px] leading-snug whitespace-pre-line text-muted" />}
 
-          {isPlace && !selected && (item.startTime || item.endTime || item.cost != null) && (
+          {isPlace && !selected && (auto || item.startTime || item.endTime || item.cost != null) && (
             <div className="mt-2.5 flex flex-wrap gap-1.5 text-[13px] font-semibold">
-              {(item.startTime || item.endTime) && (
+              {auto && <AutoTimeChips item={item} auto={auto} onStay={onStay} readOnly={readOnly} chip={chip} />}
+              {!auto && (item.startTime || item.endTime) && (
                 <TimeRangeField
                     after={timeBefore}
                   disabled={readOnly}
@@ -245,7 +264,12 @@ function ItemCardView({
                   )}
                 </div>
               )}
-              {isPlace && (
+              {isPlace && auto && (
+                <div className="flex flex-wrap items-center gap-2 text-[13px] font-semibold">
+                  <AutoTimeChips item={item} auto={auto} onStay={onStay} readOnly={readOnly} chip={`${PILL}`} />
+                </div>
+              )}
+              {isPlace && !auto && (
                 <div className="flex items-center">
                   <TimeRangeField
                     after={timeBefore}
