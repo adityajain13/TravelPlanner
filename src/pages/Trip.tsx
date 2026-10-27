@@ -54,6 +54,7 @@ import {
   setReadOnly,
   setItemImage,
   samePlace,
+  matchTraveler,
   renameList,
   sectionsFor,
   updateItem,
@@ -429,6 +430,19 @@ export function TripPage() {
         updateItem(doc, it.id, far ? { lat: hit!.lat, lng: hit!.lng, googlePlaceId: hit!.googlePlaceId, osmId: hit!.osmId, located: true } : { located: true });
       }
     })();
+  }, [doc, state, readOnly]);
+
+  // Bookings whose passenger is a printed name ("Mr Vishal Monteiro") that clearly is one of the
+  // trip's people: use that person, so budget splits and chips line up
+  useEffect(() => {
+    if (!doc || !state || readOnly) return;
+    const people = state.meta.travelers ?? [];
+    if (!people.length) return;
+    for (const r of state.reservations) {
+      if (!r.traveler || people.includes(r.traveler)) continue;
+      const who = matchTraveler(r.traveler, people, state.meta.travelerAliases);
+      if (who && who !== r.traveler && people.includes(who)) saveReservation(doc, { ...r, traveler: who });
+    }
   }, [doc, state, readOnly]);
 
   // Photos auto-picked from a Wikipedia article about something else (the district a shop is

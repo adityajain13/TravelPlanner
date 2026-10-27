@@ -78,6 +78,8 @@ export interface TripMeta {
   budget?: number;
   /** People splitting costs; the first is "you". */
   travelers?: string[];
+  /** Names as bookings print them → the trip person they are ("aditya jain" → "Me"). */
+  travelerAliases?: Record<string, string>;
   /** Custom subheading per day/list (e.g. "Osaka" under a day), keyed by section key. */
   subtitles?: Record<string, string>;
   /** Day colours picked by hand, by ISO date. Others use defaultDayColor. */
@@ -534,4 +536,35 @@ export function addList(doc: Y.Doc, title: string) {
     l.set("order", generateKeyBetween(lists.at(-1) ?? null, null));
     doc.getMap<Y.Map<unknown>>("lists").set(nanoid(8), l);
   });
+}
+
+const TITLES = /\b(mr|mrs|ms|miss|mx|dr|prof|sir|madam|mstr|master)\b\.?/g;
+/** "MR VISHAL MONTEIRO" → "vishal monteiro" (titles, punctuation and case dropped). */
+export const travelerKey = (s: string) =>
+  s
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(TITLES, " ")
+    .replace(/[^\p{L}\p{N} ]+/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+/**
+ * Which of the trip's people a printed passenger/guest name is: a remembered alias, the same
+ * name, or a person whose name's words all appear in it ("Vishal" ⊂ "Mr Vishal Monteiro").
+ * Only an unambiguous match counts; otherwise the printed name is kept.
+ */
+export function matchTraveler(raw: string | undefined, travelers: string[], aliases: Record<string, string> = {}): string | undefined {
+  if (!raw?.trim()) return raw;
+  const key = travelerKey(raw);
+  if (aliases[key] && travelers.includes(aliases[key])) return aliases[key];
+  const exact = travelers.find((t) => travelerKey(t) === key);
+  if (exact) return exact;
+  const words = new Set(key.split(" "));
+  const hits = travelers.filter((t) => {
+    const tw = travelerKey(t).split(" ").filter(Boolean);
+    return tw.length > 0 && tw.every((w) => words.has(w));
+  });
+  return hits.length === 1 ? hits[0] : raw.trim();
 }

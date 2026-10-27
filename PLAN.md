@@ -141,3 +141,4 @@ Hosted at **adityajain.ca/travelplanner** by the `travelplanner` Cloudflare Work
 - Oct 26: Japan transit via NAVITIME Route(totalnavi) on RapidAPI (Worker /api/routes/japan, secret NAVITIME_RAPIDAPI_KEY), with shared 30-day edge cache + 30-day device cache to stay inside the free quota.
 - Oct 26: imported bookings located via locateBooking (Google text search → OSM name match ≥0.8 → address); older imported stops re-checked once and moved if >500 m off (Item.located).
 - Oct 26: NAVITIME answers kept a year: D1 transit_cache (shared) + device cache.
+- Oct 26: imported passenger names map to trip people (matchTraveler: titles dropped, all of the person's name words in the printed name, or a remembered alias); picking a person for a printed name saves meta.travelerAliases and fixes the trip's other bookings; manual reservation geocoding uses locateBooking.

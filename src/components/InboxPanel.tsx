@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { BedDouble, Car, Check, Loader2, Mail, Plane, Ticket, TrainFront, Utensils, X } from "lucide-react";
 import type * as Y from "yjs";
-import { addItem, daySection, saveReservation, type TripState } from "../lib/trips";
+import { addItem, daySection, matchTraveler, saveReservation, type TripState } from "../lib/trips";
 import { bookingToItem, bookingToReservation, patchInbox, reservationTypeFor, type Booking, type InboxItem } from "../lib/inbox";
 import { formatShort } from "../lib/dates";
 import { formatMoney } from "../lib/fx";
@@ -34,7 +34,9 @@ export function InboxPanel({ items, doc, state, onDone }: { items: InboxItem[]; 
     setBusy(it.id);
     try {
       if (reservationTypeFor(it.booking)) {
-        saveReservation(doc, { ...(await bookingToReservation(it.booking, state.meta.center)), inboxId: it.id }, { by: "email" });
+        const r = await bookingToReservation(it.booking, state.meta.center);
+        // "MR VISHAL MONTEIRO" on the ticket → the trip's "Vishal"
+        saveReservation(doc, { ...r, traveler: matchTraveler(r.traveler, state.meta.travelers ?? [], state.meta.travelerAliases), inboxId: it.id }, { by: "email" });
       } else {
         addItem(doc, target(it.booking).section, { ...(await bookingToItem(it.booking, state.meta.center)), inboxId: it.id }, { by: "email" });
       }

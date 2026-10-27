@@ -13,8 +13,8 @@ import { askConfirm } from "./ConfirmDialog";
 import { useLiveQuery } from "dexie-react-hooks";
 import { db } from "../lib/db";
 import type { PlaceResult } from "../lib/photon";
-import { removeFromEmail, removeReservation, saveReservation, sortReservations, type Reservation, type ReservationType, type TripState } from "../lib/trips";
-import { searchPlaces } from "../lib/photon";
+import { removeFromEmail, removeReservation, saveReservation, sortReservations, travelerKey, updateMeta, type Reservation, type ReservationType, type TripState } from "../lib/trips";
+import { locateBooking } from "../lib/locate";
 import { formatMoney } from "../lib/fx";
 import { inputCls } from "./NewTripDialog";
 
@@ -289,13 +289,21 @@ export function ReservationForm({ doc, state, initial, onClose }: { doc: Y.Doc; 
     // A result picked from the address search is already pinned exactly
     if (!picked && GEOCODE.includes(type) && (r.address || r.title) && (addressChanged || r.lat == null)) {
       try {
-        const [hit] = await searchPlaces([r.title, r.address].filter(Boolean).join(", "), state.meta.center);
-        if (hit) geo = { lat: hit.lat, lng: hit.lng, address: r.address || hit.address };
+        const hit = await locateBooking(r.title, r.address, state.meta.center);
+        if (hit) geo = { lat: hit.lat, lng: hit.lng, address: hit.address };
       } catch {
         /* offline: save without a pin */
       }
     }
     saveReservation(doc, { ...(r as Reservation), ...geo, type, title: r.title.trim() });
+    // Printed name ("Mr Vishal Monteiro") set to a trip person: remember it, and fix the trip's
+    // other bookings with that name too
+    const people = state.meta.travelers ?? [];
+    if (initial.traveler && r.traveler && r.traveler !== initial.traveler && !people.includes(initial.traveler) && people.includes(r.traveler)) {
+      const key = travelerKey(initial.traveler);
+      updateMeta(doc, { travelerAliases: { ...(state.meta.travelerAliases ?? {}), [key]: r.traveler } });
+      for (const o of state.reservations) if (o.id !== r.id && o.traveler && travelerKey(o.traveler) === key) saveReservation(doc, { ...o, traveler: r.traveler });
+    }
     onClose();
   }
 
