@@ -13,7 +13,7 @@ export function useUndo(doc: Y.Doc | null, readOnly?: boolean) {
 
   useEffect(() => {
     if (!doc || readOnly) return;
-    const scope = ["items", "lists", "meta", "reservations", "expenses"].map((n) => doc.getMap(n));
+    const scope = ["items", "lists", "meta", "reservations", "expenses", "drafts"].map((n) => doc.getMap(n));
     const m = new Y.UndoManager(scope, { trackedOrigins: new Set([ME]), captureTimeout: 500 });
     const refresh = () => bump((x) => x + 1);
     m.on("stack-item-added", refresh);

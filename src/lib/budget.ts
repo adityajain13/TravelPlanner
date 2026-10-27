@@ -82,7 +82,7 @@ export function budgetLines(state: TripState, convert: (a: number, c: string) =>
     });
   }
   for (const it of state.items) {
-    if (it.cost == null) continue;
+    if (it.cost == null || it.section.startsWith("draft:")) continue; // drafts are ideas, not spending
     const cur = it.costCurrency ?? tripCurrency;
     lines.push({
       id: `item:${it.id}`,
