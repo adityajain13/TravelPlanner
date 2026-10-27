@@ -501,10 +501,10 @@ export function TripPage() {
     [view, legResults, focus],
   );
   const legsBySection = useMemo(() => {
-    const m = new Map<string, Map<string, { mode: TravelMode; state?: ReturnType<typeof legResults.get>; from: [number, number]; to: [number, number]; label?: string }>>();
+    const m = new Map<string, Map<string, { mode: TravelMode; state?: ReturnType<typeof legResults.get>; from: [number, number]; to: [number, number]; label?: string; who?: string[] }>>();
     for (const l of view?.legs ?? []) {
       if (!m.has(l.ver)) m.set(l.ver, new Map());
-      m.get(l.ver)!.set(l.toId, { mode: l.req.mode, state: legResults.get(l.req.key), from: l.req.from, to: l.req.to, label: l.label });
+      m.get(l.ver)!.set(l.toId, { mode: l.req.mode, state: legResults.get(l.req.key), from: l.req.from, to: l.req.to, label: l.label, who: l.who });
     }
     return m;
   }, [view, legResults]);
@@ -518,7 +518,7 @@ export function TripPage() {
     const sections = view.sections.map((s) => {
       if (s.kind !== "day") return s;
       const ver = s.writeKey ?? s.key;
-      const t = autoTimes(s.items, legsBySection.get(ver), state.meta.dayStarts?.[s.date!] ?? DEFAULT_DAY_START, view.landings.get(ver));
+      const t = autoTimes(s.items, legsBySection.get(ver), state.meta.dayStarts?.[s.date!] ?? DEFAULT_DAY_START, view.landings.get(ver), state.meta.travelers);
       return {
         ...s,
         items: s.items.map((it) => {

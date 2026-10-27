@@ -20,19 +20,41 @@ const up5 = (min: number) => Math.ceil(min / 5 - 1e-9) * 5;
  * (or when the flight lands, if later), each stop's incoming route is added, arrival is rounded
  * up to the next 5 minutes, and the stop lasts its `stay`. Routes still loading count as 0 until
  * they arrive. Notes and checklists take no time.
+ *
+ * Stops only some people go to (each person's own home…) run on that person's own clock from
+ * the day's start; a stop they go to together starts once the last of them gets there.
  */
-export function autoTimes(items: Item[], legs: Map<string, { state?: LegState }> | undefined, start: string, landed?: string) {
+export function autoTimes(
+  items: Item[],
+  legs: Map<string, { state?: LegState; who?: string[] }> | undefined,
+  start: string,
+  landed?: string,
+  people: string[] = [],
+) {
   const out = new Map<string, { start: string; end: string; nextDay: boolean }>();
-  let cur = toMin(start);
-  if (landed && /^\d{1,2}:\d{2}/.test(landed)) cur = Math.max(cur, toMin(landed));
+  let day = toMin(start);
+  if (landed && /^\d{1,2}:\d{2}/.test(landed)) day = Math.max(day, toMin(landed));
+  const split = people.length > 1 && items.some((i) => i.kind === "place" && i.who?.length);
+  const lanes = split ? people : ["*"];
+  const clock = new Map(lanes.map((p) => [p, day]));
+  const legMin = (id: string, person: string) => {
+    // The stop's legs: "<id>" and, when people come separately, "<id>#1"…; a leg with no names is everyone's
+    for (const [k, l] of legs ?? []) {
+      if (k !== id && !k.startsWith(`${id}#`)) continue;
+      if (person !== "*" && l.who && !l.who.includes(person)) continue;
+      const st = l.state;
+      return typeof st === "object" && st.mode !== "flight" && st.duration ? st.duration / 60 : 0;
+    }
+    return 0;
+  };
   for (const it of items) {
     if (it.kind !== "place") continue;
-    const leg = legs?.get(it.id)?.state;
-    if (typeof leg === "object" && leg.mode !== "flight" && leg.duration) cur += leg.duration / 60;
-    const arrive = up5(cur);
+    const own = split && it.who?.length ? it.who.filter((p) => clock.has(p)) : [];
+    const going = own.length ? own : lanes;
+    const arrive = up5(Math.max(...going.map((p) => clock.get(p)! + legMin(it.id, p))));
     const end = arrive + (it.stay ?? DEFAULT_STAY);
     out.set(it.id, { start: toHHMM(arrive), end: toHHMM(end), nextDay: end >= 1440 });
-    cur = end;
+    for (const p of going) clock.set(p, end);
   }
   return out;
 }
