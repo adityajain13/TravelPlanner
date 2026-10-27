@@ -129,7 +129,8 @@ async function transitous(a: [number, number], b: [number, number], when?: strin
   return {
     mode: "transit",
     coords: coords.length > 1 ? coords : [a, b],
-    distance: it.legs.reduce((s, l) => s + (l.distance ?? 0), 0) || distanceKm(a, b) * 1000,
+    // Transit legs often come without a distance (only the walks have one): use the drawn route
+    distance: Math.max(it.legs.reduce((s, l) => s + (l.distance ?? 0), 0), pathKm(coords) * 1000, distanceKm(a, b) * 1000),
     duration: it.duration,
     steps: it.legs.map((l) => ({ mode: l.mode, name: l.routeShortName || l.displayName, minutes: Math.round(l.duration / 60) })),
     transfers: "transfers" in it ? it.transfers : 0,
@@ -161,15 +162,18 @@ const rides = (r: LegResult | null) => !!r?.steps?.some((st) => st.mode !== "WAL
  * point is "how long will this take", so any of these is a fine answer.
  */
 async function transitWithFallback(a: [number, number], b: [number, number], when?: string): Promise<LegResult | null> {
+  // Japan: NAVITIME first (real JR/metro timetables); Transitous' Japanese data is patchy and gave
+  // odd routes (27 min with a transfer where one 8-minute train goes)
+  const japan = inJapan(a) && inJapan(b);
+  if (japan) {
+    const jp = await japanTransit(a, b, when).catch((e) => ((transitIssue = String((e as Error).message)), null));
+    if (jp) return (transitIssue = null), jp;
+  }
   const first = await transitous(a, b, when).catch(() => null);
   if (rides(first)) return first;
   // Google next when there's a key: real timetables in most countries. Not Japan: Google's
   // APIs return no transit there at all (licensing), so don't spend a request on it.
-  if (inJapan(a) && inJapan(b)) {
-    // Japan: NAVITIME (through the Worker), since Google has no transit there
-    const jp = await japanTransit(a, b, when).catch((e) => ((transitIssue = String((e as Error).message)), null));
-    if (jp) return (transitIssue = null), jp;
-  } else {
+  if (!japan) {
     const google = await googleTransit(a, b).catch((e) => ((transitIssue = String((e as Error).message)), null));
     if (google) return (transitIssue = null), google;
   }
@@ -183,6 +187,10 @@ async function transitWithFallback(a: [number, number], b: [number, number], whe
   if (first ?? now) return first ?? now; // walking-only answer, if that's all there is
   return roughTransit(a, b);
 }
+
+const JAPAN_ORDER_CHANGED = Date.UTC(2026, 9, 27, 2, 0);
+
+const pathKm = (c: [number, number][]) => c.slice(1).reduce((s, p, i) => s + distanceKm(c[i], p), 0);
 
 const inJapan = ([lng, lat]: [number, number]) => lat > 24 && lat < 46 && lng > 122.5 && lng < 146;
 
@@ -300,9 +308,11 @@ export function useLegs(requests: LegRequest[]): Map<string, LegState> {
         const c = cached[i];
         // NAVITIME answers (Japan) keep a year: the free plan only has a few hundred searches
         const ttl = r.mode !== "transit" ? TTL.other : typeof c?.result === "object" && c.result.source === "navitime" ? 365 * 864e5 : TTL.transit;
-        const fresh = c && Date.now() - c.fetchedAt < ttl;
+        // Japan answers saved before NAVITIME came first get one fresh look
+        const preNavitime = r.mode === "transit" && inJapan(r.from) && inJapan(r.to) && typeof c?.result === "object" && c.result.source !== "navitime" && c.fetchedAt < JAPAN_ORDER_CHANGED;
+        const fresh = c && !preNavitime && Date.now() - c.fetchedAt < ttl;
         if (c && (fresh || !navigator.onLine))
-          set(r.key, typeof c.result === "object" && c.result.source === "navitime" ? { ...c.result, distance: Math.max(c.result.distance, distanceKm(r.from, r.to) * 1000) } : c.result);
+          set(r.key, typeof c.result === "object" && c.result.mode === "transit" ? { ...c.result, distance: Math.max(c.result.distance, pathKm(c.result.coords), distanceKm(r.from, r.to) * 1000) } : c.result);
         else todo.push(r);
       });
       for (const r of todo) {
