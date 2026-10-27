@@ -10,6 +10,7 @@ import type { PlaceResult } from "../lib/photon";
 import { formatDayHeading } from "../lib/dates";
 import { ItemCard } from "./ItemCard";
 import { fmtTime, TimeField } from "./TimeField";
+import { RichText } from "./RichText";
 import { PlaceSearch } from "./PlaceSearch";
 import type { SectionTarget } from "./SectionPicker";
 import { Popover } from "./DatePicker";
@@ -38,7 +39,7 @@ interface Props {
   focused: boolean;
   readOnly?: boolean;
   currency?: string;
-  chips?: { r: Reservation; label: string; at?: string; time?: string; verb?: string; clock?: string; people?: number }[];
+  chips?: { r: Reservation; label: string; at?: string; time?: string; verb?: string; clock?: string; people?: number; copies?: Reservation[] }[];
   /** Bookings in the day as small pills (default look) or slim cards lined up with the stops. */
   chipStyle?: "pill" | "card";
   /** Incoming leg per item id (days only). */
@@ -113,16 +114,17 @@ export function Section(p: Props) {
                 <div className="w-7 shrink-0" />
                 <button
                   onClick={() => p.onChipClick?.(c.r)}
-                  className="flex min-w-0 flex-1 items-center gap-3 rounded-xl border border-line bg-surface/60 px-3 py-2 text-left transition-colors hover:border-muted/50 hover:bg-surface"
+                  className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 rounded-xl border border-line bg-surface/60 px-3 py-2 text-left transition-colors hover:border-muted/50 hover:bg-surface"
                 >
                   <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-surface-2 text-muted [&>svg]:size-4">{RES_ICON[c.r.type]}</span>
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-[14px] font-semibold text-fg">{c.r.title}</span>
                     <span className="block truncate text-[12px] text-muted">
-                      {[c.verb ?? c.label, c.people ? `${c.people} people` : "", c.r.confirmation ? `#${c.r.confirmation}` : ""].filter(Boolean).join(" · ")}
+                      {[c.verb ?? c.label, c.people ? `${c.people} people` : "", ...[...new Set((c.copies ?? [c.r]).map((x) => x.confirmation).filter(Boolean))].map((x) => `#${x}`)].filter(Boolean).join(" · ")}
                     </span>
                   </span>
                   {c.clock && <span className="shrink-0 text-[13px] font-semibold text-fg tabular-nums">{fmtTime(c.clock)}</span>}
+                  <BookingNotes copies={c.copies ?? [c.r]} />
                 </button>
               </div>
             </div>
@@ -523,6 +525,26 @@ export const stopTime = (it: Item) => hhmm(it.startTime) ?? hhmm(it.endTime);
  * flight follows a stop you leave at 03:00. "Staying at"/check-outs open the day, check-ins close
  * it, and with no timed stops at all everything stays at the top as before.
  */
+/**
+ * Each traveller's notes on a shared booking (seat numbers…), one after another with a gap;
+ * named when the booking is several people's.
+ */
+function BookingNotes({ copies }: { copies: Reservation[] }) {
+  const withNotes = copies.filter((r) => r.notes?.trim());
+  if (!withNotes.length) return null;
+  const named = copies.length > 1;
+  return (
+    <div className="mt-2 w-full space-y-2.5 border-t border-line/70 pt-2 pl-11 text-[13px] leading-snug text-muted">
+      {withNotes.map((r) => (
+        <div key={r.id}>
+          {named && r.traveler && <p className="mb-0.5 text-[11px] font-bold tracking-wide text-fg/80 uppercase">{r.traveler}</p>}
+          <RichText text={r.notes!} />
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export function placeChips(chips: NonNullable<Props["chips"]>, items: Item[]) {
   const at = new Map<number, NonNullable<Props["chips"]>>();
   const add = (i: number, c: NonNullable<Props["chips"]>[number]) => at.set(i, [...(at.get(i) ?? []), c]);
