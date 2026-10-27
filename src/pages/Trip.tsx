@@ -38,8 +38,7 @@ import { db } from "../lib/db";
 import { useSession } from "../lib/api";
 import { useSync } from "../lib/sync";
 import { useTrip } from "../lib/useTrip";
-import { NEXT, THEME_LABEL, useTheme } from "../lib/theme";
-import { ThemeIcon } from "../components/ThemeToggle";
+import { useTheme } from "../lib/theme";
 import { daysBetween } from "../lib/dates";
 import {
   readTrip,
@@ -101,7 +100,7 @@ const LOADING = "loading" as const;
 export function TripPage() {
   const { id } = useParams();
   const { doc, state, ready } = useTrip(id);
-  const [theme, toggleTheme] = useTheme();
+  const [theme] = useTheme();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   // Multi-select (checkboxes) — separate from the single "open" card
   const [checked, setChecked] = useState<Set<string>>(new Set());
@@ -759,7 +758,6 @@ export function TripPage() {
                   />
                 )}
                 {isOwner && <HeroPill icon={<Share2 />} label="Share" onClick={() => setSharing(true)} />}
-                <HeroPill icon={<ThemeIcon theme={theme} />} label={THEME_LABEL[NEXT[theme]]} onClick={toggleTheme} />
                 <HeroPill icon={<SettingsIcon />} label="Settings" onClick={() => setShowSettings(true)} />
               </div>
             </div>
