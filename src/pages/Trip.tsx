@@ -35,7 +35,7 @@ import { parseISODate } from "../lib/dates";
 import { scrollToEl, scrollToId } from "../lib/scroll";
 import { useUndo } from "../lib/undo";
 import { db } from "../lib/db";
-import { useSession } from "../lib/api";
+import { api, useSession } from "../lib/api";
 import { useSync } from "../lib/sync";
 import { useTrip } from "../lib/useTrip";
 import { useTheme } from "../lib/theme";
@@ -490,6 +490,24 @@ export function TripPage() {
   }, [view, state, autoOn, legsBySection]);
 
   // Suggest a cover photo once, for editable trips that don't have one
+  // Bookings imported by email before notes had a standard layout: sort their notes into it once
+  // ("**Seat:** 12A" lines in a fixed order), so every traveller's copy reads the same
+  const tidyTried = useRef(new Set<string>());
+  useEffect(() => {
+    if (!doc || !state || readOnly || !navigator.onLine || auth !== "in") return;
+    const todo = state.reservations.filter((r) => r.inboxId && r.notes?.trim() && !r.notes.trimStart().startsWith("**") && !r.notesTidy && !tidyTried.current.has(r.id));
+    if (!todo.length) return;
+    todo.forEach((r) => tidyTried.current.add(r.id));
+    (async () => {
+      for (const r of todo) {
+        const out = await api<{ notes: string }>("/notes/tidy", { method: "POST", body: JSON.stringify({ type: r.type, title: r.title, notes: r.notes }) }).catch(() => null);
+        const cur = readTrip(doc).reservations.find((x) => x.id === r.id);
+        if (!out || !cur || cur.notes !== r.notes) continue; // edited meanwhile: leave it
+        saveReservation(doc, { ...cur, notes: out.notes || cur.notes, notesTidy: 1 }, { by: "claude", label: "Tidy notes" }); // not an undo step of yours
+      }
+    })();
+  }, [doc, state, readOnly, auth]);
+
   // Hotels (and restaurants) booked without a pin — e.g. an email address the map search didn't
   // know — get located in the background, so legs to/from the hotel and their pins appear.
   const pinTried = useRef(new Set<string>());
@@ -1205,6 +1223,15 @@ export function TripPage() {
                         }
                       }
                     : undefined
+                }
+                collapsed={readOnly ? undefined : (state.meta.collapsed ?? []).includes(s.key)}
+                onCollapsed={
+                  readOnly
+                    ? undefined
+                    : (c) => {
+                        const cur = (state.meta.collapsed ?? []).filter((k) => k !== s.key);
+                        updateMeta(doc, { collapsed: c ? [...cur, s.key] : cur });
+                      }
                 }
                 autoTimes={autoOn && s.kind === "day" ? timed.info : undefined}
                 onStay={readOnly ? undefined : (itemId, m) => updateItem(doc, itemId, { stay: m })}

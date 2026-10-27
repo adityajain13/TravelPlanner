@@ -1,3 +1,5 @@
+import { getSession } from "./auth";
+import { API, error, type Env } from "./util";
 /*
  * Imported bookings get their notes in one standard shape, whatever the email or source looked
  * like: one "**Label:** value" line per detail, in a fixed order for the booking type (a flight
@@ -82,4 +84,51 @@ export function formatBookingNotes(type: string, details: unknown, notes?: strin
   const rest = notes?.trim();
   const out = [lines.join("\n"), rest].filter(Boolean).join("\n\n");
   return out || undefined;
+}
+
+/* ---- Tidying notes already on a booking (imported before the standard layout) ---- */
+
+
+const TIDY_TOOL = {
+  name: "record_details",
+  description: "Record the booking details found in the notes.",
+  input_schema: {
+    type: "object",
+    properties: {
+      details: DETAILS_SCHEMA,
+      notes: { type: "string", description: "Anything in the notes that fits none of the details fields and isn't already in the booking's title/route/dates. Usually empty." },
+    },
+    required: ["details"],
+  },
+};
+
+/** POST /api/notes/tidy { type, title, notes } → { notes } in the standard layout. */
+export async function handleNotes(req: Request, env: Env, url: URL): Promise<Response | null> {
+  if (url.pathname !== `${API}/notes/tidy`) return null;
+  if (req.method !== "POST") return error(405, "POST only");
+  if (!(await getSession(req, env))) return error(401, "Sign in");
+  const body = (await req.json().catch(() => null)) as { type?: string; title?: string; notes?: string } | null;
+  const notes = body?.notes?.slice(0, 4000);
+  if (!body?.type || !notes?.trim()) return error(400, "Missing type/notes");
+  const res = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+    body: JSON.stringify({
+      model: env.EXTRACT_MODEL || "claude-haiku-5-5",
+      max_tokens: 800,
+      tools: [TIDY_TOOL],
+      tool_choice: { type: "tool", name: TIDY_TOOL.name },
+      messages: [
+        {
+          role: "user",
+          content: `Sort the notes of this ${body.type} booking ("${body.title ?? ""}") into the detail fields. Keep every fact; reword only to make values short (e.g. "Seat assigned at check-in" → seat: "Assigned at check-in"). Drop what repeats the title (airline, flight number, route).\n\nNotes:\n${notes}`,
+        },
+      ],
+    }),
+  });
+  if (!res.ok) return error(502, "Couldn't tidy");
+  const data = (await res.json()) as { content: { type: string; input?: { details?: unknown; notes?: string } }[] };
+  const out = data.content.find((c) => c.type === "tool_use")?.input;
+  if (!out) return error(502, "Couldn't tidy");
+  return Response.json({ notes: formatBookingNotes(body.type, out.details, out.notes) ?? "" });
 }

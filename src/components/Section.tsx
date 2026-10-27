@@ -78,12 +78,18 @@ interface Props {
   /** Auto stop times (Settings → Stop times: Auto): per stop how long, and when the day starts. */
   autoTimes?: Map<string, { stay: number; isDefault: boolean; nextDay: boolean }>;
   onStay?: (itemId: string, min: number | undefined) => void;
+  /** Saved collapsed state (trip-wide) and how to change it. */
+  collapsed?: boolean;
+  onCollapsed?: (collapsed: boolean) => void;
   dayStart?: { value: string; isDefault: boolean; landed?: string; onChange?: (t: string | undefined) => void };
 }
 
 export function Section(p: Props) {
   const { info } = p;
-  const [open, setOpen] = useState(true);
+  // Collapsed is saved in the trip (everyone sees it collapsed); local only where you can't edit
+  const [localOpen, setLocalOpen] = useState(true);
+  const open = p.collapsed != null ? !p.collapsed : localOpen;
+  const setOpen = (f: (o: boolean) => boolean) => (p.onCollapsed ? p.onCollapsed(!f(open)) : setLocalOpen(f));
   const [insertAt, setInsertAt] = useState<number | null>(null);
   const [menuAt, setMenuAt] = useState<number | null>(null);
   const [subEditing, setSubEditing] = useState(false);
@@ -124,7 +130,7 @@ export function Section(p: Props) {
                     </span>
                   </span>
                   {c.clock && <span className="shrink-0 text-[13px] font-semibold text-fg tabular-nums">{fmtTime(c.clock)}</span>}
-                  <BookingNotes copies={c.copies ?? [c.r]} />
+                  <BookingNotes copies={c.copies ?? [c.r]} verb={c.verb} />
                 </button>
               </div>
             </div>
@@ -529,8 +535,20 @@ export const stopTime = (it: Item) => hhmm(it.startTime) ?? hhmm(it.endTime);
  * Each traveller's notes on a shared booking (seat numbers…), one after another with a gap;
  * named when the booking is several people's.
  */
-function BookingNotes({ copies }: { copies: Reservation[] }) {
-  const withNotes = copies.filter((r) => r.notes?.trim());
+function BookingNotes({ copies, verb }: { copies: Reservation[]; verb?: string }) {
+  // Multi-day bookings carry their notes on the first day (check-in, pick-up, departure); the
+  // last day only shows the line about it (check-out time, drop-off, arrival terminal); days in
+  // between show none
+  const keep = END_LINES[verb ?? ""];
+  const notesOf = (r: Reservation) => {
+    if (verb === "Staying") return "";
+    if (!keep) return r.notes ?? "";
+    return (r.notes ?? "")
+      .split("\n")
+      .filter((l) => keep.some((k) => l.startsWith(`**${k}:**`)))
+      .join("\n");
+  };
+  const withNotes = copies.map((r) => ({ ...r, notes: notesOf(r) })).filter((r) => r.notes.trim());
   if (!withNotes.length) return null;
   const named = copies.length > 1;
   return (
@@ -544,6 +562,12 @@ function BookingNotes({ copies }: { copies: Reservation[] }) {
     </div>
   );
 }
+
+const END_LINES: Record<string, string[]> = {
+  "Check-out": ["Check-out"],
+  "Drop off": ["Drop-off", "Fuel"],
+  Arrives: ["Terminal", "Baggage"],
+};
 
 export function placeChips(chips: NonNullable<Props["chips"]>, items: Item[]) {
   const at = new Map<number, NonNullable<Props["chips"]>>();

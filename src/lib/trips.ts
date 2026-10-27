@@ -94,6 +94,8 @@ export interface TripMeta {
   dayStarts?: Record<string, string>;
   /** Name of the plan each day uses now (days with drafts), by ISO date; default "Original". */
   planNames?: Record<string, string>;
+  /** Sections collapsed in the itinerary, for everyone on the trip (section keys). */
+  collapsed?: string[];
 }
 
 export type ReservationType = "flight" | "lodging" | "car" | "train" | "restaurant" | "other";
@@ -131,6 +133,8 @@ export interface Reservation extends CostSplit {
   traveler?: string;
   /** The forwarded email (inbox row) this came from, so deleting the email can remove it. */
   inboxId?: string;
+  /** Imported notes put into the standard layout (1 = done; never retried). */
+  notesTidy?: number;
   createdAt: number;
 }
 
