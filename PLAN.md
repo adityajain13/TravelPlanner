@@ -148,3 +148,4 @@ Hosted at **adityajain.ca/travelplanner** by the `travelplanner` Cloudflare Work
 - Oct 26: Google photos failed in the picker/cards because img referrerPolicy=no-referrer stripped the referrer the key needs; fixed. Optional web image search via Brave Search API (/api/photos/web, BRAVE_SEARCH_KEY), shown after Google Maps photos.
 - Oct 26: Settings → Contents column Thick/Thin. Thin is a 76px rail: logo, undo/redo, Plan/Bookings/Budget, one ring per day in its colour (scroll-spy), hide button.
 - Oct 26: Bookings inside a day as slim cards (icon, title, what happens · people · #conf, time on the right), lined up with stop cards; Settings → Bookings in a day: Card (default) / Pill.
+- Oct 26: Pin numbers (list pins, thin-rail day dots) use inkOn(): near-black unless it's under 4.5:1 and white reads better.
