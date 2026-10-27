@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import { createPortal } from "react-dom";
-import { Check, Crosshair, PanelBottom, X } from "lucide-react";
+import { Crosshair, PanelBottom, X } from "lucide-react";
 import { useSettings, type Settings } from "../lib/settings";
 
 /** App settings (this device). One section per setting; options as selectable cards. */
@@ -12,9 +12,9 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
     return () => window.removeEventListener("keydown", esc);
   }, [onClose]);
 
-  const options: { key: Settings["pinClick"]; icon: React.ReactNode; title: string; hint: string }[] = [
-    { key: "focus", icon: <Crosshair />, title: "Zoom to the pin", hint: "The map centres and zooms on it, and its card opens" },
-    { key: "card", icon: <PanelBottom />, title: "Just open the card", hint: "The map stays exactly where it is" },
+  const options: { key: Settings["pinClick"]; icon: React.ReactNode; short: string; title: string; hint: string }[] = [
+    { key: "focus", icon: <Crosshair />, short: "Zoom", title: "Zoom to the pin", hint: "Centres and zooms on it, then opens its card" },
+    { key: "card", icon: <PanelBottom />, short: "Card", title: "Just open the card", hint: "Opens its card; the map stays where it is" },
   ];
 
   return createPortal(
@@ -27,29 +27,32 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
           </button>
         </div>
 
-        <p className="text-[15px] font-bold">Clicking a pin on the map</p>
-        <div className="mt-2.5 space-y-2" role="radiogroup" aria-label="Clicking a pin on the map">
-          {options.map((o) => {
-            const on = settings.pinClick === o.key;
-            return (
-              <button
-                key={o.key}
-                role="radio"
-                aria-checked={on}
-                onClick={() => update({ pinClick: o.key })}
-                className={`flex w-full items-center gap-3 rounded-2xl border px-4 py-3 text-left transition-colors ${on ? "border-accent bg-accent/10" : "border-line hover:border-muted"}`}
-              >
-                <span className={`shrink-0 [&>svg]:size-5 ${on ? "text-accent" : "text-muted"}`}>{o.icon}</span>
-                <span className="min-w-0 flex-1">
-                  <span className="block text-[15px] font-semibold">{o.title}</span>
-                  <span className="block text-[13px] text-muted">{o.hint}</span>
-                </span>
-                <span className={`grid size-5 shrink-0 place-items-center rounded-full border ${on ? "border-accent bg-accent text-on-accent" : "border-line"}`}>
-                  {on && <Check className="size-3.5" strokeWidth={3} />}
-                </span>
-              </button>
-            );
-          })}
+        {/* Label on the left, a two-way segmented switch on the right */}
+        <div className="flex items-center justify-between gap-4">
+          <div className="min-w-0">
+            <p className="text-[15px] font-bold">Clicking a pin on the map</p>
+            <p className="mt-0.5 text-[13px] text-muted">{options.find((o) => o.key === settings.pinClick)!.hint}</p>
+          </div>
+          <div className="flex shrink-0 rounded-lg border border-line bg-bg p-0.5" role="radiogroup" aria-label="Clicking a pin on the map">
+            {options.map((o) => {
+              const on = settings.pinClick === o.key;
+              return (
+                <button
+                  key={o.key}
+                  role="radio"
+                  aria-checked={on}
+                  title={o.title}
+                  onClick={() => update({ pinClick: o.key })}
+                  className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-[12px] font-bold tracking-wider uppercase transition-colors [&>svg]:size-3.5 ${
+                    on ? "bg-accent text-on-accent" : "text-muted hover:text-fg"
+                  }`}
+                >
+                  {o.icon}
+                  {o.short}
+                </button>
+              );
+            })}
+          </div>
         </div>
         <p className="mt-5 text-[12px] text-muted">Settings are saved on this device.</p>
       </div>
