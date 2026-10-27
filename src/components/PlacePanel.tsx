@@ -6,6 +6,7 @@ import { placeSummary } from "../lib/images";
 import { formatMoney } from "../lib/fx";
 import { Photo } from "./Photo";
 import { Linkified } from "./Linkified";
+import { fmtTime } from "./TimeField";
 import { PhotoCredit } from "./PhotoCredit";
 import { PinMarker } from "./ItemCard";
 import { GoogleDetails } from "./GoogleDetails";
@@ -143,7 +144,7 @@ export function PlacePanel(p: Props) {
 
   return (
     <div ref={ref} className="absolute bottom-3 left-3 right-14 z-20 flex max-h-[min(58%,560px)] flex-col overflow-hidden rounded-2xl border border-line bg-surface/97 shadow-2xl backdrop-blur max-sm:right-3">
-      <div className="flex items-center justify-between gap-2 border-b border-line px-3 py-2">
+      <div className="flex items-center justify-between gap-2 border-b border-line px-4 py-2">
         {nav}
         <div className="flex">
           <button onClick={() => p.onMode("compact")} className={iconBtn} title="Shrink" aria-label="Shrink">
@@ -199,24 +200,27 @@ export function PlacePanel(p: Props) {
           )}
         </div>
 
-        <ul className="mt-2.5 space-y-1.5 text-[14px] text-muted empty:hidden">
-          {item.startTime && (
-            <li className="flex gap-2">
-              <Clock className="mt-0.5 size-4 shrink-0" /> {item.startTime}
-              {item.endTime ? `–${item.endTime}` : ""}
-            </li>
-          )}
-          {item.cost != null && (
-            <li className="flex gap-2">
-              <Wallet className="mt-0.5 size-4 shrink-0" /> {formatMoney(item.cost, item.costCurrency ?? p.currency)}
-            </li>
-          )}
-          {item.notes && (
-            <li className="flex gap-2">
-              <StickyNote className="mt-0.5 size-4 shrink-0" /> <Linkified text={item.notes} className="min-w-0 whitespace-pre-line text-fg/90" />
-            </li>
-          )}
-        </ul>
+        {/* Time and cost as the same pills as the day picker and links, so every edge lines up */}
+        {(item.startTime || item.endTime || item.cost != null) && (
+          <div className="mt-2.5 flex flex-wrap items-center gap-2 text-[13px] font-semibold text-muted">
+            {(item.startTime || item.endTime) && (
+              <span className="flex items-center gap-1.5 rounded-full border border-line px-3 py-1.5 text-fg">
+                <Clock className="size-3.5 text-muted" />
+                {item.startTime ? `${fmtTime(item.startTime)}${item.endTime ? ` – ${fmtTime(item.endTime)}` : ""}` : `Until ${fmtTime(item.endTime)}`}
+              </span>
+            )}
+            {item.cost != null && (
+              <span className="flex items-center gap-1.5 rounded-full border border-line px-3 py-1.5 text-fg">
+                <Wallet className="size-3.5 text-muted" /> {formatMoney(item.cost, item.costCurrency ?? p.currency)}
+              </span>
+            )}
+          </div>
+        )}
+        {item.notes && (
+          <p className="mt-2.5 flex gap-2 rounded-xl bg-surface-2/60 px-3 py-2 text-[14px] text-muted">
+            <StickyNote className="mt-0.5 size-3.5 shrink-0" /> <Linkified text={item.notes} className="min-w-0 whitespace-pre-line text-fg/90" />
+          </p>
+        )}
 
         {item.kind === "place" && (
           <div className="mt-3 flex flex-wrap items-center gap-2 text-[13px] font-semibold">
