@@ -6,10 +6,12 @@ export interface Settings {
   pinClick: "focus" | "card";
   /** Draw flight arcs between airports on the map. */
   flightPaths: "show" | "hide";
+  /** Wide screens: the contents column with every day and its stops, or a thin icon rail. */
+  contentsWidth: "thick" | "thin";
 }
 
 const KEY = "tp-settings";
-const DEFAULTS: Settings = { pinClick: "focus", flightPaths: "show" };
+const DEFAULTS: Settings = { pinClick: "focus", flightPaths: "show", contentsWidth: "thick" };
 
 const read = (): Settings => {
   try {
