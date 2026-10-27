@@ -75,7 +75,16 @@ const KIND: Record<string, Kind> = { lodging: "hotel" };
 /** Standard notes: details in the type's order (others after), then free notes after a blank line. */
 export function formatBookingNotes(type: string, details: unknown, notes?: string): string | undefined {
   const kind = (KIND[type] ?? type) as Kind;
-  const d = details && typeof details === "object" ? (details as Record<string, unknown>) : {};
+  // The model sometimes hands the object back as a JSON string
+  let raw = details;
+  if (typeof raw === "string") {
+    try {
+      raw = JSON.parse(raw);
+    } catch {
+      raw = {};
+    }
+  }
+  const d = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
   const order = [...(ORDER[kind] ?? []), ...ALL.filter((k) => !(ORDER[kind] ?? []).includes(k))];
   const lines = order
     .map((k) => [k, typeof d[k] === "string" ? (d[k] as string).replace(/\s+/g, " ").trim() : ""] as const)
@@ -121,7 +130,13 @@ export async function handleNotes(req: Request, env: Env, url: URL): Promise<Res
       messages: [
         {
           role: "user",
-          content: `Sort the notes of this ${body.type} booking ("${body.title ?? ""}") into the detail fields. Keep every fact; reword only to make values short (e.g. "Seat assigned at check-in" → seat: "Assigned at check-in"). Drop what repeats the title (airline, flight number, route).\n\nNotes:\n${notes}`,
+          content: `Sort the notes of this ${body.type} booking ("${body.title ?? ""}") into the detail fields. Put every fact into the field it fits best; the free "notes" field is only for leftovers that fit no field at all (usually nothing). Keep every fact; reword only to make values short. Drop what repeats the title (airline, flight number, hotel name, route) and anything about the trip being direct/nonstop or its duration.
+
+Example (flight): "Peach MM312, direct, 1h 40m, Economy. Seat assigned at check-in. Baggage: 1 personal item, 1 cabin bag (max 5 kg), 1 checked bag (max 20 kg)."
+→ details { cabin: "Economy", seat: "Assigned at check-in", baggage: "1 personal item, 1 cabin bag (5 kg), 1 checked bag (20 kg)" }, notes empty.
+
+Notes:
+${notes}`,
         },
       ],
     }),

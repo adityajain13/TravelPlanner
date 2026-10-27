@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import { Crosshair, EyeOff, Moon, MoonStar, PanelBottom, PanelLeft, PanelLeftDashed, Plane, RectangleHorizontal, Pill, Clock, Hourglass, Sun, X, Sparkles, Loader2, Check } from "lucide-react";
 import type * as Y from "yjs";
 import { readTrip } from "../lib/trips";
-import { importedWithNotes, tidyNotes } from "../lib/tidyNotes";
+import { withNotes, tidyNotes } from "../lib/tidyNotes";
 import { useTheme, type Theme } from "../lib/theme";
 import { useSettings, type Settings, type SettingsScope } from "../lib/settings";
 
@@ -96,31 +96,29 @@ export function SettingsDialog({ onClose, scope }: { onClose: () => void; scope?
 
 /** One-off action: put every emailed booking's notes in the standard layout again. */
 function TidyNotesRow({ doc }: { doc: Y.Doc }) {
-  const [run, setRun] = useState<{ done: number; total: number; changed?: number } | null>(null);
-  const count = importedWithNotes(readTrip(doc).reservations).length;
+  const [run, setRun] = useState<{ done: number; total: number; changed?: number; failed?: number } | null>(null);
+  const count = withNotes(readTrip(doc).reservations).length;
   const busy = run != null && run.changed == null;
   const go = async () => {
-    const list = importedWithNotes(readTrip(doc).reservations);
+    const list = withNotes(readTrip(doc).reservations);
     setRun({ done: 0, total: list.length });
-    const changed = await tidyNotes(doc, list, (done, total) => setRun({ done, total }));
-    setRun({ done: list.length, total: list.length, changed });
+    const { changed, failed } = await tidyNotes(doc, list, (done, total) => setRun({ done, total }));
+    setRun({ done: list.length, total: list.length, changed, failed });
   };
   return (
     <>
       <div className="my-4 border-t border-line" />
       <div className="flex items-center justify-between gap-4 max-sm:flex-col max-sm:items-stretch">
         <div className="min-w-0">
-          <p className="text-[15px] font-bold">Imported booking notes</p>
+          <p className="text-[15px] font-bold">Booking notes</p>
           <p className="mt-0.5 text-[13px] text-muted">
             {busy
               ? `Formatting ${run.done + 1} of ${run.total}…`
               : run?.changed != null
-                ? run.changed
-                  ? `Reformatted ${run.changed} of ${run.total}`
-                  : "Already in the standard layout"
+                ? [run.changed ? `Reformatted ${run.changed} of ${run.total}` : "Already in the standard layout", run.failed ? `${run.failed} couldn't be reached, try again` : ""].filter(Boolean).join(" · ")
                 : count
-                  ? `Seat, class, baggage… in one layout (${count} from email)`
-                  : "No bookings from email yet"}
+                  ? `Seat, class, baggage… in one layout (${count} with notes)`
+                  : "No booking notes yet"}
           </p>
         </div>
         <button
