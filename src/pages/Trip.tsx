@@ -76,6 +76,7 @@ import { OfflineMapButton } from "../components/OfflineMapButton";
 import { HeroPill } from "../components/HeroPill";
 import { AddSection } from "../components/AddSection";
 import { ChipScroller } from "../components/ChipScroller";
+import { TripOverview } from "../components/TripOverview";
 import { LogoMark } from "../components/Logo";
 import { PlacePanel, type PanelMode } from "../components/PlacePanel";
 import { SectionPicker, type SectionTarget } from "../components/SectionPicker";
@@ -654,6 +655,12 @@ export function TripPage() {
     }, 40);
   };
   const spent = totals(budgetLines(state, fx.convert)).total;
+  // ?today=2026-12-03T10:00 previews the overview as on that day (for trying the during/after views)
+  const overviewNow = (() => {
+    const t = new URLSearchParams(location.search).get("today");
+    const d = t ? new Date(t.length <= 10 ? `${t}T12:00` : t) : null;
+    return d && !Number.isNaN(d.getTime()) ? d : undefined;
+  })();
   const mod = /Mac|iPhone|iPad/.test(navigator.platform) ? "⌘" : "Ctrl+";
   const undoBar = readOnly ? null : (
     <div className="flex items-center gap-1 border-b border-line px-4 py-3">
@@ -866,6 +873,17 @@ export function TripPage() {
           {tab === "bookings" && <ReservationsPanel doc={doc} state={state} readOnly={readOnly} tripId={id} canForward={canReview} />}
           {tab === "budget" && <BudgetPanel doc={doc} state={state} readOnly={readOnly} />}
           {tab === "plan" && (<>
+          <TripOverview
+            state={state}
+            sections={view.sections.filter((s) => s.key !== ORPHAN)}
+            spent={spent}
+            legs={legsBySection}
+            readOnly={readOnly}
+            now={overviewNow}
+            onSelect={(itemId) => (setSelectedId(itemId), requestAnimationFrame(() => scrollToId(scrollRef.current, `item-${itemId}`, "center")))}
+            onOpenRes={(r) => !readOnly && setEditingRes(r)}
+            onGo={(t) => (typeof t === "string" ? go(t) : go("plan", `sec-${t.section}`))}
+          />
           {unpinned.length > 0 && (
             <div className="mx-2 mt-4 rounded-xl border border-line bg-surface-2 p-3 text-sm">
               <div className="flex items-start justify-between gap-2">
