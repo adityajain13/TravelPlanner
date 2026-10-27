@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { Check, Clock, GitBranch, Pencil, Route as RouteIcon, Trash2, Wallet, X } from "lucide-react";
 import type { Item } from "../lib/trips";
@@ -10,6 +10,11 @@ import { PinMarker } from "./ItemCard";
 import { fmtTime } from "./TimeField";
 import { askConfirm } from "./ConfirmDialog";
 import { inkOn } from "../lib/colors";
+import { PROTOMAPS_KEY } from "../lib/mapStyle";
+import type { Theme } from "../lib/theme";
+import type { Pin, Route } from "./TripMap";
+
+const TripMap = lazy(() => import("./TripMap").then((m) => ({ default: m.TripMap })));
 
 export interface Version {
   /** Draft id; undefined = the day's plan ("main"). */
@@ -17,6 +22,9 @@ export interface Version {
   name: string;
   items: Item[];
   legs: LegState[];
+  /** For the column's map: numbered stops (plus the hotel/airport its legs start or end at) and routes. */
+  pins: Pin[];
+  routes: Route[];
 }
 
 interface Props {
@@ -26,6 +34,7 @@ interface Props {
   /** The version shown in the itinerary right now. */
   shown?: string;
   currency: string;
+  theme: Theme;
   convert: (amount: number, from: string) => number | null;
   readOnly?: boolean;
   onEdit: (id: string | undefined) => void;
@@ -137,7 +146,15 @@ function Column({ v, box, ...p }: Props & { v: Version; box: Box }) {
         {isShown && v.id && <span className="shrink-0 rounded-full bg-surface-2 px-2 py-0.5 text-[11px] font-bold tracking-wide text-muted uppercase">Viewing</span>}
       </div>
 
-      <Sketch items={places} box={box} color={p.color} />
+      {PROTOMAPS_KEY && v.pins.length ? (
+        <div className="mx-4 my-3 h-[190px] overflow-hidden rounded-xl bg-surface-2/40 [&_.maplibregl-ctrl-attrib]:text-[9px]">
+          <Suspense fallback={null}>
+            <TripMap mini pins={v.pins} routes={v.routes} selectedId={null} onSelect={() => undefined} theme={p.theme} fitKey={v.id ?? "main"} />
+          </Suspense>
+        </div>
+      ) : (
+        <Sketch items={places} box={box} color={p.color} />
+      )}
 
       <div className="grid grid-cols-3 gap-1.5 px-4 text-[12px]">
         <Stat icon={<RouteIcon />} value={secs ? formatDuration(secs) : "—"} sub={metres ? formatDistance(metres) : "travel"} />

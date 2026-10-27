@@ -48,6 +48,8 @@ interface Props {
   focusColor?: string;
   /** Open the selected pin's card without moving the map. */
   holdView?: boolean;
+  /** Small embedded map (Compare plans): no controls, framed on every pin and route. */
+  mini?: boolean;
 }
 
 maplibregl.setWorkerUrl(workerUrl);
@@ -73,6 +75,16 @@ function coreBounds(pins: { lat: number; lng: number }[]): maplibregl.LngLatBoun
   return b;
 }
 const FIT = { padding: 64, maxZoom: 14 };
+const MINI_FIT = { padding: 30, maxZoom: 15 };
+
+/** Everything: pins plus the routes (a leg from the airport isn't cut off). */
+function allBounds(pins: { lat: number; lng: number }[], routes: Route[]): maplibregl.LngLatBounds | null {
+  const b = new maplibregl.LngLatBounds();
+  let any = false;
+  for (const p of pins) (b.extend([p.lng, p.lat]), (any = true));
+  for (const r of routes) for (const c of r.coords) (b.extend(c as [number, number]), (any = true));
+  return any ? b : null;
+}
 
 const readMode = (): MapMode => {
   try {
@@ -82,7 +94,7 @@ const readMode = (): MapMode => {
   }
 };
 
-export function TripMap({ pins, routes, selectedId, onSelect, theme, fitKey, fallbackCenter, inset, frame, focusColor, holdView }: Props) {
+export function TripMap({ pins, routes, selectedId, onSelect, theme, fitKey, fallbackCenter, inset, frame, focusColor, holdView, mini }: Props) {
   const container = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const [mode, setMode] = useState<MapMode>(readMode);
@@ -93,22 +105,25 @@ export function TripMap({ pins, routes, selectedId, onSelect, theme, fitKey, fal
   // Create the map once
   useEffect(() => {
     if (!container.current || !PROTOMAPS_KEY) return;
-    const start = coreBounds(latest.current.pins);
+    const bounds = () => (mini ? allBounds(latest.current.pins, latest.current.routes) : coreBounds(latest.current.pins));
+    const fit = mini ? MINI_FIT : FIT;
+    const start = bounds();
     const map = new maplibregl.Map({
       container: container.current,
       style: buildStyle(theme, mode),
       ...(start
-        ? { bounds: start, fitBoundsOptions: FIT }
+        ? { bounds: start, fitBoundsOptions: fit }
         : { center: (fallbackCenter ?? [139.69, 35.68]) as LngLatLike, zoom: fallbackCenter ? 6 : 2 }),
       attributionControl: { compact: true },
       fadeDuration: 0,
+      ...(mini ? { dragRotate: false, pitchWithRotate: false, cooperativeGestures: false } : {}),
     });
-    map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "bottom-right");
+    if (!mini) map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "bottom-right");
     // Pins may have arrived (or the panel sized itself) while the map was loading: frame them now
     map.once("load", () => {
       map.resize();
-      const b = coreBounds(latest.current.pins);
-      if (b && !latest.current.selectedId) map.fitBounds(b, { ...FIT, duration: 0 });
+      const b = bounds();
+      if (b && !latest.current.selectedId) map.fitBounds(b, { ...fit, duration: 0 });
     });
     onMissingImage(map);
     map.on("style.load", () => {
@@ -153,10 +168,19 @@ export function TripMap({ pins, routes, selectedId, onSelect, theme, fitKey, fal
     if (map?.isStyleLoaded()) pushData(map, latest.current);
   }, [pins, routes, selectedId, focusColor]);
 
+  // Mini: keep everything in frame as routes come in or stops change
+  const miniKey = mini ? `${pins.map((p) => p.id).join()}|${routes.reduce((n, r) => n + r.coords.length, 0)}` : "";
+  useEffect(() => {
+    const map = mapRef.current;
+    const b = mini && allBounds(pins, routes);
+    if (map && b) map.fitBounds(b, { ...MINI_FIT, duration: 300 });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [miniKey]);
+
   // Re-frame
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || pins.length === 0) return;
+    if (!map || pins.length === 0 || mini) return;
     if (pins.length === 1) {
       map.easeTo({ center: [pins[0].lng, pins[0].lat], zoom: Math.max(map.getZoom(), 13) });
       return;
@@ -255,7 +279,7 @@ export function TripMap({ pins, routes, selectedId, onSelect, theme, fitKey, fal
   return (
     <div className="relative h-full w-full">
       <div ref={container} className="h-full w-full" />
-      {MAPTILER_KEY && (
+      {MAPTILER_KEY && !mini && (
         <div className="absolute top-3 right-3 flex overflow-hidden rounded-full border border-line bg-surface/90 text-xs shadow-lg backdrop-blur">
           <ModeButton active={mode === "map"} onClick={() => setMode("map")} icon={<Layers className="size-3.5" />}>
             Map

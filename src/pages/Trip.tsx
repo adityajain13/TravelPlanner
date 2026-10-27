@@ -1239,15 +1239,37 @@ export function TripPage() {
               color={sec.color}
               shown={sec.draftId}
               currency={state.meta.currency ?? "CAD"}
+              theme={theme}
               convert={fx.convert}
               readOnly={readOnly}
               versions={vers.map((v) => {
                 const ver = v.id ? draftSection(v.id) : dayKey;
+                const items = of(ver);
+                const vlegs = view.legs.filter((l) => l.ver === ver);
+                const routes: Route[] = vlegs.map((l) => {
+                  const r = legResults.get(l.req.key);
+                  if (typeof r === "object") return { color: l.color, coords: r.coords, style: r.mode === "flight" || r.rough ? "dashed" : r.mode === "walk" ? "dotted" : "solid" };
+                  return { color: l.color, coords: [l.req.from, l.req.to], style: "dashed" };
+                });
+                let n = 0;
+                const pins: Pin[] = [];
+                for (const it of items) {
+                  if (it.kind !== "place") continue;
+                  n++;
+                  if (it.lat != null && it.lng != null) pins.push({ id: it.id, lat: it.lat, lng: it.lng, color: sec.color, label: String(n), name: it.name });
+                }
+                // The hotel / airport a leg starts or ends at
+                const ends = vlegs.flatMap((l) => [l.req.from, l.req.to]);
+                for (const x of [...view.pins, ...flights.pins])
+                  if ((x.id.startsWith("res:") || x.id.startsWith("apt:")) && ends.some(([lng, lat]) => Math.abs(lng - x.lng) + Math.abs(lat - x.lat) < 0.002) && !pins.some((q) => q.id === x.id))
+                    pins.push(x);
                 return {
                   id: v.id,
                   name: v.id ? v.name : "Main plan",
-                  items: of(ver),
-                  legs: view.legs.filter((l) => l.ver === ver).map((l) => legResults.get(l.req.key)).filter((x) => x != null),
+                  items,
+                  legs: vlegs.map((l) => legResults.get(l.req.key)).filter((x) => x != null),
+                  pins,
+                  routes,
                 };
               })}
               onEdit={(d) => {
