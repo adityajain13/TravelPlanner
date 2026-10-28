@@ -1,19 +1,21 @@
-import { ArrowLeft, Cloud, CloudOff, Loader2, Share2, Settings as SettingsIcon } from "lucide-react";
+import { ArrowLeft, Cloud, CloudOff, History as HistoryIcon, Loader2, Share2, Settings as SettingsIcon } from "lucide-react";
 import { HeroPill } from "../HeroPill";
 import type { SyncStatus } from "../../lib/sync";
 
-/** The row of pills over the top of the cover photo: back to trips, sync state, share, settings. */
+/** The row of pills over the top of the cover photo: back to trips, sync state, share, history, settings. */
 export function HeroTopBar({
   canSync,
   syncStatus,
   isOwner,
   onShare,
+  onHistory,
   onSettings,
 }: {
   canSync: boolean;
   syncStatus: SyncStatus;
   isOwner: boolean;
   onShare: () => void;
+  onHistory: () => void;
   onSettings: () => void;
 }) {
   const syncIcon = syncStatus === "online" ? <Cloud /> : syncStatus === "offline" ? <CloudOff /> : <Loader2 className="animate-spin" />;
@@ -31,6 +33,7 @@ export function HeroTopBar({
           />
         )}
         {isOwner && <HeroPill icon={<Share2 />} label="Share" onClick={onShare} />}
+        <HeroPill icon={<HistoryIcon />} label="History" onClick={onHistory} />
         <HeroPill icon={<SettingsIcon />} label="Settings" onClick={onSettings} />
       </div>
     </div>

@@ -69,12 +69,12 @@ Hosted at **adityajain.ca/travelplanner** by the `travelplanner` Cloudflare Work
   - Place cards: teardrop numbered marker in the day colour, name / category·address / notes preview / time + cost chips, photo thumbnail on the right; leg rows get a Google Maps "Directions" link.
   - Map: SDF teardrop pins tinted per day (selected pin larger), photo popup for the selected stop.
   - Photos: picker searches Wikipedia (geosearch near the pin + title match), Wikimedia Commons and Openverse, or takes a pasted URL; stores `{url, thumb, credit, link, source}` on the item (`item.image`) / trip (`meta.cover`). Auto-fill uses confident Wikipedia matches only (≥0.75 name similarity) and skips generic stops; country/region lead images that are flags, maps or coats of arms are filtered. Photos cached by the service worker (`place-photos`).
-- [ ] **6. Polish**
+- [x] **6. Polish**
   - [x] Trip cover image, budget/expenses, travel-time estimates between stops, Wanderlog import (shipped above).
   - [x] Undo/redo for your own edits (`lib/undo.ts`).
-  - [ ] Edit history with per-origin revert (Claude, email, collaborators).
-  - [ ] ICS export.
-  - [ ] Packing list (checklist preset).
+  - [x] Edit history with per-origin revert (Claude, email, collaborators): `src/lib/history.ts`, `HistoryDialog.tsx`.
+  - [x] ICS export: Settings → Calendar (`src/lib/ics.ts`).
+  - [x] Packing list: the "Packing list" section preset starts with a checklist (`addSection` in `itemActions.ts`).
 
 ## Notes for the next session
 
@@ -189,3 +189,6 @@ Hosted at **adityajain.ca/travelplanner** by the `travelplanner` Cloudflare Work
 - Oct 28: Refactor: buildItinerary's routing walk split into tripContext, dayFlights, dayBookends, legAdder (explicit skipSamePoint), departureLeg, stopLegs, eveningLegs, walkLane, mergeLanes, walkDay, stopPins, bookingPins (buildItinerary body ~20 lines). Old vs new output byte-identical on 6 fixture variants (flights/connections, hotels, split lanes, drafts, focus, transit).
 - Oct 28: Refactor 2E: ImagePicker, PlaceSearch, ReservationForm, ForwardDialog, TimeRangeField, BudgetCharts, WanderlogImport, Login, RichEditor, GoogleDetails each split into small components / module helpers (all ≤90 lines). Harness 89/89 identical; browser: shared booking per-person notes, time range picker, receipts, rich text, budget pass.
 - Oct 28: Refactor 2F: split the last long functions (DayCompare Column, Wanderlog parsers, Settings, AddressSearch, email handler, Share); Wanderlog import no longer crashes on stray lines before the first day.
+- Oct 28: Edit history (src/lib/history.ts, components/HistoryDialog.tsx; History pill in the trip header). Y.Array 'history' in the trip doc, so it syncs; watchHistory() keeps a JSON cache of every record and on afterTransaction logs local edits with their before/after JSON: 'me' (credited to the signed-in email), 'email', Undo (UndoManager origin), and Claude (the Worker's DO runs watchHistory too, origin "claude"). Your quick edits within 60 s merge (net-zero merges vanish); 250 entries kept. Not logged: AUTO origin (background upkeep lookups now use it, so Ctrl+Z no longer undoes them either), sync/IndexedDB loads. Revert per entry or 'Revert all' under the Claude/Email filters: restores only the fields that entry changed (deleted records come back whole), logged as its own 'Revert' entry (undoable with Ctrl+Z), originals marked revertedBy. History starts empty on existing trips.
+- Oct 28: Calendar export (src/lib/ics.ts, Settings → Calendar → Download .ics, view-only too): an all-day event per day listing its stops, timed stops (end = end time or stay/60 min), bookings grouped across travellers (lodging all-day check-in → check-out; flights/trains/cars/restaurants timed when they have a time). Floating local times (no time zones), stable UIDs so re-importing updates. Flights crossing time zones show local departure/arrival as printed.
+- Oct 28: 'Packing list' section preset starts with a Packing checklist (passport, chargers, adapter, meds, toiletries, clothes, insurance, cards/cash); addList returns the new list id.

@@ -7,6 +7,7 @@ import { useConverter } from "../lib/fx";
 import { budgetLines, totals } from "../lib/budget";
 import { setShareToken } from "../lib/shareToken";
 import { copiesByItem, copyItems, isDraftSection, removeItems, setReadOnly, type Item, type Reservation } from "../lib/trips";
+import { setHistoryAuthor } from "../lib/history";
 import { daysBetween } from "../lib/dates";
 import { scrollToEl, scrollToId } from "../lib/scroll";
 import { useUndo } from "../lib/undo";
@@ -40,6 +41,7 @@ import { MapPane } from "../components/trip/MapPane";
 import { MapOverlays } from "../components/trip/MapOverlays";
 import { TravelModeView } from "../components/trip/TravelModeView";
 import { TripDialogs } from "../components/trip/TripDialogs";
+import { HistoryDialog } from "../components/HistoryDialog";
 import { MobileViewSwitch } from "../components/trip/MobileViewSwitch";
 import type { DayFrame, PhotoFill, PlanContext, ReceiptTarget } from "../components/trip/types";
 
@@ -66,6 +68,7 @@ export function TripPage() {
   const [tab, setTab] = useState<Tab>("plan");
   const [contentsDrawer, setContentsDrawer] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
   const [mapPicked, setMapPicked] = useState<string | null>(null);
   const [dayFrame, setDayFrame] = useState<DayFrame | null>(null);
   const headerRef = useRef<HTMLElement>(null);
@@ -94,6 +97,10 @@ export function TripPage() {
   }, [doc, readOnly]);
   // Settings live in the trip, per account; view-only or signed out: this device
   const { email: myEmail } = useSession();
+  // Who "me" edits are credited to in the trip history
+  useEffect(() => {
+    if (doc) setHistoryAuthor(doc, myEmail?.toLowerCase());
+  }, [doc, myEmail]);
   const settingsScope = useMemo(() => (doc && myEmail && !readOnly ? { doc, email: myEmail.toLowerCase() } : null), [doc, myEmail, readOnly]);
   const [settings] = useSettings(settingsScope);
   // Travel mode (phones): the light day view; background lookups (photos, pins, notes) pause
@@ -315,6 +322,7 @@ export function TripPage() {
             syncStatus={syncStatus}
             isOwner={isOwner}
             onShare={() => setSharing(true)}
+            onHistory={() => setShowHistory(true)}
             onSettings={() => setShowSettings(true)}
             onPickCover={() => setPickingCover(true)}
           />
@@ -452,6 +460,7 @@ export function TripPage() {
         setShowSettings={setShowSettings}
         settingsScope={settingsScope}
       />
+      {showHistory && <HistoryDialog doc={doc} state={state} readOnly={readOnly} myEmail={myEmail ?? undefined} onClose={() => setShowHistory(false)} />}
       <MobileViewSwitch mobileView={mobileView} setMobileView={setMobileView} />
     </div>
   );

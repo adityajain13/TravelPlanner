@@ -4,7 +4,7 @@ import { locateBooking } from "../lib/locate";
 import { distanceKm } from "../lib/geocode";
 import { autocomplete, GOOGLE_KEY, suggestionPlace } from "../lib/google";
 import { searchPlaces } from "../lib/photon";
-import { edit, matchTraveler, readTrip, removeItem, saveReservation, setItemImage, updateItem, updateMeta } from "../lib/trips";
+import { AUTO, edit, matchTraveler, readTrip, removeItem, saveReservation, setItemImage, updateItem, updateMeta } from "../lib/trips";
 import type { TripState } from "../lib/trips";
 import { googlePhotos, coverFor, firstPhoto, sameSubject } from "../lib/images";
 import { needsTidy, tidyNotes } from "../lib/tidyNotes";
@@ -96,7 +96,7 @@ export function usePinBookings(a: UpkeepArgs) {
         if (!hit) hit = (await searchPlaces(q, state.meta.center).catch(() => []))[0] ?? null;
         if (!hit && r.address) hit = (await searchPlaces(r.address, state.meta.center).catch(() => []))[0] ?? null;
         const cur = readTrip(doc).reservations.find((x) => x.id === r.id);
-        if (hit && cur && cur.lat == null) saveReservation(doc, { ...cur, lat: hit.lat, lng: hit.lng, address: cur.address || hit.address });
+        if (hit && cur && cur.lat == null) saveReservation(doc, { ...cur, lat: hit.lat, lng: hit.lng, address: cur.address || hit.address }, AUTO);
       }
     })();
   }, [doc, state, readOnly]);
@@ -119,7 +119,7 @@ export function useRelocateImportedStops(a: UpkeepArgs) {
         const cur = readTrip(doc).items.find((x) => x.id === it.id);
         if (!cur) continue;
         const far = hit && (cur.lat == null || cur.lng == null || distanceKm([cur.lng, cur.lat], [hit.lng, hit.lat]) > 0.5);
-        updateItem(doc, it.id, far ? { lat: hit!.lat, lng: hit!.lng, googlePlaceId: hit!.googlePlaceId, osmId: hit!.osmId, located: true } : { located: true });
+        updateItem(doc, it.id, far ? { lat: hit!.lat, lng: hit!.lng, googlePlaceId: hit!.googlePlaceId, osmId: hit!.osmId, located: true } : { located: true }, AUTO);
       }
     })();
   }, [doc, state, readOnly]);
@@ -136,7 +136,7 @@ export function useMatchTravelers(a: UpkeepArgs) {
     for (const r of state.reservations) {
       if (!r.traveler || people.includes(r.traveler)) continue;
       const who = matchTraveler(r.traveler, people, state.meta.travelerAliases);
-      if (who && who !== r.traveler && people.includes(who)) saveReservation(doc, { ...r, traveler: who });
+      if (who && who !== r.traveler && people.includes(who)) saveReservation(doc, { ...r, traveler: who }, AUTO);
     }
   }, [doc, state, readOnly]);
 }
@@ -157,7 +157,7 @@ export function useFixWikiPhotos(a: UpkeepArgs) {
         const g = it.googlePlaceId ? (await googlePhotos({ placeId: it.googlePlaceId, name: it.name }).catch(() => []))[0] : undefined;
         const next = g ?? (await firstPhoto(it.name, coords, state.meta.destination).catch(() => null));
         const cur = readTrip(doc).items.find((x) => x.id === it.id);
-        if (cur?.image?.url === it.image!.url) setItemImage(doc, it.id, next ?? undefined);
+        if (cur?.image?.url === it.image!.url) setItemImage(doc, it.id, next ?? undefined, AUTO);
       }
     })();
   }, [doc, state, readOnly]);
@@ -186,7 +186,7 @@ export function useLocateTravelEnds(a: UpkeepArgs) {
         if (!hit) continue;
         const tz = await zoneAt(hit.lat, hit.lng);
         const cur = readTrip(doc).reservations.find((x) => x.id === j.id);
-        if (cur && (cur[j.side === "fromAt" ? "from" : "to"] ?? "").trim() === j.q) saveReservation(doc, { ...cur, [j.side]: { q: j.q, lat: hit.lat, lng: hit.lng, tz } });
+        if (cur && (cur[j.side === "fromAt" ? "from" : "to"] ?? "").trim() === j.q) saveReservation(doc, { ...cur, [j.side]: { q: j.q, lat: hit.lat, lng: hit.lng, tz } }, AUTO);
       }
     })();
   }, [doc, state, readOnly]);
@@ -205,7 +205,7 @@ export function useSuggestCover(a: UpkeepArgs) {
     coverTried.current = true;
     coverFor(dest).then((cover) => {
       const cur = readTrip(doc).meta.cover;
-      if (cover && (!cur || badAuto(cur))) updateMeta(doc, { cover });
+      if (cover && (!cur || badAuto(cur))) updateMeta(doc, { cover }, AUTO);
     });
   }, [doc, state, readOnly]);
 }

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import * as Y from "yjs";
-import { ME } from "./trips";
+import { ME, REVERT } from "./trips";
 
 /**
  * Undo / redo for your own edits on this device. Only changes made with the ME origin are
@@ -14,7 +14,7 @@ export function useUndo(doc: Y.Doc | null, readOnly?: boolean) {
   useEffect(() => {
     if (!doc || readOnly) return;
     const scope = ["items", "lists", "meta", "reservations", "expenses", "drafts"].map((n) => doc.getMap(n));
-    const m = new Y.UndoManager(scope, { trackedOrigins: new Set([ME]), captureTimeout: 500 });
+    const m = new Y.UndoManager(scope, { trackedOrigins: new Set([ME, REVERT]), captureTimeout: 500 });
     const refresh = () => bump((x) => x + 1);
     m.on("stack-item-added", refresh);
     m.on("stack-item-popped", refresh);

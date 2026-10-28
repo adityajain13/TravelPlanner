@@ -19,6 +19,7 @@ export function TripHero({
   syncStatus,
   isOwner,
   onShare,
+  onHistory,
   onSettings,
   onPickCover,
 }: {
@@ -30,6 +31,7 @@ export function TripHero({
   syncStatus: SyncStatus;
   isOwner: boolean;
   onShare: () => void;
+  onHistory: () => void;
   onSettings: () => void;
   onPickCover: () => void;
 }) {
@@ -42,7 +44,7 @@ export function TripHero({
           <div className="absolute inset-0 bg-[radial-gradient(120%_90%_at_20%_10%,rgb(95_214_139/.35),transparent_60%),radial-gradient(90%_80%_at_90%_30%,rgb(106_168_255/.3),transparent_60%)]" />
         )}
         <div className="absolute inset-0 bg-gradient-to-b from-black/55 via-black/5 to-black/85" />
-        <HeroTopBar canSync={canSync} syncStatus={syncStatus} isOwner={isOwner} onShare={onShare} onSettings={onSettings} />
+        <HeroTopBar canSync={canSync} syncStatus={syncStatus} isOwner={isOwner} onShare={onShare} onHistory={onHistory} onSettings={onSettings} />
         {/* Same bottom inset as the dates row, so the cover button lines up with it */}
         {!readOnly && (
           <div className="absolute right-4 bottom-4 z-10">

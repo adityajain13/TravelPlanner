@@ -5,6 +5,7 @@ import { generateKeyBetween } from "fractional-indexing";
 import { nanoid } from "nanoid";
 import { db } from "./db";
 import { daysBetween } from "./dates";
+import { applyRevert, watchHistory, type HistoryEntry } from "./history";
 
 /*
  * Trip doc layout (one Y.Doc per trip, persisted offline in IndexedDB as `trip-<id>`):
@@ -14,6 +15,7 @@ import { daysBetween } from "./dates";
  *   items: Y.Map  itemId -> Y.Map { ...Item fields }
  *   drafts: Y.Map draftId -> Y.Map { date, name, createdAt }   alternative plans for a day; their
  *          stops are ordinary items in section "draft:<draftId>"
+ *   history: Array of HistoryEntry  every change, labelled by origin, revertable (see ./history)
  *
  * Items are a flat map with a `section` ("day:YYYY-MM-DD" | "list:<id>") and a fractional
  * `order` key, instead of nested arrays. Two people moving items at once can't corrupt the
@@ -248,8 +250,11 @@ export interface TripState {
   expenses: Expense[];
 }
 
-export type EditOrigin = { by: "me" | "remote" | "claude" | "email"; label?: string };
+/** "auto": background lookups. Not logged in history and not undoable. */
+export type EditOrigin = { by: "me" | "remote" | "claude" | "email" | "auto"; label?: string };
 export const ME: EditOrigin = { by: "me" };
+export const AUTO: EditOrigin = { by: "auto" };
+export const REVERT: EditOrigin = { by: "me", label: "Revert" };
 
 export const daySection = (date: string) => `day:${date}`;
 export const listSection = (id: string) => `list:${id}`;
@@ -268,6 +273,8 @@ export function openTrip(id: string): OpenTrip {
   let t = open.get(id);
   if (!t) {
     const doc = new Y.Doc();
+    // Before IndexedDB loads on purpose: the load transaction fills the history cache
+    watchHistory(doc);
     const persistence = new IndexeddbPersistence(`trip-${id}`, doc);
     const ready = persistence.whenSynced.then(() => undefined);
     t = { doc, persistence, ready };
@@ -304,6 +311,11 @@ export function setReadOnly(doc: Y.Doc, ro: boolean) {
 export function edit(doc: Y.Doc, fn: () => void, origin: EditOrigin = ME) {
   if (readOnly.has(doc)) return;
   doc.transact(fn, origin);
+}
+
+/** Put the records back to before these history entries; logged as a "Revert" and undoable. */
+export function revertHistory(doc: Y.Doc, entries: HistoryEntry[]) {
+  edit(doc, () => applyRevert(doc, entries), REVERT);
 }
 
 export async function createTrip(meta: TripMeta): Promise<string> {
