@@ -37,6 +37,7 @@ import { useUndo } from "../lib/undo";
 import { db } from "../lib/db";
 import { useSession } from "../lib/api";
 import { needsTidy, tidyNotes } from "../lib/tidyNotes";
+import { cleanTitle } from "../lib/inbox";
 import { useSync } from "../lib/sync";
 import { useTrip } from "../lib/useTrip";
 import { useTheme } from "../lib/theme";
@@ -539,6 +540,45 @@ export function TripPage() {
   }, [view, state, autoOn, legsBySection]);
 
   // Suggest a cover photo once, for editable trips that don't have one
+  // Tickets/activities from email used to be added as stops; they're reservations ("Other") now.
+  // Move the old ones over once, keeping their time, pin, cost and notes (then tidied below).
+  useEffect(() => {
+    if (lite || !doc || !state || readOnly) return;
+    const old = state.items.filter((i) => i.kind === "place" && i.inboxId && (i.category === "activity" || i.category === "other"));
+    if (!old.length) return;
+    edit(
+      doc,
+      () => {
+        for (const it of old) {
+          const lines = (it.notes ?? "").split("\n");
+          const conf = lines.map((l) => /^Confirmation:\s*(.+)$/.exec(l)?.[1]).find(Boolean);
+          const rest = lines.filter((l) => !/^Confirmation:/.test(l)).join("\n").trim();
+          const date = it.section.startsWith("day:") ? it.section.slice(4) : undefined;
+          saveReservation(
+            doc,
+            {
+              type: "other",
+              ...cleanTitle(it.name, conf),
+              startDate: date,
+              startTime: it.startTime,
+              endTime: it.endTime,
+              address: it.address,
+              lat: it.lat,
+              lng: it.lng,
+              notes: rest || undefined,
+              cost: it.cost,
+              costCurrency: it.costCurrency,
+              inboxId: it.inboxId,
+            },
+            { by: "email" },
+          );
+          removeItem(doc, it.id, { by: "email" });
+        }
+      },
+      { by: "email" },
+    );
+  }, [lite, doc, state, readOnly]);
+
   // Bookings imported by email before notes had a standard layout: sort their notes into it once
   // ("**Seat:** 12A" lines in a fixed order), so every traveller's copy reads the same
   const tidyTried = useRef(new Set<string>());
@@ -555,7 +595,7 @@ export function TripPage() {
   const pinTried = useRef(new Set<string>());
   useEffect(() => {
     if (lite || !doc || !state || readOnly || !navigator.onLine) return;
-    const todo = state.reservations.filter((r) => (r.type === "lodging" || r.type === "restaurant") && r.lat == null && !pinTried.current.has(r.id));
+    const todo = state.reservations.filter((r) => (r.type === "lodging" || r.type === "restaurant" || (r.type === "other" && !!r.address)) && r.lat == null && !pinTried.current.has(r.id));
     if (!todo.length) return;
     todo.forEach((r) => pinTried.current.add(r.id));
     (async () => {

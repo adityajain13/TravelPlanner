@@ -92,15 +92,28 @@ const RES_TYPE: Partial<Record<Booking["type"], ReservationType>> = {
   bus: "train",
   car: "car",
   restaurant: "restaurant",
+  // Tickets and timed entries (museums, shows, tours) are bookings too: Reservations → Other
+  activity: "other",
+  other: "other",
 };
 
-/** Flights, hotels, trains, cars and restaurants become reservations; activities stay itinerary items. */
+/** Every booking becomes a reservation (activities and tickets as "Other"). */
 export const reservationTypeFor = (b: Booking) => RES_TYPE[b.type];
+
+/**
+ * "Nintendo Museum timed ticket (Purchase M0715366501)" → title "Nintendo Museum timed ticket",
+ * confirmation "M0715366501": order numbers belong in Confirmation #, not the name.
+ */
+export function cleanTitle(title: string, confirmation?: string) {
+  const m = /\s*[(\[]\s*(?:purchase|order|booking|reservation|confirmation|ref(?:erence)?)\b[^)\]]*?([A-Z0-9][A-Z0-9-]{4,})?\s*[)\]]/i.exec(title);
+  if (!m) return { title, confirmation };
+  return { title: title.replace(m[0], "").trim() || title, confirmation: confirmation || m[1] };
+}
 
 export async function bookingToReservation(b: Booking, near?: [number, number]): Promise<Omit<Reservation, "id" | "createdAt">> {
   const type = RES_TYPE[b.type] ?? "other";
   let geo: { lat?: number; lng?: number; address?: string } = {};
-  if ((type === "lodging" || type === "restaurant") && (b.address || b.location_name)) {
+  if ((type === "lodging" || type === "restaurant" || type === "other") && (b.address || b.location_name)) {
     try {
       const hit = await locateBooking(b.location_name, b.address, near);
       if (hit) geo = { lat: hit.lat, lng: hit.lng, address: hit.address };
@@ -110,8 +123,7 @@ export async function bookingToReservation(b: Booking, near?: [number, number]):
   }
   return {
     type,
-    title: b.title,
-    confirmation: b.confirmation,
+    ...cleanTitle(b.title, b.confirmation),
     startDate: b.start_date,
     startTime: b.start_time,
     endDate: b.end_date,
