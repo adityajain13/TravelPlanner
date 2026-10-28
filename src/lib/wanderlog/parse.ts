@@ -139,6 +139,25 @@ function toLines(pages: RawItem[][]): Line[] {
 
 /* ---------- main ---------- */
 
+interface Block {
+  name: string;
+  lines: Line[];
+}
+
+interface Dates {
+  iso: (day: number, month: number) => string;
+  shortDate: (s: string) => string | undefined;
+}
+
+/** What the section readers fill in as they go. */
+interface Sections {
+  currencySymbol: string;
+  reservations: ParsedReservation[];
+  days: WanderlogTrip["days"];
+  lists: WanderlogTrip["lists"];
+  expenses: ParsedExpense[];
+}
+
 export function parseWanderlog(pages: RawItem[][], yearOverride?: number): WanderlogTrip {
   const lines = toLines(pages);
   const warnings: string[] = [];
@@ -147,8 +166,36 @@ export function parseWanderlog(pages: RawItem[][], yearOverride?: number): Wande
   const titleLine = lines.find((l) => l.h >= 22);
   const title = titleLine?.text ?? "Imported trip";
 
-  // Group lines under section headings (h≥16, excluding day headings and money totals)
-  type Block = { name: string; lines: Line[] };
+  const blocks = groupBlocks(lines, titleLine);
+
+  // Year from weekday + date on day headings
+  const dayHeads = lines.filter((l) => DAY_RE.test(l.segs[0].s)).map((l) => l.segs[0].s.match(DAY_RE)!);
+  const year = yearOverride ?? inferYear(dayHeads);
+  if (!yearOverride && dayHeads.length === 0) warnings.push("No day headings found, so the year is a guess.");
+  const dates = makeDates(year);
+
+  const out: Sections = { currencySymbol: "$", reservations: [], days: [], lists: [], expenses: [] };
+  for (const b of blocks) readSection(b, out, dates);
+  const { reservations, days } = out;
+  const expenses = reconcileExpenses(out.expenses, reservations, days);
+
+  const allDates = [...days.map((d) => d.date), ...reservations.flatMap((r) => [r.startDate, r.endDate]).filter((d): d is string => !!d)].sort();
+  return {
+    title,
+    year,
+    startDate: days[0]?.date ?? allDates[0] ?? `${year}-01-01`,
+    endDate: days.at(-1)?.date ?? allDates.at(-1) ?? `${year}-01-01`,
+    currencySymbol: out.currencySymbol,
+    reservations,
+    days,
+    lists: out.lists,
+    expenses,
+    warnings,
+  };
+}
+
+/** Group lines under section headings (h≥16, excluding day headings and money totals). */
+function groupBlocks(lines: Line[], titleLine: Line | undefined): Block[] {
   const blocks: Block[] = [];
   let cur: Block = { name: "_header", lines: [] };
   for (const l of lines) {
@@ -160,11 +207,10 @@ export function parseWanderlog(pages: RawItem[][], yearOverride?: number): Wande
     } else cur.lines.push(l);
   }
   blocks.push(cur);
+  return blocks;
+}
 
-  // Year from weekday + date on day headings
-  const dayHeads = lines.filter((l) => DAY_RE.test(l.segs[0].s)).map((l) => l.segs[0].s.match(DAY_RE)!);
-  const year = yearOverride ?? inferYear(dayHeads);
-  if (!yearOverride && dayHeads.length === 0) warnings.push("No day headings found, so the year is a guess.");
+function makeDates(year: number): Dates {
   const iso = (day: number, month: number) => `${year}-${pad(month + 1)}-${pad(day)}`;
   const shortDate = (s: string) => {
     const m = s.match(/(\d{1,2})(?:st|nd|rd|th)? ([A-Za-z]{3,})/);
@@ -172,47 +218,55 @@ export function parseWanderlog(pages: RawItem[][], yearOverride?: number): Wande
     const mi = monthIdx(m[2]);
     return mi >= 0 ? iso(Number(m[1]), mi) : undefined;
   };
+  return { iso, shortDate };
+}
 
-  let currencySymbol = "$";
-  const reservations: ParsedReservation[] = [];
-  const days: WanderlogTrip["days"] = [];
-  const lists: WanderlogTrip["lists"] = [];
-  let expenses: ParsedExpense[] = [];
+function readSection(b: Block, out: Sections, dates: Dates) {
+  const key = b.name.toLowerCase();
+  if (RES_SECTIONS[key]) readReservations(b.lines, RES_SECTIONS[key], out, dates.shortDate);
+  else if (key === "itinerary") readItinerary(b.lines, out.days, dates.iso);
+  else if (key === "expenses") readExpenseBlock(b.lines, out, dates.shortDate);
+  // Budget headings are handled with the "Expenses" block that follows
+  else if (key !== "_header" && key !== "budgeting" && key !== "budget" && !SKIP_SECTIONS.has(key)) readList(b, out.lists);
+}
 
-  for (const b of blocks) {
-    const key = b.name.toLowerCase();
-    if (RES_SECTIONS[key]) {
-      for (const entry of splitEntries(b.lines)) {
-        const r = parseReservation(RES_SECTIONS[key], entry, shortDate);
-        if (r) {
-          if (r.symbol) currencySymbol = r.symbol;
-          reservations.push(r.res);
-        }
-      }
-    } else if (key === "itinerary") {
-      parseStops(b.lines, (date) => {
-        const m = date.match(DAY_RE)!;
-        const d = { date: iso(Number(m[2]), monthIdx(m[3])), stops: [] as ParsedStop[] };
-        days.push(d);
-        return d.stops;
-      });
-    } else if (key === "budgeting" || key === "budget") {
-      // handled with the "Expenses" block that follows
-    } else if (key === "expenses") {
-      const r = parseExpenses(b.lines, shortDate);
-      expenses = r.expenses;
-      if (r.symbol) currencySymbol = r.symbol;
-    } else if (key !== "_header" && !SKIP_SECTIONS.has(key)) {
-      // Any other heading with numbered places is a Wanderlog list ("Places to visit", …)
-      const stops: ParsedStop[] = [];
-      parseStops(b.lines, () => stops);
-      if (stops.length) lists.push({ title: b.name, stops });
+function readReservations(lines: Line[], type: Reservation["type"], out: Sections, shortDate: Dates["shortDate"]) {
+  for (const entry of splitEntries(lines)) {
+    const r = parseReservation(type, entry, shortDate);
+    if (r) {
+      if (r.symbol) out.currencySymbol = r.symbol;
+      out.reservations.push(r.res);
     }
   }
+}
 
-  // Budget clean-up: reservation costs are already counted; expenses named like a stop become its cost
+function readItinerary(lines: Line[], days: Sections["days"], iso: Dates["iso"]) {
+  parseStops(lines, (date) => {
+    const m = date.match(DAY_RE);
+    if (!m) return []; // stray lines before the first day heading: dropped
+    const d = { date: iso(Number(m[2]), monthIdx(m[3])), stops: [] as ParsedStop[] };
+    days.push(d);
+    return d.stops;
+  });
+}
+
+function readExpenseBlock(lines: Line[], out: Sections, shortDate: Dates["shortDate"]) {
+  const r = parseExpenses(lines, shortDate);
+  out.expenses = r.expenses;
+  if (r.symbol) out.currencySymbol = r.symbol;
+}
+
+/** Any other heading with numbered places is a Wanderlog list ("Places to visit", …). */
+function readList(b: Block, lists: Sections["lists"]) {
+  const stops: ParsedStop[] = [];
+  parseStops(b.lines, () => stops);
+  if (stops.length) lists.push({ title: b.name, stops });
+}
+
+/** Budget clean-up: reservation costs are already counted; expenses named like a stop become its cost. */
+function reconcileExpenses(expenses: ParsedExpense[], reservations: ParsedReservation[], days: Sections["days"]): ParsedExpense[] {
   const resCosts = reservations.map((r) => r.cost).filter((c): c is number => c != null);
-  expenses = expenses.filter((e) => {
+  return expenses.filter((e) => {
     const i = resCosts.findIndex((c) => Math.abs(c - e.amount) < 0.01);
     if (i >= 0) {
       resCosts.splice(i, 1);
@@ -229,20 +283,6 @@ export function parseWanderlog(pages: RawItem[][], yearOverride?: number): Wande
     }
     return true;
   });
-
-  const allDates = [...days.map((d) => d.date), ...reservations.flatMap((r) => [r.startDate, r.endDate]).filter((d): d is string => !!d)].sort();
-  return {
-    title,
-    year,
-    startDate: days[0]?.date ?? allDates[0] ?? `${year}-01-01`,
-    endDate: days.at(-1)?.date ?? allDates.at(-1) ?? `${year}-01-01`,
-    currencySymbol,
-    reservations,
-    days,
-    lists,
-    expenses,
-    warnings,
-  };
 }
 
 function inferYear(heads: RegExpMatchArray[]): number {
@@ -276,78 +316,101 @@ function splitEntries(lines: Line[]): Line[][] {
   return out;
 }
 
-function parseReservation(type: Reservation["type"], lines: Line[], shortDate: (s: string) => string | undefined) {
+/** One reservation entry, split into its detail column (`left`) and the fields every type shares (`base`). */
+interface ResCtx {
+  lines: Line[];
+  segs: Seg[];
+  left: Seg[];
+  base: ParsedReservation;
+  shortDate: Dates["shortDate"];
+}
+
+function parseReservation(type: Reservation["type"], lines: Line[], shortDate: Dates["shortDate"]) {
   const segs = lines.flatMap((l) => l.segs);
   const left = segs.filter((s) => s.x < 400);
-  const right = segs.filter((s) => s.x >= 400);
+  const { cost, symbol, confirmation } = readPriceColumn(segs.filter((s) => s.x >= 400));
+  const base = { type, cost, confirmation } as ParsedReservation;
+  const ctx: ResCtx = { lines, segs, left, base, shortDate };
+  const res = type === "flight" ? parseFlight(ctx) : type === "car" ? parseCar(ctx) : parseStay(ctx);
+  return res ? { symbol, res } : null;
+}
+
+/** Right-hand column: the price (last one wins) and the line after "CONFIRMATION". */
+function readPriceColumn(right: Seg[]) {
   let cost: number | undefined;
   let symbol: string | undefined;
   for (const s of right) {
     const m = money(s.s);
-    if (m) (cost = m.amount), (symbol = m.symbol);
+    if (m) {
+      cost = m.amount;
+      symbol = m.symbol;
+    }
   }
   const ci = right.findIndex((s) => /CONFIRMATION/i.test(s.s));
   const confirmation = ci >= 0 ? right.slice(ci + 1).find((s) => !money(s.s))?.s : undefined;
-  const base = { type, cost, confirmation } as ParsedReservation;
+  return { cost, symbol, confirmation };
+}
 
-  if (type === "flight") {
-    const codes = left.filter((s) => /^[A-Z]{3}$/.test(s.s));
-    const cities = lines.find((_l, i) => i > 0 && lines[i - 1].segs.some((s) => /^[A-Z]{3}$/.test(s.s)))?.segs.filter((s) => s.x < 400).map((s) => s.s) ?? [];
-    const dl = left.find((s) => /^\w{3}, \d{1,2} \w{3} •/.test(s.s));
-    const m = dl?.s.match(/^\w{3}, (\d{1,2} \w{3}) • (\d{1,2}:\d{2} [AP]M)(?: — (\d{1,2}:\d{2} [AP]M))?/);
-    const plusDays = Number(segs.find((s) => /^\+\d$/.test(s.s))?.s.slice(1) ?? 0);
-    const startDate = m ? shortDate(m[1]) : undefined;
-    let endDate = startDate;
-    if (startDate && plusDays) {
-      const d = new Date(`${startDate}T00:00:00Z`);
-      d.setUTCDate(d.getUTCDate() + plusDays);
-      endDate = d.toISOString().slice(0, 10);
-    }
-    const flightNo = left.find((s) => /^[A-Z][A-Z\s.&'-]+ [A-Z0-9]{2}\s?\d{1,4}$/.test(s.s))?.s;
-    // "ICELANDAIR FI 602" → "Icelandair FI 602" (airline title-cased, flight code untouched)
-    const fm = flightNo?.match(/^(.*?)\s+([A-Z0-9]{2})\s?(\d{1,4})$/);
-    const airline = fm?.[1].toLowerCase().replace(/\b\p{L}/gu, (c) => c.toUpperCase());
-    const title = fm ? `${airline} ${fm[2]} ${fm[3]}` : `${codes[0]?.s ?? "?"} → ${codes[1]?.s ?? "?"}`;
-    return {
-      symbol,
-      res: {
-        ...base,
-        title,
-        from: codes[0] ? `${codes[0].s}${cities[0] ? ` (${cities[0]})` : ""}` : undefined,
-        to: codes[1] ? `${codes[1].s}${cities[1] ? ` (${cities[1]})` : ""}` : undefined,
-        startDate,
-        startTime: to24h(m?.[2]),
-        endDate,
-        endTime: to24h(m?.[3]),
-      },
-    };
-  }
+function parseFlight({ lines, segs, left, base, shortDate }: ResCtx): ParsedReservation {
+  const codes = left.filter((s) => /^[A-Z]{3}$/.test(s.s));
+  const cities = lines.find((_l, i) => i > 0 && lines[i - 1].segs.some((s) => /^[A-Z]{3}$/.test(s.s)))?.segs.filter((s) => s.x < 400).map((s) => s.s) ?? [];
+  const dl = left.find((s) => /^\w{3}, \d{1,2} \w{3} •/.test(s.s));
+  const m = dl?.s.match(/^\w{3}, (\d{1,2} \w{3}) • (\d{1,2}:\d{2} [AP]M)(?: — (\d{1,2}:\d{2} [AP]M))?/);
+  const plusDays = Number(segs.find((s) => /^\+\d$/.test(s.s))?.s.slice(1) ?? 0);
+  const startDate = m ? shortDate(m[1]) : undefined;
+  const flightNo = left.find((s) => /^[A-Z][A-Z\s.&'-]+ [A-Z0-9]{2}\s?\d{1,4}$/.test(s.s))?.s;
+  return {
+    ...base,
+    title: flightTitle(flightNo, codes),
+    from: codes[0] ? `${codes[0].s}${cities[0] ? ` (${cities[0]})` : ""}` : undefined,
+    to: codes[1] ? `${codes[1].s}${cities[1] ? ` (${cities[1]})` : ""}` : undefined,
+    startDate,
+    startTime: to24h(m?.[2]),
+    endDate: shiftDate(startDate, plusDays),
+    endTime: to24h(m?.[3]),
+  };
+}
 
-  if (type === "car") {
-    const name = left.find((s) => s.h >= 11 && !/^(Pick up|Drop off|Drop of)/i.test(s.s))?.s;
-    const pick = left.findIndex((s) => /^Pick ?up:/i.test(s.s));
-    const drop = left.findIndex((s) => /^Drop ?o\w*:/i.test(s.s));
-    const dt = (s?: string) => s?.match(/:\s*\w{3}, (\d{1,2} \w{3}) • (\d{1,2}:\d{2} [AP]M)/);
-    const p = dt(left[pick]?.s);
-    const d = dt(left[drop]?.s);
-    if (!name) return null;
-    return {
-      symbol,
-      res: {
-        ...base,
-        title: name,
-        startDate: p ? shortDate(p[1]) : undefined,
-        startTime: to24h(p?.[2]),
-        from: pick >= 0 ? left[pick + 1]?.s : undefined,
-        endDate: d ? shortDate(d[1]) : undefined,
-        endTime: to24h(d?.[2]),
-        to: drop >= 0 ? left[drop + 1]?.s : undefined,
-        address: pick >= 0 ? left[pick + 1]?.s : undefined,
-      },
-    };
-  }
+/** "ICELANDAIR FI 602" → "Icelandair FI 602" (airline title-cased, flight code untouched). */
+function flightTitle(flightNo: string | undefined, codes: Seg[]) {
+  const fm = flightNo?.match(/^(.*?)\s+([A-Z0-9]{2})\s?(\d{1,4})$/);
+  const airline = fm?.[1].toLowerCase().replace(/\b\p{L}/gu, (c) => c.toUpperCase());
+  return fm ? `${airline} ${fm[2]} ${fm[3]}` : `${codes[0]?.s ?? "?"} → ${codes[1]?.s ?? "?"}`;
+}
 
-  // Lodging, restaurants, other: name / address / "Fri, 2nd Dec — Sat, 3rd Dec" (or a single date • time)
+/** Arrival date: the departure date plus any "+N" day marker. */
+function shiftDate(startDate: string | undefined, plusDays: number) {
+  if (!(startDate && plusDays)) return startDate;
+  const d = new Date(`${startDate}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + plusDays);
+  return d.toISOString().slice(0, 10);
+}
+
+/** "Pick up: Sat, 3rd Dec • 9:00 AM" → regex match with the date and time. */
+const rentalStamp = (s?: string) => s?.match(/:\s*\w{3}, (\d{1,2} \w{3}) • (\d{1,2}:\d{2} [AP]M)/);
+
+function parseCar({ left, base, shortDate }: ResCtx): ParsedReservation | null {
+  const name = left.find((s) => s.h >= 11 && !/^(Pick up|Drop off|Drop of)/i.test(s.s))?.s;
+  const pick = left.findIndex((s) => /^Pick ?up:/i.test(s.s));
+  const drop = left.findIndex((s) => /^Drop ?o\w*:/i.test(s.s));
+  const p = rentalStamp(left[pick]?.s);
+  const d = rentalStamp(left[drop]?.s);
+  if (!name) return null;
+  return {
+    ...base,
+    title: name,
+    startDate: p ? shortDate(p[1]) : undefined,
+    startTime: to24h(p?.[2]),
+    from: pick >= 0 ? left[pick + 1]?.s : undefined,
+    endDate: d ? shortDate(d[1]) : undefined,
+    endTime: to24h(d?.[2]),
+    to: drop >= 0 ? left[drop + 1]?.s : undefined,
+    address: pick >= 0 ? left[pick + 1]?.s : undefined,
+  };
+}
+
+// Lodging, restaurants, other: name / address / "Fri, 2nd Dec — Sat, 3rd Dec" (or a single date • time)
+function parseStay({ left, base, shortDate }: ResCtx): ParsedReservation | null {
   const dateIdx = left.findIndex((s) => /^\w{3}, \d{1,2}(st|nd|rd|th)? \w{3}/.test(s.s));
   const name = left.find((s, i) => i !== dateIdx && s.h >= 11)?.s;
   if (!name) return null;
@@ -355,16 +418,13 @@ function parseReservation(type: Reservation["type"], lines: Line[], shortDate: (
   const ds = left[dateIdx]?.s ?? "";
   const [a, b] = ds.split(/\s+[—–-]\s+/);
   return {
-    symbol,
-    res: {
-      ...base,
-      title: name,
-      address,
-      startDate: a ? shortDate(a) : undefined,
-      startTime: to24h(a),
-      endDate: b ? shortDate(b) : undefined,
-      endTime: to24h(b),
-    },
+    ...base,
+    title: name,
+    address,
+    startDate: a ? shortDate(a) : undefined,
+    startTime: to24h(a),
+    endDate: b ? shortDate(b) : undefined,
+    endTime: to24h(b),
   };
 }
 

@@ -119,9 +119,56 @@ export function DayCompare(p: Props) {
 type Box = { minX: number; maxX: number; minY: number; maxY: number } | null;
 
 function Column({ v, box, ...p }: Props & { v: Version; box: Box }) {
+  const places = v.items.filter((i) => i.kind === "place");
+  const isShown = p.shown === v.id;
+
+  return (
+    <div className={`flex w-[300px] shrink-0 snap-center flex-col rounded-2xl border bg-bg/60 max-sm:w-[86vw] ${isShown ? "border-accent/50" : "border-line"}`}>
+      <ColumnHeader v={v} p={p} isShown={isShown} />
+
+      {PROTOMAPS_KEY && v.pins.length ? (
+        <div className="mx-4 my-3 h-[190px] overflow-hidden rounded-xl bg-surface-2/40 [&_.maplibregl-ctrl-attrib]:text-[9px]">
+          <Suspense fallback={null}>
+            <TripMap mini pins={v.pins} routes={v.routes} selectedId={null} onSelect={() => undefined} theme={p.theme} fitKey={v.id ?? "main"} />
+          </Suspense>
+        </div>
+      ) : (
+        <Sketch items={places} box={box} color={p.color} />
+      )}
+
+      <ColumnStats v={v} places={places} p={p} />
+      <StopList v={v} places={places} color={p.color} />
+      <ColumnActions v={v} p={p} isShown={isShown} />
+    </div>
+  );
+}
+
+/** Editable plan name, with the "Day's plan" and "Viewing" badges. */
+function ColumnHeader({ v, p, isShown }: { v: Version; p: Props; isShown: boolean }) {
   const [name, setName] = useState(v.name);
   useEffect(() => setName(v.name), [v.name]);
-  const places = v.items.filter((i) => i.kind === "place");
+  return (
+    <div className="flex items-center gap-2 px-4 pt-4">
+      {!p.readOnly ? (
+        <input
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          onBlur={() => (name.trim() ? name !== v.name && p.onRename(v.id, name) : setName(v.name))}
+          onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()}
+          className="min-w-0 flex-1 rounded-md bg-transparent font-display text-[19px] outline-none focus:bg-surface-2 focus:px-1.5"
+          aria-label="Plan name"
+        />
+      ) : (
+        <h3 className="min-w-0 flex-1 truncate font-display text-[19px]">{v.name}</h3>
+      )}
+      {!v.id && <span className="shrink-0 rounded-full bg-accent/15 px-2 py-0.5 text-[11px] font-bold tracking-wide text-accent uppercase">Day's plan</span>}
+      {isShown && v.id && <span className="shrink-0 rounded-full bg-surface-2 px-2 py-0.5 text-[11px] font-bold tracking-wide text-muted uppercase">Viewing</span>}
+    </div>
+  );
+}
+
+/** Travel time and distance, stop count and time span, and the cost of everything that has one. */
+function ColumnStats({ v, places, p }: { v: Version; places: Item[]; p: Props }) {
   let secs = 0;
   let metres = 0;
   for (const l of v.legs) if (typeof l === "object" && l.mode !== "flight") (secs += l.duration ?? 0), (metres += l.distance);
@@ -135,96 +182,76 @@ function Column({ v, box, ...p }: Props & { v: Version; box: Box }) {
   const first = places.find((i) => i.startTime)?.startTime;
   const last = [...places].reverse().find((i) => i.endTime ?? i.startTime);
   const span = first && last ? `${fmtTime(first)} – ${fmtTime(last.endTime ?? last.startTime)}` : null;
-  const isShown = p.shown === v.id;
-  let n = 0;
 
   return (
-    <div className={`flex w-[300px] shrink-0 snap-center flex-col rounded-2xl border bg-bg/60 max-sm:w-[86vw] ${isShown ? "border-accent/50" : "border-line"}`}>
-      <div className="flex items-center gap-2 px-4 pt-4">
-        {!p.readOnly ? (
-          <input
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            onBlur={() => (name.trim() ? name !== v.name && p.onRename(v.id, name) : setName(v.name))}
-            onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()}
-            className="min-w-0 flex-1 rounded-md bg-transparent font-display text-[19px] outline-none focus:bg-surface-2 focus:px-1.5"
-            aria-label="Plan name"
-          />
-        ) : (
-          <h3 className="min-w-0 flex-1 truncate font-display text-[19px]">{v.name}</h3>
-        )}
-        {!v.id && <span className="shrink-0 rounded-full bg-accent/15 px-2 py-0.5 text-[11px] font-bold tracking-wide text-accent uppercase">Day's plan</span>}
-        {isShown && v.id && <span className="shrink-0 rounded-full bg-surface-2 px-2 py-0.5 text-[11px] font-bold tracking-wide text-muted uppercase">Viewing</span>}
-      </div>
+    <div className="grid grid-cols-3 gap-1.5 px-4 text-[12px]">
+      <Stat icon={<RouteIcon />} value={secs ? formatDuration(secs) : "—"} sub={metres ? formatDistance(metres) : "travel"} />
+      <Stat icon={<Clock />} value={`${places.length} ${places.length === 1 ? "stop" : "stops"}`} sub={span ?? "no times"} />
+      <Stat icon={<Wallet />} value={costKnown ? formatMoney(cost, p.currency) : "—"} sub="cost" />
+    </div>
+  );
+}
 
-      {PROTOMAPS_KEY && v.pins.length ? (
-        <div className="mx-4 my-3 h-[190px] overflow-hidden rounded-xl bg-surface-2/40 [&_.maplibregl-ctrl-attrib]:text-[9px]">
-          <Suspense fallback={null}>
-            <TripMap mini pins={v.pins} routes={v.routes} selectedId={null} onSelect={() => undefined} theme={p.theme} fitKey={v.id ?? "main"} />
-          </Suspense>
-        </div>
-      ) : (
-        <Sketch items={places} box={box} color={p.color} />
+/** Start and end bookends around the numbered stops. */
+function StopList({ v, places, color }: { v: Version; places: Item[]; color: string }) {
+  let n = 0;
+  return (
+    <ol className="mt-3 min-h-0 flex-1 space-y-1 overflow-y-auto px-3 pb-2 [scrollbar-width:thin]">
+      {v.start && <End e={v.start} label="Start" />}
+      {places.length === 0 && <li className="px-1 py-6 text-center text-[13px] text-muted">Nothing planned yet</li>}
+      {places.map((i) => (
+        <li key={i.id} className="flex items-center gap-2 rounded-lg px-1 py-1">
+          <PinMarker color={color} label={++n} size={20} />
+          <span className="min-w-0 flex-1 truncate text-[14px]">{i.name}</span>
+          {i.startTime && <span className="shrink-0 text-[12px] text-muted tabular-nums">{fmtTime(i.startTime)}</span>}
+        </li>
+      ))}
+      {v.end && <End e={v.end} label="End" />}
+    </ol>
+  );
+}
+
+/** Edit (or view), and for a draft: use it as the day's plan, or delete it. */
+function ColumnActions({ v, p, isShown }: { v: Version; p: Props; isShown: boolean }) {
+  return (
+    <div className="flex gap-2 border-t border-line p-3">
+      <button
+        onClick={() => p.onEdit(v.id)}
+        className="flex flex-1 items-center justify-center gap-1.5 rounded-full border border-line py-2 text-[13px] font-semibold text-muted hover:text-fg"
+      >
+        <Pencil className="size-3.5" /> {isShown ? "Back to it" : p.readOnly ? "View" : "Edit"}
+      </button>
+      {v.id && !p.readOnly && (
+        <>
+          <button
+            onClick={async () => {
+              if (
+                await askConfirm({
+                  title: `Make “${v.name}” the day's plan?`,
+                  body: `“${p.versions.find((x) => !x.id)?.name}” moves to the drafts, so you can swap back any time.`,
+                  confirmLabel: "Use this plan",
+                  danger: false,
+                  icon: <Check />,
+                })
+              )
+                p.onUse(v.id!);
+            }}
+            className="flex flex-1 items-center justify-center gap-1.5 rounded-full bg-accent py-2 text-[13px] font-bold text-on-accent"
+          >
+            <Check className="size-3.5" /> Use this
+          </button>
+          <button
+            onClick={async () => {
+              if (await askConfirm({ title: `Delete “${v.name}”?`, body: "This draft and its stops are removed. The day's plan isn't touched.", icon: <Trash2 /> })) p.onDelete(v.id!);
+            }}
+            className="grid size-9 shrink-0 place-items-center rounded-full border border-line text-muted hover:border-danger/50 hover:text-danger"
+            title="Delete draft"
+            aria-label="Delete draft"
+          >
+            <Trash2 className="size-3.5" />
+          </button>
+        </>
       )}
-
-      <div className="grid grid-cols-3 gap-1.5 px-4 text-[12px]">
-        <Stat icon={<RouteIcon />} value={secs ? formatDuration(secs) : "—"} sub={metres ? formatDistance(metres) : "travel"} />
-        <Stat icon={<Clock />} value={`${places.length} ${places.length === 1 ? "stop" : "stops"}`} sub={span ?? "no times"} />
-        <Stat icon={<Wallet />} value={costKnown ? formatMoney(cost, p.currency) : "—"} sub="cost" />
-      </div>
-
-      <ol className="mt-3 min-h-0 flex-1 space-y-1 overflow-y-auto px-3 pb-2 [scrollbar-width:thin]">
-        {v.start && <End e={v.start} label="Start" />}
-        {places.length === 0 && <li className="px-1 py-6 text-center text-[13px] text-muted">Nothing planned yet</li>}
-        {places.map((i) => (
-          <li key={i.id} className="flex items-center gap-2 rounded-lg px-1 py-1">
-            <PinMarker color={p.color} label={++n} size={20} />
-            <span className="min-w-0 flex-1 truncate text-[14px]">{i.name}</span>
-            {i.startTime && <span className="shrink-0 text-[12px] text-muted tabular-nums">{fmtTime(i.startTime)}</span>}
-          </li>
-        ))}
-        {v.end && <End e={v.end} label="End" />}
-      </ol>
-
-      <div className="flex gap-2 border-t border-line p-3">
-        <button
-          onClick={() => p.onEdit(v.id)}
-          className="flex flex-1 items-center justify-center gap-1.5 rounded-full border border-line py-2 text-[13px] font-semibold text-muted hover:text-fg"
-        >
-          <Pencil className="size-3.5" /> {isShown ? "Back to it" : p.readOnly ? "View" : "Edit"}
-        </button>
-        {v.id && !p.readOnly && (
-          <>
-            <button
-              onClick={async () => {
-                if (
-                  await askConfirm({
-                    title: `Make “${v.name}” the day's plan?`,
-                    body: `“${p.versions.find((x) => !x.id)?.name}” moves to the drafts, so you can swap back any time.`,
-                    confirmLabel: "Use this plan",
-                    danger: false,
-                    icon: <Check />,
-                  })
-                )
-                  p.onUse(v.id!);
-              }}
-              className="flex flex-1 items-center justify-center gap-1.5 rounded-full bg-accent py-2 text-[13px] font-bold text-on-accent"
-            >
-              <Check className="size-3.5" /> Use this
-            </button>
-            <button
-              onClick={async () => {
-                if (await askConfirm({ title: `Delete “${v.name}”?`, body: "This draft and its stops are removed. The day's plan isn't touched.", icon: <Trash2 /> })) p.onDelete(v.id!);
-              }}
-              className="grid size-9 shrink-0 place-items-center rounded-full border border-line text-muted hover:border-danger/50 hover:text-danger"
-              title="Delete draft"
-              aria-label="Delete draft"
-            >
-              <Trash2 className="size-3.5" />
-            </button>
-          </>
-        )}
-      </div>
     </div>
   );
 }

@@ -193,6 +193,95 @@ async function reply(env: Env, to: string, subject: string, text: string) {
   }
 }
 
+const APP_URL = "https://adityajain.ca/travelplanner/";
+
+/** Who the mail is for, or null after rejecting the sender. */
+async function authorize(message: ForwardableEmailMessage, env: Env, sender: string, allowed: string[], tag: string | undefined): Promise<string | null> {
+  // trips+<id>@: from the trip's owner, an editor on it, or someone on its "who can forward" list;
+  // bookings then land in the owner's inbox for that trip.
+  if (tag) {
+    const trip = await env.DB.prepare("SELECT id, owner FROM trips WHERE lower(id) = ?").bind(tag).first<{ id: string; owner: string }>();
+    const ok =
+      trip &&
+      (trip.owner === sender ||
+        (await env.DB.prepare("SELECT 1 FROM trip_members WHERE trip_id = ? AND email = ? AND role = 'edit'").bind(trip.id, sender).first()) ||
+        (await env.DB.prepare("SELECT 1 FROM trip_senders WHERE trip_id = ? AND email = ?").bind(trip.id, sender).first()));
+    if (!ok) {
+      message.setReject("You can't forward to this trip. Ask the trip owner to add your address.");
+      return null;
+    }
+    return trip!.owner;
+  }
+  // Untagged mail: from anyone with an account, matched against their own trips.
+  if (!allowed.includes(sender) && !(await canLogin(env, sender))) {
+    message.setReject("This address only accepts mail from Atlas Journeys users. Ask the trip owner to add you, then send to the trip's own address.");
+    return null;
+  }
+  return sender;
+}
+
+async function readMail(message: ForwardableEmailMessage) {
+  const raw = await new Response(message.raw).arrayBuffer();
+  const parsed = await PostalMime.parse(raw);
+  const subject = (parsed.subject ?? "").replace(/^(fwd?|fw):\s*/i, "").trim();
+  const body = (parsed.text?.trim() || htmlToText(parsed.html ?? "")).trim();
+  return { parsed, subject, body };
+}
+type Mail = Awaited<ReturnType<typeof readMail>>;
+type Extracted = Awaited<ReturnType<typeof extract>>;
+
+/** The owner's trips the model may match against; a guest only sees the trip they were invited to. */
+async function tripsFor(env: Env, owner: string, sender: string, tag: string | undefined): Promise<TripRow[]> {
+  const { results: trips } = await env.DB.prepare(
+    "SELECT id, title, destination, start_date, end_date FROM trips WHERE owner = ? AND title IS NOT NULL ORDER BY start_date",
+  )
+    .bind(owner)
+    .all<TripRow>()
+    .then((r) => ({ results: owner === sender ? r.results : r.results.filter((t) => t.id.toLowerCase() === tag) }));
+  return trips;
+}
+
+/** Runs the extraction; on failure, tells the sender and returns null. */
+async function extractBookings(env: Env, sender: string, mail: Mail, trips: TripRow[], pinned: TripRow | undefined): Promise<Extracted | null> {
+  try {
+    const out = await extract(env, mail.subject, mail.body, pinned ? [pinned] : trips, pdfAttachments(mail.parsed));
+    if (pinned) out.trip_id = pinned.id;
+    return out;
+  } catch (e) {
+    console.error(e);
+    await reply(env, sender, `Couldn't read: ${mail.subject}`, `Something went wrong reading that email (${(e as Error).message}). Try forwarding it again later.`);
+    return null;
+  }
+}
+
+/** Parks the extracted bookings in the inbox as pending, for review in the app. */
+async function saveBookings(env: Env, owner: string, sender: string, subject: string, out: Extracted) {
+  const now = Date.now();
+  await env.DB.batch(
+    out.bookings.map((b) =>
+      env.DB.prepare("INSERT INTO inbox (id, owner, trip_id, status, subject, booking, created_at) VALUES (?, ?, ?, 'pending', ?, ?, ?)").bind(
+        crypto.randomUUID(),
+        owner,
+        out.trip_id,
+        subject,
+        JSON.stringify(owner === sender ? b : { ...b, forwarded_by: sender }),
+        now,
+      ),
+    ),
+  );
+}
+
+async function sendReceipt(env: Env, sender: string, owner: string, trips: TripRow[], out: Extracted) {
+  const trip = trips.find((t) => t.id === out.trip_id);
+  const where = trip ? `in "${trip.title}"` : "in your inbox (no matching trip, so pick one in the app)";
+  await reply(
+    env,
+    sender,
+    `Got it: ${out.bookings.length} booking${out.bookings.length > 1 ? "s" : ""} ready to review`,
+    `${out.summary}\n\nThey're waiting ${where}:\n${out.bookings.map((b) => `• ${b.title}${b.start_date ? ` (${b.start_date}${b.start_time ? ` ${b.start_time}` : ""})` : ""}`).join("\n")}\n\n${owner === sender ? `Review and add them: ${APP_URL}` : "The trip owner will review and add them."}`,
+  );
+}
+
 export async function handleEmail(message: ForwardableEmailMessage, env: Env) {
   const sender = message.from.trim().toLowerCase();
   const allowed = (env.ALLOWED_EMAILS ?? "").split(",").map((e) => e.trim().toLowerCase());
@@ -207,83 +296,25 @@ export async function handleEmail(message: ForwardableEmailMessage, env: Env) {
     return;
   }
 
-  // Untagged mail: from anyone with an account, matched against their own trips.
-  // trips+<id>@: from the trip's owner, an editor on it, or someone on its "who can forward" list;
-  // bookings then land in the owner's inbox for that trip.
-  let owner = sender;
-  if (tag) {
-    const trip = await env.DB.prepare("SELECT id, owner FROM trips WHERE lower(id) = ?").bind(tag).first<{ id: string; owner: string }>();
-    const ok =
-      trip &&
-      (trip.owner === sender ||
-        (await env.DB.prepare("SELECT 1 FROM trip_members WHERE trip_id = ? AND email = ? AND role = 'edit'").bind(trip.id, sender).first()) ||
-        (await env.DB.prepare("SELECT 1 FROM trip_senders WHERE trip_id = ? AND email = ?").bind(trip.id, sender).first()));
-    if (!ok) {
-      message.setReject("You can't forward to this trip. Ask the trip owner to add your address.");
-      return;
-    }
-    owner = trip!.owner;
-  } else if (!allowed.includes(sender) && !(await canLogin(env, sender))) {
-    message.setReject("This address only accepts mail from Atlas Journeys users. Ask the trip owner to add you, then send to the trip's own address.");
-    return;
-  }
+  const owner = await authorize(message, env, sender, allowed, tag);
+  if (owner == null) return;
 
-  const raw = await new Response(message.raw).arrayBuffer();
-  const parsed = await PostalMime.parse(raw);
-  const subject = (parsed.subject ?? "").replace(/^(fwd?|fw):\s*/i, "").trim();
-  const body = (parsed.text?.trim() || htmlToText(parsed.html ?? "")).trim();
-  const appUrl = "https://adityajain.ca/travelplanner/";
-
+  const mail = await readMail(message);
   if (!env.ANTHROPIC_API_KEY) {
-    await reply(env, sender, `Couldn't read: ${subject}`, "Email import isn't set up yet: the Worker has no ANTHROPIC_API_KEY secret.");
+    await reply(env, sender, `Couldn't read: ${mail.subject}`, "Email import isn't set up yet: the Worker has no ANTHROPIC_API_KEY secret.");
     return;
   }
 
-  const { results: trips } = await env.DB.prepare(
-    "SELECT id, title, destination, start_date, end_date FROM trips WHERE owner = ? AND title IS NOT NULL ORDER BY start_date",
-  )
-    .bind(owner)
-    .all<TripRow>()
-    // A guest only ever sees (and can only add to) the trip they were invited to
-    .then((r) => ({ results: owner === sender ? r.results : r.results.filter((t) => t.id.toLowerCase() === tag) }));
-
+  const trips = await tripsFor(env, owner, sender, tag);
   const pinned = tag ? trips.find((t) => t.id.toLowerCase() === tag) : undefined;
-
-  let out;
-  try {
-    out = await extract(env, subject, body, pinned ? [pinned] : trips, pdfAttachments(parsed));
-    if (pinned) out.trip_id = pinned.id;
-  } catch (e) {
-    console.error(e);
-    await reply(env, sender, `Couldn't read: ${subject}`, `Something went wrong reading that email (${(e as Error).message}). Try forwarding it again later.`);
-    return;
-  }
+  const out = await extractBookings(env, sender, mail, trips, pinned);
+  if (!out) return;
 
   if (!out.bookings.length) {
-    await reply(env, sender, `No booking found: ${subject}`, "I couldn't find a flight, hotel, train or reservation in that email, so nothing was added.");
+    await reply(env, sender, `No booking found: ${mail.subject}`, "I couldn't find a flight, hotel, train or reservation in that email, so nothing was added.");
     return;
   }
 
-  const now = Date.now();
-  await env.DB.batch(
-    out.bookings.map((b) =>
-      env.DB.prepare("INSERT INTO inbox (id, owner, trip_id, status, subject, booking, created_at) VALUES (?, ?, ?, 'pending', ?, ?, ?)").bind(
-        crypto.randomUUID(),
-        owner,
-        out.trip_id,
-        subject,
-        JSON.stringify(owner === sender ? b : { ...b, forwarded_by: sender }),
-        now,
-      ),
-    ),
-  );
-
-  const trip = trips.find((t) => t.id === out.trip_id);
-  const where = trip ? `in "${trip.title}"` : "in your inbox (no matching trip, so pick one in the app)";
-  await reply(
-    env,
-    sender,
-    `Got it: ${out.bookings.length} booking${out.bookings.length > 1 ? "s" : ""} ready to review`,
-    `${out.summary}\n\nThey're waiting ${where}:\n${out.bookings.map((b) => `• ${b.title}${b.start_date ? ` (${b.start_date}${b.start_time ? ` ${b.start_time}` : ""})` : ""}`).join("\n")}\n\n${owner === sender ? `Review and add them: ${appUrl}` : "The trip owner will review and add them."}`,
-  );
+  await saveBookings(env, owner, sender, mail.subject, out);
+  await sendReceipt(env, sender, owner, trips, out);
 }
