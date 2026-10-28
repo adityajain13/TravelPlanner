@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, type Dispatch, type SetStateAction } from "react";
 import { ReceiptButton, ReceiptFlow } from "./ReceiptFlow";
 import { Menu } from "./Menu";
 import { askConfirm } from "./ConfirmDialog";
@@ -51,220 +51,30 @@ export function BudgetPanel({ doc, state, readOnly }: { doc: Y.Doc; state: TripS
   const travelers = travelersOf(state);
   const lines = useMemo(() => budgetLines(state, fx.convert), [state, fx]);
   const { total, unconverted } = totals(lines);
-  const settle = useMemo(() => settleUp(lines, travelers), [lines, travelers]);
   const [editing, setEditing] = useState<Partial<Expense> | null>(null);
   const [linked, setLinked] = useState<Line | null>(null);
-  // Receipts (meals, convenience stores…) are listed on their own, apart from the bigger costs
-  const [receipt, setReceipt] = useState<{ file?: File; expense?: Expense } | null>(null);
-  const receipts = lines.filter((l) => l.expense?.kind === "receipt");
-  const bigLines = lines.filter((l) => l.expense?.kind !== "receipt");
-  const [newTraveler, setNewTraveler] = useState("");
-  const budget = state.meta.budget;
-  const pct = budget ? Math.min(100, (total / budget) * 100) : 0;
 
   return (
     <div className="space-y-6 px-2 py-4">
-      {/* Summary */}
-      <section className="rounded-2xl border border-line bg-surface p-4">
-        <div className="flex flex-wrap items-end justify-between gap-3">
-          <div className="min-w-0">
-            <p className="text-xs tracking-wide text-muted uppercase">Spent</p>
-            <p className="font-display text-3xl">{formatMoney(total, currency)}</p>
-          </div>
-          <div className="flex min-w-0 items-center gap-2 text-sm max-sm:w-full">
-            <span className="text-muted">Budget</span>
-            <input
-              type="number"
-              min="0"
-              step="any"
-              disabled={readOnly}
-              key={budget}
-              defaultValue={budget ?? ""}
-              placeholder="—"
-              onBlur={(e) => updateMeta(doc, { budget: e.target.value ? Number(e.target.value) : undefined })}
-              className="w-24 min-w-0 rounded-md bg-surface-2 px-2 py-1 text-right outline-none max-sm:flex-1"
-            />
-            <CurrencySelect value={currency} disabled={readOnly} onChange={(c) => updateMeta(doc, { currency: c })} className="bg-surface-2 text-[14px]" />
-          </div>
-        </div>
-        {budget ? (
-          <div className="mt-3">
-            <div className="h-2 overflow-hidden rounded-full bg-surface-2">
-              <div className={`h-full rounded-full ${total > budget ? "bg-danger" : "bg-accent"}`} style={{ width: `${pct}%` }} />
-            </div>
-            <p className="mt-1 text-xs text-muted">
-              {total > budget ? `${formatMoney(total - budget, currency)} over budget` : `${formatMoney(budget - total, currency)} left`}
-            </p>
-          </div>
-        ) : null}
-        {unconverted > 0 && (
-          <p className="mt-3 text-xs text-muted">
-            {unconverted} expense{unconverted > 1 ? "s" : ""} not counted: no exchange rate yet (go online once).
-          </p>
-        )}
-      </section>
+      <BudgetSummary doc={doc} readOnly={readOnly} budget={state.meta.budget} currency={currency} total={total} unconverted={unconverted} />
 
       <BudgetCharts lines={lines} state={state} currency={currency} />
 
-      {/* Travelers + settle up */}
-      <section>
-        <h3 className="mb-2 flex items-center gap-2 font-display text-lg">
-          <Users className="size-4 text-muted" /> Splitting with
-        </h3>
-        <div className="flex flex-wrap items-center gap-2">
-          {travelers.map((t, i) => (
-            <span key={t} className="flex items-center gap-1 rounded-full bg-surface-2 px-3 py-1 text-sm">
-              {t}
-              {!readOnly && travelers.length > 1 && i > 0 && (
-                <button onClick={() => updateMeta(doc, { travelers: travelers.filter((x) => x !== t) })} className="text-muted hover:text-danger" aria-label={`Remove ${t}`}>
-                  <X className="size-3.5" />
-                </button>
-              )}
-            </span>
-          ))}
-          {!readOnly && (
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                const n = newTraveler.trim();
-                if (n && !travelers.includes(n)) updateMeta(doc, { travelers: [...travelers, n] });
-                setNewTraveler("");
-              }}
-            >
-              <input value={newTraveler} onChange={(e) => setNewTraveler(e.target.value)} placeholder="+ Add person" className="w-28 rounded-full bg-transparent px-3 py-1 text-sm outline-none focus:bg-surface-2" />
-            </form>
-          )}
-        </div>
-        {travelers.length > 1 && (
-          <div className="mt-3 rounded-xl border border-line p-3 text-sm">
-            {settle.transfers.length === 0 ? (
-              <p className="text-muted">All square.</p>
-            ) : (
-              <ul className="space-y-1">
-                {settle.transfers.map((t, i) => (
-                  <li key={i} className="flex items-center gap-2">
-                    {t.from} <ArrowRight className="size-3.5 text-muted" /> {t.to}
-                    <span className="ml-auto font-semibold tabular-nums">{formatMoney(t.amount, currency)}</span>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-        )}
-      </section>
+      <TravelersAndSettle doc={doc} readOnly={readOnly} travelers={travelers} lines={lines} currency={currency} />
 
-      {/* Receipts */}
-      <section>
-        <div className="mb-2 flex items-center justify-between">
-          <h3 className="font-display text-lg">Receipts</h3>
-          {!readOnly && (
-            <ReceiptButton onFile={(file) => setReceipt({ file })} className="ml-auto flex items-center gap-1.5 rounded-full bg-accent px-3 py-1.5 text-xs font-semibold text-on-accent">
-              <Camera className="size-3.5" /> Scan receipt
-            </ReceiptButton>
-          )}
-        </div>
-        {receipts.length === 0 ? (
-          <p className="rounded-xl border border-dashed border-line p-6 text-center text-sm text-muted">Meals, snacks, convenience stores: snap the receipt and it's itemized, matched to the stop and split.</p>
-        ) : (
-          <ul className="divide-y divide-line overflow-hidden rounded-xl border border-line bg-surface">
-            {receipts.map((l) => {
-              const e = l.expense!;
-              const stop = e.itemId ? state.items.find((i) => i.id === e.itemId) : undefined;
-              const split = e.receipt?.split === "items" ? "by item" : e.receipt?.split === "payer" ? `${l.paidBy} only` : l.splitWith.length < travelers.length ? `split ${l.splitWith.length} ways` : travelers.length > 1 ? "split evenly" : "";
-              return (
-                <li key={l.id} className="group flex items-center gap-3 px-3 py-2.5">
-                  <button onClick={() => !readOnly && setReceipt({ expense: e })} className="flex min-w-0 flex-1 items-center gap-3 text-left">
-                    <span className="grid size-8 shrink-0 place-items-center rounded-full [&>svg]:size-4" style={{ background: `${CAT_COLOR[l.category]}26`, color: CAT_COLOR[l.category] }}>
-                      {CAT_ICON[l.category]}
-                    </span>
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate text-sm font-medium">{l.title}</span>
-                      <span className="block truncate text-xs text-muted">
-                        {[l.date && formatShort(l.date), stop?.name, e.receipt?.items.length ? `${e.receipt.items.length} items` : "", travelers.length > 1 && `${l.paidBy} paid`, split].filter(Boolean).join(" · ")}
-                      </span>
-                    </span>
-                    <span className="text-right">
-                      <span className="block text-sm tabular-nums">{l.converted != null ? formatMoney(l.converted, currency) : "—"}</span>
-                      {l.currency !== currency && <span className="block text-xs text-muted tabular-nums">{formatMoney(l.amount, l.currency)}</span>}
-                    </span>
-                  </button>
-                  {!readOnly && (
-                    <button
-                      onClick={async () => (await askConfirm({ title: `Delete ${l.title}?`, body: "It leaves the budget and the split." })) && removeExpense(doc, l.id)}
-                      className="grid size-7 shrink-0 place-items-center rounded-md text-muted opacity-0 transition-opacity group-hover:opacity-100 hover:text-danger max-md:opacity-100"
-                      title="Delete"
-                    >
-                      <Trash2 className="size-3.5" />
-                    </button>
-                  )}
-                </li>
-              );
-            })}
-          </ul>
-        )}
-      </section>
-      {receipt && <ReceiptFlow doc={doc} state={state} file={receipt.file} expense={receipt.expense} onClose={() => setReceipt(null)} />}
+      <ReceiptsSection doc={doc} state={state} readOnly={readOnly} lines={lines} travelers={travelers} currency={currency} />
 
-      {/* Expenses */}
-      <section>
-        <div className="mb-2 flex items-center justify-between">
-          <h3 className="font-display text-lg">Expenses</h3>
-          <div className="ml-auto flex items-center gap-2">
-          {lines.length > 0 && <CsvButton onClick={() => exportBudgetCsv(lines, state, currency)} />}
-          {!readOnly && (
-            <button
-              onClick={() => setEditing({ currency, category: "food", date: todayISO() >= state.meta.startDate && todayISO() <= state.meta.endDate ? todayISO() : state.meta.startDate, paidBy: travelers[0] })}
-              className="flex items-center gap-1 rounded-full bg-accent px-3 py-1.5 text-xs font-semibold text-on-accent"
-            >
-              <Plus className="size-3.5" /> Add expense
-            </button>
-          )}
-          </div>
-        </div>
-        {bigLines.length === 0 ? (
-          <p className="rounded-xl border border-dashed border-line p-6 text-center text-sm text-muted">No expenses yet. Reservation costs show up here automatically.</p>
-        ) : (
-          <ul className="divide-y divide-line overflow-hidden rounded-xl border border-line bg-surface">
-            {bigLines.map((l) => (
-              <li key={l.id} className="group flex items-center gap-3 px-3 py-2.5">
-                <span className="grid size-8 shrink-0 place-items-center rounded-full [&>svg]:size-4" style={{ background: `${CAT_COLOR[l.category]}26`, color: CAT_COLOR[l.category] }}>
-                  {CAT_ICON[l.category]}
-                </span>
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium">{l.title}</p>
-                  <p className="text-xs text-muted">
-                    {[l.date && formatShort(l.date), CATEGORY_LABEL[l.category], travelers.length > 1 && `${l.paidBy} paid`, l.fromReservation && "from reservation", l.fromItem && "from itinerary"]
-                      .filter(Boolean)
-                      .join(" · ")}
-                  </p>
-                </div>
-                <div className="text-right">
-                  <p className="text-sm tabular-nums">{l.converted != null ? formatMoney(l.converted, currency) : "—"}</p>
-                  {l.currency !== currency && <p className="text-xs text-muted tabular-nums">{formatMoney(l.amount, l.currency)}</p>}
-                </div>
-                {!readOnly && !l.expense && (
-                  <div className="flex w-[60px] shrink-0 justify-end opacity-0 transition-opacity group-hover:opacity-100 max-md:opacity-100">
-                    <button onClick={() => setLinked(l)} className="grid size-7 place-items-center rounded-md text-muted hover:text-fg" title="Category and split">
-                      <Pencil className="size-3.5" />
-                    </button>
-                  </div>
-                )}
-                {!readOnly && l.expense && (
-                  <div className="flex w-[60px] shrink-0 justify-end gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 max-md:opacity-100">
-                    <button onClick={() => setEditing(l.expense!)} className="grid size-7 place-items-center rounded-md text-muted hover:text-fg" title="Edit">
-                      <Pencil className="size-3.5" />
-                    </button>
-                    <button onClick={() => removeExpense(doc, l.id)} className="grid size-7 place-items-center rounded-md text-muted hover:text-danger" title="Delete">
-                      <Trash2 className="size-3.5" />
-                    </button>
-                  </div>
-                )}
-              </li>
-            ))}
-          </ul>
-        )}
-        {fx.fetchedAt && <p className="mt-2 text-[10px] text-muted/70">Rates: European Central Bank via Frankfurter, {new Date(fx.fetchedAt).toLocaleDateString()}</p>}
-      </section>
+      <ExpensesSection
+        doc={doc}
+        state={state}
+        readOnly={readOnly}
+        lines={lines}
+        travelers={travelers}
+        currency={currency}
+        fetchedAt={fx.fetchedAt}
+        onEdit={setEditing}
+        onLink={setLinked}
+      />
 
       {editing && <ExpenseForm doc={doc} travelers={travelers} initial={editing} onClose={() => setEditing(null)} />}
       {linked && (
@@ -280,6 +90,318 @@ export function BudgetPanel({ doc, state, readOnly }: { doc: Y.Doc; state: TripS
   );
 }
 
+/** Spent so far against the budget, and what's left. */
+function BudgetSummary({
+  doc,
+  readOnly,
+  budget,
+  currency,
+  total,
+  unconverted,
+}: {
+  doc: Y.Doc;
+  readOnly: boolean;
+  budget?: number;
+  currency: string;
+  total: number;
+  unconverted: number;
+}) {
+  const pct = budget ? Math.min(100, (total / budget) * 100) : 0;
+  return (
+    <section className="rounded-2xl border border-line bg-surface p-4">
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-xs tracking-wide text-muted uppercase">Spent</p>
+          <p className="font-display text-3xl">{formatMoney(total, currency)}</p>
+        </div>
+        <div className="flex min-w-0 items-center gap-2 text-sm max-sm:w-full">
+          <span className="text-muted">Budget</span>
+          <input
+            type="number"
+            min="0"
+            step="any"
+            disabled={readOnly}
+            key={budget}
+            defaultValue={budget ?? ""}
+            placeholder="—"
+            onBlur={(e) => updateMeta(doc, { budget: e.target.value ? Number(e.target.value) : undefined })}
+            className="w-24 min-w-0 rounded-md bg-surface-2 px-2 py-1 text-right outline-none max-sm:flex-1"
+          />
+          <CurrencySelect value={currency} disabled={readOnly} onChange={(c) => updateMeta(doc, { currency: c })} className="bg-surface-2 text-[14px]" />
+        </div>
+      </div>
+      {budget ? (
+        <div className="mt-3">
+          <div className="h-2 overflow-hidden rounded-full bg-surface-2">
+            <div className={`h-full rounded-full ${total > budget ? "bg-danger" : "bg-accent"}`} style={{ width: `${pct}%` }} />
+          </div>
+          <p className="mt-1 text-xs text-muted">
+            {total > budget ? `${formatMoney(total - budget, currency)} over budget` : `${formatMoney(budget - total, currency)} left`}
+          </p>
+        </div>
+      ) : null}
+      {unconverted > 0 && (
+        <p className="mt-3 text-xs text-muted">
+          {unconverted} expense{unconverted > 1 ? "s" : ""} not counted: no exchange rate yet (go online once).
+        </p>
+      )}
+    </section>
+  );
+}
+
+/** Who's splitting the costs, and what each person owes the others. */
+function TravelersAndSettle({ doc, readOnly, travelers, lines, currency }: { doc: Y.Doc; readOnly: boolean; travelers: string[]; lines: Line[]; currency: string }) {
+  const [newTraveler, setNewTraveler] = useState("");
+  const settle = useMemo(() => settleUp(lines, travelers), [lines, travelers]);
+  return (
+    <section>
+      <h3 className="mb-2 flex items-center gap-2 font-display text-lg">
+        <Users className="size-4 text-muted" /> Splitting with
+      </h3>
+      <div className="flex flex-wrap items-center gap-2">
+        {travelers.map((t, i) => (
+          <span key={t} className="flex items-center gap-1 rounded-full bg-surface-2 px-3 py-1 text-sm">
+            {t}
+            {!readOnly && travelers.length > 1 && i > 0 && (
+              <button onClick={() => updateMeta(doc, { travelers: travelers.filter((x) => x !== t) })} className="text-muted hover:text-danger" aria-label={`Remove ${t}`}>
+                <X className="size-3.5" />
+              </button>
+            )}
+          </span>
+        ))}
+        {!readOnly && (
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              const n = newTraveler.trim();
+              if (n && !travelers.includes(n)) updateMeta(doc, { travelers: [...travelers, n] });
+              setNewTraveler("");
+            }}
+          >
+            <input value={newTraveler} onChange={(e) => setNewTraveler(e.target.value)} placeholder="+ Add person" className="w-28 rounded-full bg-transparent px-3 py-1 text-sm outline-none focus:bg-surface-2" />
+          </form>
+        )}
+      </div>
+      {travelers.length > 1 && (
+        <div className="mt-3 rounded-xl border border-line p-3 text-sm">
+          {settle.transfers.length === 0 ? (
+            <p className="text-muted">All square.</p>
+          ) : (
+            <ul className="space-y-1">
+              {settle.transfers.map((t, i) => (
+                <li key={i} className="flex items-center gap-2">
+                  {t.from} <ArrowRight className="size-3.5 text-muted" /> {t.to}
+                  <span className="ml-auto font-semibold tabular-nums">{formatMoney(t.amount, currency)}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+    </section>
+  );
+}
+
+/** Receipts (meals, convenience stores…) are listed on their own, apart from the bigger costs. */
+function ReceiptsSection({ doc, state, readOnly, lines, travelers, currency }: { doc: Y.Doc; state: TripState; readOnly: boolean; lines: Line[]; travelers: string[]; currency: string }) {
+  const [receipt, setReceipt] = useState<{ file?: File; expense?: Expense } | null>(null);
+  const receipts = lines.filter((l) => l.expense?.kind === "receipt");
+  return (
+    <>
+      <section>
+        <div className="mb-2 flex items-center justify-between">
+          <h3 className="font-display text-lg">Receipts</h3>
+          {!readOnly && (
+            <ReceiptButton onFile={(file) => setReceipt({ file })} className="ml-auto flex items-center gap-1.5 rounded-full bg-accent px-3 py-1.5 text-xs font-semibold text-on-accent">
+              <Camera className="size-3.5" /> Scan receipt
+            </ReceiptButton>
+          )}
+        </div>
+        {receipts.length === 0 ? (
+          <p className="rounded-xl border border-dashed border-line p-6 text-center text-sm text-muted">Meals, snacks, convenience stores: snap the receipt and it's itemized, matched to the stop and split.</p>
+        ) : (
+          <ul className="divide-y divide-line overflow-hidden rounded-xl border border-line bg-surface">
+            {receipts.map((l) => (
+              <ReceiptRow
+                key={l.id}
+                line={l}
+                items={state.items}
+                travelers={travelers}
+                currency={currency}
+                readOnly={readOnly}
+                doc={doc}
+                onOpen={(expense) => setReceipt({ expense })}
+              />
+            ))}
+          </ul>
+        )}
+      </section>
+      {receipt && <ReceiptFlow doc={doc} state={state} file={receipt.file} expense={receipt.expense} onClose={() => setReceipt(null)} />}
+    </>
+  );
+}
+
+function ReceiptRow({
+  line,
+  items,
+  travelers,
+  currency,
+  readOnly,
+  doc,
+  onOpen,
+}: {
+  line: Line;
+  items: TripState["items"];
+  travelers: string[];
+  currency: string;
+  readOnly: boolean;
+  doc: Y.Doc;
+  onOpen: (e: Expense) => void;
+}) {
+  const e = line.expense!;
+  const stop = e.itemId ? items.find((i) => i.id === e.itemId) : undefined;
+  const split = e.receipt?.split === "items" ? "by item" : e.receipt?.split === "payer" ? `${line.paidBy} only` : line.splitWith.length < travelers.length ? `split ${line.splitWith.length} ways` : travelers.length > 1 ? "split evenly" : "";
+  return (
+    <li className="group flex items-center gap-3 px-3 py-2.5">
+      <button onClick={() => !readOnly && onOpen(e)} className="flex min-w-0 flex-1 items-center gap-3 text-left">
+        <span className="grid size-8 shrink-0 place-items-center rounded-full [&>svg]:size-4" style={{ background: `${CAT_COLOR[line.category]}26`, color: CAT_COLOR[line.category] }}>
+          {CAT_ICON[line.category]}
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-sm font-medium">{line.title}</span>
+          <span className="block truncate text-xs text-muted">
+            {[line.date && formatShort(line.date), stop?.name, e.receipt?.items.length ? `${e.receipt.items.length} items` : "", travelers.length > 1 && `${line.paidBy} paid`, split].filter(Boolean).join(" · ")}
+          </span>
+        </span>
+        <span className="text-right">
+          <span className="block text-sm tabular-nums">{line.converted != null ? formatMoney(line.converted, currency) : "—"}</span>
+          {line.currency !== currency && <span className="block text-xs text-muted tabular-nums">{formatMoney(line.amount, line.currency)}</span>}
+        </span>
+      </button>
+      {!readOnly && (
+        <button
+          onClick={async () => (await askConfirm({ title: `Delete ${line.title}?`, body: "It leaves the budget and the split." })) && removeExpense(doc, line.id)}
+          className="grid size-7 shrink-0 place-items-center rounded-md text-muted opacity-0 transition-opacity group-hover:opacity-100 hover:text-danger max-md:opacity-100"
+          title="Delete"
+        >
+          <Trash2 className="size-3.5" />
+        </button>
+      )}
+    </li>
+  );
+}
+
+/** Every cost that isn't a receipt, with the add button and the CSV export. */
+function ExpensesSection({
+  doc,
+  state,
+  readOnly,
+  lines,
+  travelers,
+  currency,
+  fetchedAt,
+  onEdit,
+  onLink,
+}: {
+  doc: Y.Doc;
+  state: TripState;
+  readOnly: boolean;
+  lines: Line[];
+  travelers: string[];
+  currency: string;
+  fetchedAt?: ReturnType<typeof useConverter>["fetchedAt"];
+  onEdit: (e: Partial<Expense>) => void;
+  onLink: (l: Line) => void;
+}) {
+  const bigLines = lines.filter((l) => l.expense?.kind !== "receipt");
+  return (
+    <section>
+      <div className="mb-2 flex items-center justify-between">
+        <h3 className="font-display text-lg">Expenses</h3>
+        <div className="ml-auto flex items-center gap-2">
+          {lines.length > 0 && <CsvButton onClick={() => exportBudgetCsv(lines, state, currency)} />}
+          {!readOnly && (
+            <button
+              onClick={() => onEdit({ currency, category: "food", date: todayISO() >= state.meta.startDate && todayISO() <= state.meta.endDate ? todayISO() : state.meta.startDate, paidBy: travelers[0] })}
+              className="flex items-center gap-1 rounded-full bg-accent px-3 py-1.5 text-xs font-semibold text-on-accent"
+            >
+              <Plus className="size-3.5" /> Add expense
+            </button>
+          )}
+        </div>
+      </div>
+      {bigLines.length === 0 ? (
+        <p className="rounded-xl border border-dashed border-line p-6 text-center text-sm text-muted">No expenses yet. Reservation costs show up here automatically.</p>
+      ) : (
+        <ul className="divide-y divide-line overflow-hidden rounded-xl border border-line bg-surface">
+          {bigLines.map((l) => (
+            <ExpenseRow key={l.id} line={l} currency={currency} travelers={travelers} readOnly={readOnly} doc={doc} onEdit={onEdit} onLink={onLink} />
+          ))}
+        </ul>
+      )}
+      {fetchedAt && <p className="mt-2 text-[10px] text-muted/70">Rates: European Central Bank via Frankfurter, {new Date(fetchedAt).toLocaleDateString()}</p>}
+    </section>
+  );
+}
+
+function ExpenseRow({
+  line,
+  currency,
+  travelers,
+  readOnly,
+  doc,
+  onEdit,
+  onLink,
+}: {
+  line: Line;
+  currency: string;
+  travelers: string[];
+  readOnly: boolean;
+  doc: Y.Doc;
+  onEdit: (e: Partial<Expense>) => void;
+  onLink: (l: Line) => void;
+}) {
+  return (
+    <li className="group flex items-center gap-3 px-3 py-2.5">
+      <span className="grid size-8 shrink-0 place-items-center rounded-full [&>svg]:size-4" style={{ background: `${CAT_COLOR[line.category]}26`, color: CAT_COLOR[line.category] }}>
+        {CAT_ICON[line.category]}
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm font-medium">{line.title}</p>
+        <p className="text-xs text-muted">
+          {[line.date && formatShort(line.date), CATEGORY_LABEL[line.category], travelers.length > 1 && `${line.paidBy} paid`, line.fromReservation && "from reservation", line.fromItem && "from itinerary"]
+            .filter(Boolean)
+            .join(" · ")}
+        </p>
+      </div>
+      <div className="text-right">
+        <p className="text-sm tabular-nums">{line.converted != null ? formatMoney(line.converted, currency) : "—"}</p>
+        {line.currency !== currency && <p className="text-xs text-muted tabular-nums">{formatMoney(line.amount, line.currency)}</p>}
+      </div>
+      {!readOnly && !line.expense && (
+        <div className="flex w-[60px] shrink-0 justify-end opacity-0 transition-opacity group-hover:opacity-100 max-md:opacity-100">
+          <button onClick={() => onLink(line)} className="grid size-7 place-items-center rounded-md text-muted hover:text-fg" title="Category and split">
+            <Pencil className="size-3.5" />
+          </button>
+        </div>
+      )}
+      {!readOnly && line.expense && (
+        <div className="flex w-[60px] shrink-0 justify-end gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 max-md:opacity-100">
+          <button onClick={() => onEdit(line.expense!)} className="grid size-7 place-items-center rounded-md text-muted hover:text-fg" title="Edit">
+            <Pencil className="size-3.5" />
+          </button>
+          <button onClick={() => removeExpense(doc, line.id)} className="grid size-7 place-items-center rounded-md text-muted hover:text-danger" title="Delete">
+            <Trash2 className="size-3.5" />
+          </button>
+        </div>
+      )}
+    </li>
+  );
+}
+
+type SplitMode = "everyone" | "individuals" | "none";
+const BOX = "rounded-2xl border border-line bg-bg";
+
 /**
  * Wanderlog-style expense editor: amount + currency, category grid, description, paid by,
  * split (everyone or chosen people, with the per-person share), date. People can be added
@@ -290,24 +412,13 @@ export function ExpenseForm({ doc, travelers, initial, linked, onClose }: { doc:
   const [e, setE] = useState<Partial<Expense>>({ splitWith: travelers, ...initial });
   const [view, setView] = useState<"form" | "category">("form");
   const [people, setPeople] = useState(travelers);
-  const [newPerson, setNewPerson] = useState("");
   const set = (p: Partial<Expense>) => setE((x) => ({ ...x, ...p }));
   const split = (e.splitWith?.length ? e.splitWith : people).filter((t) => people.includes(t));
   const everyone = split.length === people.length;
-  type SplitMode = "everyone" | "individuals" | "none";
   const [mode, setMode] = useState<SplitMode>(everyone ? "everyone" : split.length === 1 && split[0] === (initial.paidBy ?? travelers[0]) ? "none" : "individuals");
   const cat = (e.category ?? "other") as ExpenseCategory;
   const per = e.amount && split.length ? e.amount / split.length : 0;
-
-  const addPerson = () => {
-    const n = newPerson.trim();
-    if (!n || people.includes(n)) return setNewPerson("");
-    const next = [...people, n];
-    setPeople(next);
-    updateMeta(doc, { travelers: next });
-    set({ splitWith: [...split, n] });
-    setNewPerson("");
-  };
+  const payer = e.paidBy ?? people[0];
 
   const save = () => {
     const splitWith = everyone ? undefined : split;
@@ -322,7 +433,8 @@ export function ExpenseForm({ doc, travelers, initial, linked, onClose }: { doc:
     onClose();
   };
 
-  const box = "rounded-2xl border border-line bg-bg";
+  const remove = async () => (await askConfirm({ title: "Delete this expense?", body: "It's removed from the budget and the split." })) && (removeExpense(doc, initial.id!), onClose());
+
   return createPortal(
     <div className="fixed inset-0 z-[100] grid grid-cols-[minmax(0,1fr)] place-items-center bg-black/60 p-4 backdrop-blur-sm" onClick={onClose}>
       <div onClick={(ev) => ev.stopPropagation()} className="relative max-h-[90vh] w-full max-w-md overflow-y-auto rounded-3xl border border-line bg-surface p-6 shadow-2xl">
@@ -331,49 +443,14 @@ export function ExpenseForm({ doc, travelers, initial, linked, onClose }: { doc:
         </button>
 
         {view === "category" ? (
-          <>
-            <div className="mb-5 flex items-center gap-3 pr-10">
-              <button onClick={() => setView("form")} className="grid size-8 place-items-center rounded-full text-muted hover:bg-surface-2 hover:text-fg" aria-label="Back">
-                <ArrowLeft className="size-4" />
-              </button>
-              <h2 className="font-display text-[24px]">Select category</h2>
-            </div>
-            <div className="grid grid-cols-3 gap-2.5 sm:grid-cols-4">
-              {CATEGORIES.map((c) => (
-                <button
-                  key={c}
-                  onClick={() => (set({ category: c }), setView("form"))}
-                  className={`flex flex-col items-center gap-2 rounded-2xl border px-2 py-3.5 text-[13px] font-semibold transition-colors [&>svg]:size-5 ${
-                    c === cat ? "border-accent bg-accent/10 text-fg" : "border-line bg-bg text-muted hover:border-line hover:text-fg"
-                  }`}
-                >
-                  <span style={{ color: CAT_COLOR[c] }}>{CAT_ICON[c]}</span>
-                  {CATEGORY_LABEL[c]}
-                </button>
-              ))}
-            </div>
-          </>
+          <CategoryStep cat={cat} onPick={(c) => (set({ category: c }), setView("form"))} onBack={() => setView("form")} />
         ) : (
           <form onSubmit={(ev) => (ev.preventDefault(), save())} className="space-y-3">
             <h2 className="pr-10 text-center font-display text-[24px]">{linked ? "Cost details" : initial.id ? "Edit expense" : "Add expense"}</h2>
 
-            <div className={`${box} flex items-center gap-2 px-3 py-2.5`}>
-              <CurrencySelect value={e.currency ?? "CAD"} onChange={(c) => set({ currency: c })} className="bg-surface-2 text-[14px]" />
-              <input
-                required
-                type="number"
-                inputMode="decimal"
-                step="any"
-                min="0"
-                autoFocus={!linked && !initial.id}
-                placeholder="0.00"
-                value={e.amount ?? ""}
-                onChange={(ev) => set({ amount: ev.target.value === "" ? undefined : Number(ev.target.value) })}
-                className="min-w-0 flex-1 bg-transparent text-[22px] font-bold outline-none placeholder:text-muted/50 disabled:opacity-80"
-              />
-            </div>
+            <AmountRow currency={e.currency ?? "CAD"} amount={e.amount} autoFocus={!linked && !initial.id} set={set} />
 
-            <button type="button" onClick={() => setView("category")} className={`${box} flex w-full items-center gap-3 px-4 py-3 text-left text-[15px] hover:border-accent/50`}>
+            <button type="button" onClick={() => setView("category")} className={`${BOX} flex w-full items-center gap-3 px-4 py-3 text-left text-[15px] hover:border-accent/50`}>
               <span className="[&>svg]:size-5" style={{ color: CAT_COLOR[cat] }}>
                 {CAT_ICON[cat]}
               </span>
@@ -381,106 +458,30 @@ export function ExpenseForm({ doc, travelers, initial, linked, onClose }: { doc:
               <ChevronRight className="size-4 text-muted" />
             </button>
 
-            <label className={`${box} block px-4 py-2.5`}>
-              <span className="text-[12px] font-bold text-muted">Description</span>
-              <textarea
-                required={!linked}
-                disabled={!!linked}
-                rows={1}
-                value={e.title ?? ""}
-                onChange={(ev) => set({ title: ev.target.value })}
-                placeholder="What was it?"
-                className="block w-full resize-none bg-transparent text-[15px] outline-none placeholder:text-muted/50 disabled:opacity-80 [field-sizing:content]"
-              />
-            </label>
+            <DescriptionField title={e.title} linked={!!linked} set={set} />
 
-            <div className={`${box} flex items-center justify-between gap-3 px-4 py-3`}>
-              <span className="text-[15px] font-bold">Paid by</span>
-              <Menu
-                label={
-                  <>
-                    <Avatar name={e.paidBy ?? people[0]} /> {e.paidBy ?? people[0]}
-                  </>
-                }
-                options={people.map((t) => ({ key: t, label: t, icon: <Avatar name={t} />, on: (e.paidBy ?? people[0]) === t }))}
-                onPick={(t) => set({ paidBy: t, ...(mode === "none" ? { splitWith: [t] } : {}) })}
-              />
-            </div>
+            <PaidByRow payer={payer} people={people} onPick={(t) => set({ paidBy: t, ...(mode === "none" ? { splitWith: [t] } : {}) })} />
 
-            <div className={box}>
-              <div className="flex items-center justify-between px-4 pt-3">
-                <span className="text-[15px] font-bold">Split</span>
-                <Menu
-                  label={mode === "everyone" ? "Everyone" : mode === "none" ? "Don't split" : "Individuals"}
-                  options={[
-                    { key: "individuals", label: "Individuals", hint: "Choose who shares it", on: mode === "individuals" },
-                    { key: "everyone", label: "Everyone", hint: "Split evenly", on: mode === "everyone" },
-                    { key: "none", label: "Don't split", hint: "The payer covers it", on: mode === "none" },
-                  ]}
-                  onPick={(k) => {
-                    setMode(k as SplitMode);
-                    set({ splitWith: k === "none" ? [e.paidBy ?? people[0]] : people });
-                  }}
-                />
-              </div>
-              <ul className="space-y-1 px-4 py-2.5">
-                {people.map((t) => {
-                  if (mode !== "individuals" && !split.includes(t)) return null;
-                  const on = split.includes(t);
-                  return (
-                    <li key={t}>
-                      <label className="flex cursor-pointer items-center gap-3 py-1 text-[15px]">
-                        {mode === "individuals" && (
-                          <input
-                            type="checkbox"
-                            checked={on}
-                            onChange={() => {
-                              const next = on ? split.filter((x) => x !== t) : [...split, t];
-                              set({ splitWith: next });
-                              if (next.length === people.length) setMode("everyone");
-                            }}
-                            className="size-[18px] accent-[var(--accent)]"
-                          />
-                        )}
-                        <Avatar name={t} />
-                        <span className="flex-1">{t}</span>
-                        {on && per > 0 && <span className="text-[13px] text-muted tabular-nums">{formatMoney(per, e.currency ?? "CAD")}</span>}
-                      </label>
-                    </li>
-                  );
-                })}
-                <li className="flex items-center gap-2 pt-1">
-                  <Plus className="size-4 text-muted" />
-                  <input
-                    value={newPerson}
-                    onChange={(ev) => setNewPerson(ev.target.value)}
-                    onKeyDown={(ev) => ev.key === "Enter" && (ev.preventDefault(), addPerson())}
-                    onBlur={addPerson}
-                    placeholder="Add person"
-                    className="min-w-0 flex-1 bg-transparent py-1 text-[15px] outline-none placeholder:text-muted/60"
-                  />
-                </li>
-              </ul>
-              <div className="flex items-center justify-between border-t border-line px-4 py-2.5 text-[13px]">
-                <span className="font-bold">{per > 0 ? `${formatMoney(per, e.currency ?? "CAD")}/person` : "—"}</span>
-                <span className="text-muted">
-                  {split.length} {split.length === 1 ? "person" : "people"}
-                </span>
-              </div>
-            </div>
+            <SplitBlock
+              doc={doc}
+              mode={mode}
+              setMode={setMode}
+              people={people}
+              setPeople={setPeople}
+              split={split}
+              per={per}
+              currency={e.currency ?? "CAD"}
+              payer={payer}
+              set={set}
+            />
 
-            {!linked && (
-              <div className="flex items-center gap-2 px-1 text-[14px]">
-                <span className="font-bold text-muted">Date:</span>
-                <DateField value={e.date} onChange={(v) => set({ date: v })} clearable placeholder="No date" className="rounded-full px-2.5 py-1 font-semibold hover:bg-surface-2" />
-              </div>
-            )}
+            {!linked && <DateRow date={e.date} set={set} />}
 
             <div className="flex justify-center gap-2 pt-2">
               {initial.id && !linked && (
                 <button
                   type="button"
-                  onClick={async () => (await askConfirm({ title: "Delete this expense?", body: "It's removed from the budget and the split." })) && (removeExpense(doc, initial.id!), onClose())}
+                  onClick={remove}
                   className="flex items-center gap-2 rounded-full border border-line px-5 py-2.5 text-[15px] font-bold text-muted hover:text-danger"
                 >
                   <Trash2 className="size-4" /> Delete
@@ -496,7 +497,234 @@ export function ExpenseForm({ doc, travelers, initial, linked, onClose }: { doc:
   );
 }
 
+/** The category grid, shown in place of the form. */
+function CategoryStep({ cat, onPick, onBack }: { cat: ExpenseCategory; onPick: (c: ExpenseCategory) => void; onBack: () => void }) {
+  return (
+    <>
+      <div className="mb-5 flex items-center gap-3 pr-10">
+        <button onClick={onBack} className="grid size-8 place-items-center rounded-full text-muted hover:bg-surface-2 hover:text-fg" aria-label="Back">
+          <ArrowLeft className="size-4" />
+        </button>
+        <h2 className="font-display text-[24px]">Select category</h2>
+      </div>
+      <div className="grid grid-cols-3 gap-2.5 sm:grid-cols-4">
+        {CATEGORIES.map((c) => (
+          <button
+            key={c}
+            onClick={() => onPick(c)}
+            className={`flex flex-col items-center gap-2 rounded-2xl border px-2 py-3.5 text-[13px] font-semibold transition-colors [&>svg]:size-5 ${
+              c === cat ? "border-accent bg-accent/10 text-fg" : "border-line bg-bg text-muted hover:border-line hover:text-fg"
+            }`}
+          >
+            <span style={{ color: CAT_COLOR[c] }}>{CAT_ICON[c]}</span>
+            {CATEGORY_LABEL[c]}
+          </button>
+        ))}
+      </div>
+    </>
+  );
+}
+
+function AmountRow({ currency, amount, autoFocus, set }: { currency: string; amount?: number; autoFocus: boolean; set: (p: Partial<Expense>) => void }) {
+  return (
+    <div className={`${BOX} flex items-center gap-2 px-3 py-2.5`}>
+      <CurrencySelect value={currency} onChange={(c) => set({ currency: c })} className="bg-surface-2 text-[14px]" />
+      <input
+        required
+        type="number"
+        inputMode="decimal"
+        step="any"
+        min="0"
+        autoFocus={autoFocus}
+        placeholder="0.00"
+        value={amount ?? ""}
+        onChange={(ev) => set({ amount: ev.target.value === "" ? undefined : Number(ev.target.value) })}
+        className="min-w-0 flex-1 bg-transparent text-[22px] font-bold outline-none placeholder:text-muted/50 disabled:opacity-80"
+      />
+    </div>
+  );
+}
+
+function DescriptionField({ title, linked, set }: { title?: string; linked: boolean; set: (p: Partial<Expense>) => void }) {
+  return (
+    <label className={`${BOX} block px-4 py-2.5`}>
+      <span className="text-[12px] font-bold text-muted">Description</span>
+      <textarea
+        required={!linked}
+        disabled={linked}
+        rows={1}
+        value={title ?? ""}
+        onChange={(ev) => set({ title: ev.target.value })}
+        placeholder="What was it?"
+        className="block w-full resize-none bg-transparent text-[15px] outline-none placeholder:text-muted/50 disabled:opacity-80 [field-sizing:content]"
+      />
+    </label>
+  );
+}
+
+function PaidByRow({ payer, people, onPick }: { payer: string; people: string[]; onPick: (t: string) => void }) {
+  return (
+    <div className={`${BOX} flex items-center justify-between gap-3 px-4 py-3`}>
+      <span className="text-[15px] font-bold">Paid by</span>
+      <Menu
+        label={
+          <>
+            <Avatar name={payer} /> {payer}
+          </>
+        }
+        options={people.map((t) => ({ key: t, label: t, icon: <Avatar name={t} />, on: payer === t }))}
+        onPick={onPick}
+      />
+    </div>
+  );
+}
+
+/** Who shares the cost: everyone, individuals (with their share), or the payer alone; people can be added here too. */
+function SplitBlock({
+  doc,
+  mode,
+  setMode,
+  people,
+  setPeople,
+  split,
+  per,
+  currency,
+  payer,
+  set,
+}: {
+  doc: Y.Doc;
+  mode: SplitMode;
+  setMode: Dispatch<SetStateAction<SplitMode>>;
+  people: string[];
+  setPeople: Dispatch<SetStateAction<string[]>>;
+  split: string[];
+  per: number;
+  currency: string;
+  payer: string;
+  set: (p: Partial<Expense>) => void;
+}) {
+  return (
+    <div className={BOX}>
+      <div className="flex items-center justify-between px-4 pt-3">
+        <span className="text-[15px] font-bold">Split</span>
+        <Menu
+          label={mode === "everyone" ? "Everyone" : mode === "none" ? "Don't split" : "Individuals"}
+          options={[
+            { key: "individuals", label: "Individuals", hint: "Choose who shares it", on: mode === "individuals" },
+            { key: "everyone", label: "Everyone", hint: "Split evenly", on: mode === "everyone" },
+            { key: "none", label: "Don't split", hint: "The payer covers it", on: mode === "none" },
+          ]}
+          onPick={(k) => {
+            setMode(k as SplitMode);
+            set({ splitWith: k === "none" ? [payer] : people });
+          }}
+        />
+      </div>
+      <SplitPeople
+        doc={doc}
+        mode={mode}
+        setMode={setMode}
+        people={people}
+        setPeople={setPeople}
+        split={split}
+        per={per}
+        currency={currency}
+        set={set}
+      />
+      <div className="flex items-center justify-between border-t border-line px-4 py-2.5 text-[13px]">
+        <span className="font-bold">{per > 0 ? `${formatMoney(per, currency)}/person` : "—"}</span>
+        <span className="text-muted">
+          {split.length} {split.length === 1 ? "person" : "people"}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+/** Each person with a tick to share the cost (or the list of sharers), and a box to add someone new. */
+function SplitPeople({
+  doc,
+  mode,
+  setMode,
+  people,
+  setPeople,
+  split,
+  per,
+  currency,
+  set,
+}: {
+  doc: Y.Doc;
+  mode: SplitMode;
+  setMode: Dispatch<SetStateAction<SplitMode>>;
+  people: string[];
+  setPeople: Dispatch<SetStateAction<string[]>>;
+  split: string[];
+  per: number;
+  currency: string;
+  set: (p: Partial<Expense>) => void;
+}) {
+  const [newPerson, setNewPerson] = useState("");
+  const addPerson = () => {
+    const n = newPerson.trim();
+    if (!n || people.includes(n)) return setNewPerson("");
+    const next = [...people, n];
+    setPeople(next);
+    updateMeta(doc, { travelers: next });
+    set({ splitWith: [...split, n] });
+    setNewPerson("");
+  };
+
+  return (
+    <ul className="space-y-1 px-4 py-2.5">
+      {people.map((t) => {
+        if (mode !== "individuals" && !split.includes(t)) return null;
+        const on = split.includes(t);
+        return (
+          <li key={t}>
+            <label className="flex cursor-pointer items-center gap-3 py-1 text-[15px]">
+              {mode === "individuals" && (
+                <input
+                  type="checkbox"
+                  checked={on}
+                  onChange={() => {
+                    const next = on ? split.filter((x) => x !== t) : [...split, t];
+                    set({ splitWith: next });
+                    if (next.length === people.length) setMode("everyone");
+                  }}
+                  className="size-[18px] accent-[var(--accent)]"
+                />
+              )}
+              <Avatar name={t} />
+              <span className="flex-1">{t}</span>
+              {on && per > 0 && <span className="text-[13px] text-muted tabular-nums">{formatMoney(per, currency)}</span>}
+            </label>
+          </li>
+        );
+      })}
+      <li className="flex items-center gap-2 pt-1">
+        <Plus className="size-4 text-muted" />
+        <input
+          value={newPerson}
+          onChange={(ev) => setNewPerson(ev.target.value)}
+          onKeyDown={(ev) => ev.key === "Enter" && (ev.preventDefault(), addPerson())}
+          onBlur={addPerson}
+          placeholder="Add person"
+          className="min-w-0 flex-1 bg-transparent py-1 text-[15px] outline-none placeholder:text-muted/60"
+        />
+      </li>
+    </ul>
+  );
+}
+
+function DateRow({ date, set }: { date?: string; set: (p: Partial<Expense>) => void }) {
+  return (
+    <div className="flex items-center gap-2 px-1 text-[14px]">
+      <span className="font-bold text-muted">Date:</span>
+      <DateField value={date} onChange={(v) => set({ date: v })} clearable placeholder="No date" className="rounded-full px-2.5 py-1 font-semibold hover:bg-surface-2" />
+    </div>
+  );
+}
+
 function Avatar({ name }: { name: string }) {
   return <span className="grid size-7 shrink-0 place-items-center rounded-full bg-surface-2 text-[12px] font-bold text-fg">{name.slice(0, 1).toUpperCase()}</span>;
 }
-
