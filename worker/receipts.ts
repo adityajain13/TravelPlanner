@@ -51,32 +51,47 @@ export async function handleReceipts(req: Request, env: Env, url: URL): Promise<
   if (!(await getSession(req, env))) return error(401, "Sign in");
   const body = (await req.json().catch(() => null)) as { image?: string; trip?: { destination?: string; currency?: string } } | null;
   if (!body?.image || body.image.length > 6_000_000) return error(400, "Missing or oversized image");
-  const res = await fetch("https://api.anthropic.com/v1/messages", {
-    method: "POST",
-    headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
-    body: JSON.stringify({
-      // Reading small print and translating: the bigger model is worth it here
-      model: env.RECEIPT_MODEL || "claude-sonnet-5-5",
-      max_tokens: 3000,
-      tools: [TOOL],
-      tool_choice: { type: "tool", name: TOOL.name },
-      messages: [
-        {
-          role: "user",
-          content: [
-            { type: "image", source: { type: "base64", media_type: "image/jpeg", data: body.image } },
-            {
-              type: "text",
-              text: `Read this receipt${body.trip?.destination ? ` (from a trip to ${body.trip.destination})` : ""}. List every item line with its price. Note whether tax is added on top (Canada/US style) or already included in the prices.`,
-            },
-          ],
-        },
-      ],
-    }),
-  });
-  if (!res.ok) return error(502, "Couldn't read the receipt");
-  const data = (await res.json()) as { content: { type: string; input?: Record<string, unknown> }[] };
-  const out = data.content.find((c) => c.type === "tool_use")?.input;
-  if (!out || out.readable === false) return error(422, "That doesn't look like a readable receipt");
-  return Response.json(out);
+  const ask = async (model: string) => {
+    const res = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+      body: JSON.stringify({
+        model,
+        max_tokens: 3000,
+        tools: [TOOL],
+        tool_choice: { type: "tool", name: TOOL.name },
+        messages: [
+          {
+            role: "user",
+            content: [
+              { type: "image", source: { type: "base64", media_type: "image/jpeg", data: body.image } },
+              {
+                type: "text",
+                text: `Read this receipt${body.trip?.destination ? ` (from a trip to ${body.trip.destination})` : ""}. The photo may be sideways, upside down, crumpled or in poor light: read it anyway, and only set readable=false if it isn't a receipt at all or the prices can't be made out. List every item line with its price (weighed items: the line total, e.g. "0.840 kg @ $6.58/kg" → the printed amount). Note whether tax is added on top (Canada/US style; untaxed lines like fresh food are taxable=false) or already included in the prices.`,
+              },
+            ],
+          },
+        ],
+      }),
+    });
+    if (!res.ok) {
+      const detail = (await res.text()).slice(0, 300);
+      console.error("receipt parse", model, res.status, detail);
+      return { fail: `${res.status} ${(/"message"\s*:\s*"([^"]+)"/.exec(detail)?.[1] ?? "").slice(0, 120)}`.trim() };
+    }
+    const data = (await res.json()) as { content: { type: string; input?: Record<string, unknown> }[] };
+    return { out: data.content.find((c) => c.type === "tool_use")?.input };
+  };
+  // The receipt model first (small print), then the email model if that one is unavailable or gives up
+  const models = [...new Set([env.RECEIPT_MODEL || "claude-sonnet-5-5", env.EXTRACT_MODEL || "claude-haiku-5-5"])];
+  let lastFail = "";
+  let unreadable = false;
+  for (const m of models) {
+    const r = await ask(m);
+    if (r.out && r.out.readable !== false) return Response.json(r.out);
+    if (r.out) unreadable = true;
+    else lastFail = r.fail ?? "";
+  }
+  if (unreadable) return error(422, "That doesn't look like a readable receipt");
+  return error(502, `Couldn't reach the receipt reader (${lastFail || "no answer"})`);
 }
