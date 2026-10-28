@@ -6,7 +6,7 @@ import { daysBetween } from "./dates";
 import { flightAirports, flightArc, flightInstant, type Airport, type AirportDb } from "./airports";
 import { departureTime, legKey, type LegRequest, type LegState, type TravelMode } from "./routing";
 import { RES_GLYPH } from "./pinArt";
-import { autoTimes, DEFAULT_DAY_START, DEFAULT_STAY } from "./autoTime";
+import { autoTimes, DEFAULT_DAY_START, DEFAULT_STAY, fixedBlocks } from "./autoTime";
 import { draftSection, isDraftSection, mainPlanName, sectionsFor, type Item, type Reservation, type TripState } from "./trips";
 
 export const ORPHAN = "orphan";
@@ -344,7 +344,7 @@ export function withAutoTimes(view: Itinerary | null, state: TripState | null, a
   const sections = view.sections.map((s) => {
     if (s.kind !== "day") return s;
     const ver = s.writeKey ?? s.key;
-    const t = autoTimes(s.items, legsBySection.get(ver), state.meta.dayStarts?.[s.date!] ?? DEFAULT_DAY_START, view.landings.get(ver), state.meta.travelers);
+    const t = autoTimes(s.items, legsBySection.get(ver), state.meta.dayStarts?.[s.date!] ?? DEFAULT_DAY_START, view.landings.get(ver), state.meta.travelers, fixedBlocks(state.reservations, s.date!));
     return {
       ...s,
       items: s.items.map((it) => {

@@ -1,4 +1,4 @@
-import type { Item } from "./trips";
+import type { Item, Reservation } from "./trips";
 import type { LegState } from "./routing";
 
 /** Minutes a stop takes when no "how long" is set yet. */
@@ -23,6 +23,7 @@ const up5 = (min: number) => Math.ceil(min / 5 - 1e-9) * 5;
  *
  * Stops only some people go to (each person's own home…) run on that person's own clock from
  * the day's start; a stop they go to together starts once the last of them gets there.
+ * Timed bookings (`fixed`) are blocks: a stop that would arrive after one begins waits for it to end.
  */
 export function autoTimes(
   items: Item[],
@@ -30,6 +31,7 @@ export function autoTimes(
   start: string,
   landed?: string,
   people: string[] = [],
+  fixed: FixedBlock[] = [],
 ) {
   const out = new Map<string, { start: string; end: string; nextDay: boolean }>();
   let day = toMin(start);
@@ -47,16 +49,51 @@ export function autoTimes(
     }
     return 0;
   };
+  const blocks = [...fixed].sort((a, b) => a.start - b.start);
+  let k = 0; // blocks are consumed in start order; each one is used once
+  const blockLanes = (b: FixedBlock) => (split && b.who?.length ? b.who.filter((p) => clock.has(p)) : lanes);
   for (const it of items) {
     if (it.kind !== "place") continue;
     const own = split && it.who?.length ? it.who.filter((p) => clock.has(p)) : [];
     const going = own.length ? own : lanes;
-    const arrive = up5(Math.max(...going.map((p) => clock.get(p)! + legMin(it.id, p))));
+    const arriveAt = () => up5(Math.max(...going.map((p) => clock.get(p)! + legMin(it.id, p))));
+    let arrive = arriveAt();
+    // Bookings that begin before we'd get here happen first: wait until each one ends
+    for (; k < blocks.length && blocks[k].start <= arrive; k++) {
+      const b = blocks[k];
+      for (const p of blockLanes(b)) clock.set(p, Math.max(clock.get(p)!, b.end));
+      arrive = arriveAt();
+    }
     const end = arrive + (it.stay ?? DEFAULT_STAY);
     out.set(it.id, { start: toHHMM(arrive), end: toHHMM(end), nextDay: end >= 1440 });
     for (const p of going) clock.set(p, end);
   }
   return out;
+}
+
+/** A booking with a set time that day (ticket, restaurant, train): auto times wait for it to end. */
+export interface FixedBlock { start: number; end: number; who?: string[] }
+
+const BLOCK_DEFAULT: Partial<Record<Reservation["type"], number>> = { restaurant: 90, other: 60, train: 60 };
+
+/** The day's timed bookings as blocks (minutes from midnight). One per booking: per-traveller copies are merged. */
+export function fixedBlocks(reservations: Reservation[], date: string): FixedBlock[] {
+  const merged = new Map<string, { start: number; end: number; who: Set<string>; everyone: boolean }>();
+  for (const r of reservations) {
+    const dflt = BLOCK_DEFAULT[r.type];
+    if (dflt == null || r.startDate !== date || !r.startTime) continue;
+    const start = toMin(r.startTime);
+    const end = r.endTime && toMin(r.endTime) > start ? toMin(r.endTime) : start + dflt;
+    const key = `${r.type}|${r.title}|${r.startTime}`;
+    const m = merged.get(key) ?? { start, end, who: new Set<string>(), everyone: false };
+    m.end = Math.max(m.end, end);
+    if (r.traveler) m.who.add(r.traveler);
+    else m.everyone = true;
+    merged.set(key, m);
+  }
+  return [...merged.values()]
+    .map((m) => ({ start: m.start, end: m.end, ...(!m.everyone && m.who.size ? { who: [...m.who] } : {}) }))
+    .sort((a, b) => a.start - b.start);
 }
 
 export const STAY_OPTIONS = [15, 30, 45, 60, 90, 120, 150, 180, 240, 300, 360, 480];
