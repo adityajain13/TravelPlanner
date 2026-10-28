@@ -3,7 +3,7 @@ import { DayCompare } from "./DayCompare";
 import type { Pin } from "./TripMap";
 import type { LegState } from "../lib/routing";
 import { adoptDraft, deleteDraft, draftSection, forkDay, mainPlanName, nextDraftName, renameDraft, updateMeta, type TripState } from "../lib/trips";
-import { autoTimes, DEFAULT_DAY_START } from "../lib/autoTime";
+import { autoTimes, DEFAULT_DAY_START, fixedBlocks } from "../lib/autoTime";
 import { planMapData, type Itinerary, type PlanLegs } from "../lib/itinerary";
 import type { Theme } from "../lib/theme";
 
@@ -41,7 +41,7 @@ export function DayCompareHost(p: {
       versions={vers.map((v) => {
         const ver = v.id ? draftSection(v.id) : dayKey;
         const raw = of(ver);
-        const at = p.autoOn ? autoTimes(raw, p.legsBySection.get(ver), p.state.meta.dayStarts?.[p.date] ?? DEFAULT_DAY_START, p.view.landings.get(ver), p.state.meta.travelers) : null;
+        const at = p.autoOn ? autoTimes(raw, p.legsBySection.get(ver), p.state.meta.dayStarts?.[p.date] ?? DEFAULT_DAY_START, p.view.landings.get(ver), p.state.meta.travelers, fixedBlocks(p.state.reservations, p.date)) : null;
         const items = at ? raw.map((it) => (at.get(it.id) ? { ...it, startTime: at.get(it.id)!.start, endTime: at.get(it.id)!.end } : it)) : raw;
         const map = planMapData(p.view, p.flightPins, p.legResults, ver, items, sec.color, { includeGhost: true, numberedPins: true });
         return {
