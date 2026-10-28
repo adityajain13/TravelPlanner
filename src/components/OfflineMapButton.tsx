@@ -36,13 +36,17 @@ export function OfflineMapButton({ tripId, state }: { tripId: string; state: Tri
     const pct = Math.round((progress.done / Math.max(1, progress.total)) * 100);
     return (
       // One line, fixed shape: a ring that fills, the percent, and (on wider screens) the size
-      <div className={`${pill} shrink-0 whitespace-nowrap bg-surface-2 text-muted tabular-nums`} title={`Saving map · ${formatBytes(progress.bytes)}`}>
+      <div className={`${pill} shrink-0 whitespace-nowrap bg-surface-2 text-muted tabular-nums max-sm:px-2`} title={`Saving map · ${pct}% · ${formatBytes(progress.bytes)}`}>
         <svg viewBox="0 0 20 20" className="size-4 -rotate-90">
           <circle cx="10" cy="10" r="8" fill="none" stroke="currentColor" strokeOpacity=".25" strokeWidth="2.5" />
           <circle cx="10" cy="10" r="8" fill="none" stroke="var(--accent)" strokeWidth="2.5" strokeLinecap="round" strokeDasharray={`${(pct / 100) * 50.3} 50.3`} />
         </svg>
-        {pct}%<span className="max-sm:hidden"> · {formatBytes(progress.bytes)}</span>
-        <button onClick={() => ctrl.current?.abort()} className="ml-1 hover:text-fg" aria-label="Cancel">
+        {/* Phones: the ring alone says how far along it is (the tabs need the room) */}
+        <span className="max-sm:hidden">
+          {pct}% · {formatBytes(progress.bytes)}
+        </span>
+        <span className="sr-only sm:hidden">{pct}%</span>
+        <button onClick={() => ctrl.current?.abort()} className="ml-1 hover:text-fg max-sm:ml-0" aria-label="Cancel saving the map">
           <X className="size-3.5" />
         </button>
       </div>
