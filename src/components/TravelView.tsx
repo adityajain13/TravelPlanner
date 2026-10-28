@@ -33,6 +33,8 @@ const toMin = (t?: string) => (t && /^\d{1,2}:\d{2}/.test(t) ? +t.slice(0, t.ind
 const dirUrl = (lat: number, lng: number, mode?: TravelMode, placeId?: string) =>
   `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}${placeId ? `&destination_place_id=${placeId}` : ""}${mode ? `&travelmode=${GMAPS_MODE[mode]}` : ""}`;
 
+type Legs = Map<string, Leg> | undefined;
+
 /**
  * Travel mode (phones): one day at a time, the next thing first, big tap targets, no photos and
  * no map unless asked (battery and data). Directions open Google Maps from where you are.
@@ -65,182 +67,273 @@ export function TravelView(p: Props) {
   const tonight = p.reservations.find((r) => r.type === "lodging" && r.startDate && r.startDate <= day.date! && (r.endDate ?? r.startDate) > day.date!);
   let n = 0;
   const numberOf = new Map(places.map((i) => [i.id, ++n]));
-
-  const legLine = (id: string) => {
-    const keys = legs ? [...legs.keys()].filter((k) => k === id || k.startsWith(`${id}#`)) : [];
-    return keys.map((k) => {
-      const l = legs!.get(k)!;
-      const r = typeof l.state === "object" ? l.state : null;
-      if (!r || r.mode === "flight") return null;
-      return (
-        <p key={k} className="ml-[4.25rem] flex items-center gap-1.5 py-1 text-[13px] text-muted">
-          <span className="h-4 w-px bg-line" />
-          {l.who?.length ? `${l.who.join(" & ")} · ` : ""}
-          {r.duration ? formatDuration(r.duration) : ""} · {formatDistance(r.distance)} {l.mode === "walk" ? "walk" : l.mode === "transit" ? "transit" : l.mode === "bike" ? "bike" : "drive"}
-        </p>
-      );
-    });
-  };
+  const toggleStop = (id: string) => setOpen((o) => (o === id ? null : id));
+  const prevDay = () => (setIdx((i) => i - 1), setOpen(null));
+  const nextDay = () => (setIdx((i) => i + 1), setOpen(null));
 
   return (
     <div className="flex h-full flex-col bg-bg">
-      {/* Header: back to the full app, the trip, the map on demand */}
-      <header className="flex shrink-0 items-center gap-2 border-b border-line px-3 pt-[max(env(safe-area-inset-top),0.5rem)] pb-2">
-        <button onClick={p.onExit} className="flex items-center gap-1.5 rounded-full px-2.5 py-2 text-[13px] font-semibold text-muted active:bg-surface-2" aria-label="Leave travel mode">
-          <ArrowLeft className="size-4" /> Full view
-        </button>
-        <p className="min-w-0 flex-1 truncate text-center font-display text-[17px]">{p.title}</p>
-        <button onClick={() => setMap(true)} className="flex items-center gap-1.5 rounded-full border border-line px-3 py-2 text-[13px] font-semibold active:bg-surface-2">
-          <MapIcon className="size-4" /> Map
-        </button>
-      </header>
-
-      {/* Day switcher */}
-      <div className="flex shrink-0 items-center gap-2 border-b border-line px-2 py-1.5">
-        <button disabled={idx === 0} onClick={() => (setIdx((i) => i - 1), setOpen(null))} className="grid size-11 place-items-center rounded-full text-muted active:bg-surface-2 disabled:opacity-30" aria-label="Previous day">
-          <ChevronLeft className="size-5" />
-        </button>
-        <div className="min-w-0 flex-1 text-center">
-          <p className="flex items-center justify-center gap-2 text-[16px] font-bold">
-            <span className="size-2.5 shrink-0 rounded-full" style={{ background: day.color }} />
-            <span className="truncate">Day {day.dayNumber} · {formatDayHeading(day.date!)}</span>
-          </p>
-          {!isToday && todayIdx >= 0 && (
-            <button onClick={() => setIdx(todayIdx)} className="text-[12px] font-semibold text-accent">
-              Back to today
-            </button>
-          )}
-          {!isToday && todayIdx < 0 && <p className="text-[12px] text-muted">{today < start ? "Trip hasn't started" : "Trip is over"}</p>}
-        </div>
-        <button disabled={idx >= p.days.length - 1} onClick={() => (setIdx((i) => i + 1), setOpen(null))} className="grid size-11 place-items-center rounded-full text-muted active:bg-surface-2 disabled:opacity-30" aria-label="Next day">
-          <ChevronRight className="size-5" />
-        </button>
-      </div>
+      <TravelHeader title={p.title} onExit={p.onExit} onMap={() => setMap(true)} />
+      <DaySwitcher
+        day={day}
+        isToday={isToday}
+        todayIdx={todayIdx}
+        start={start}
+        today={today}
+        atFirst={idx === 0}
+        atLast={idx >= p.days.length - 1}
+        onPrev={prevDay}
+        onNext={nextDay}
+        onToday={() => setIdx(todayIdx)}
+      />
 
       <div className="min-h-0 flex-1 overflow-y-auto pb-[max(env(safe-area-inset-bottom),1.5rem)]">
-        {/* Now / next */}
-        {isToday && (current || next) && (
-          <div className="m-3 space-y-3 rounded-2xl border border-accent/40 bg-accent/10 p-4">
-            {current && (
-              <div>
-                <p className="text-[11px] font-bold tracking-wider text-accent uppercase">Now</p>
-                <p className="truncate text-[18px] font-bold">{current.name}</p>
-                {current.endTime && <p className="text-[13px] text-muted">until {fmtTime(current.endTime)}</p>}
-              </div>
-            )}
-            {next && (
-              <div>
-                <p className="text-[11px] font-bold tracking-wider text-accent uppercase">Next · {fmtTime(next.startTime)}</p>
-                <p className="truncate text-[18px] font-bold">{next.name}</p>
-                {(() => {
-                  const l = legs?.get(next.id);
-                  const r = l && typeof l.state === "object" ? l.state : null;
-                  return r?.duration ? <p className="text-[13px] text-muted">{formatDuration(r.duration)} from the stop before</p> : null;
-                })()}
-                {next.lat != null && next.lng != null && (
-                  <a href={dirUrl(next.lat, next.lng, legs?.get(next.id)?.mode, next.googlePlaceId)} target="_blank" rel="noreferrer" className="mt-2.5 flex items-center justify-center gap-2 rounded-xl bg-accent py-3 text-[15px] font-bold text-on-accent active:opacity-90">
-                    <Navigation className="size-4" /> Directions
-                  </a>
-                )}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Today's bookings: what you'll be asked for at the counter */}
-        {chips.length > 0 && (
-          <div className="space-y-2 px-3 pt-3">
-            {chips.map((c, i) => (
-              <div key={`${c.r.id}-${i}`} className="rounded-2xl border border-line bg-surface p-3.5">
-                <div className="flex items-center gap-3">
-                  <span className="grid size-9 shrink-0 place-items-center rounded-xl bg-surface-2 text-muted [&>svg]:size-4">{RES_ICON[c.r.type]}</span>
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-[15px] font-bold">{c.r.title}</p>
-                    <p className="truncate text-[13px] text-muted">
-                      {c.verb}
-                      {c.clock ? ` · ${fmtTime(c.clock)}` : ""}
-                      {c.people ? ` · ${c.people} people` : ""}
-                    </p>
-                  </div>
-                </div>
-                {[...new Set((c.copies ?? [c.r]).map((x) => x.confirmation).filter(Boolean))].map((conf) => (
-                  <CopyRow key={conf} label="Confirmation" value={conf!} />
-                ))}
-                {c.verb !== "Staying" &&
-                  (c.copies ?? [c.r])
-                    .filter((x) => x.notes?.trim())
-                    .map((x) => (
-                      <div key={x.id} className="mt-2.5 text-[14px] leading-snug text-muted">
-                        {(c.copies?.length ?? 1) > 1 && x.traveler && <p className="mb-0.5 text-[11px] font-bold tracking-wide text-fg/80 uppercase">{x.traveler}</p>}
-                        <RichText text={x.notes!} />
-                      </div>
-                    ))}
-                {c.r.lat != null && c.r.lng != null && c.r.type !== "flight" && (
-                  <a href={dirUrl(c.r.lat, c.r.lng)} target="_blank" rel="noreferrer" className="mt-3 flex items-center justify-center gap-2 rounded-xl border border-line py-2.5 text-[14px] font-semibold active:bg-surface-2">
-                    <Navigation className="size-4" /> Directions
-                  </a>
-                )}
-              </div>
-            ))}
-          </div>
-        )}
-
-        {/* The day's stops */}
-        <ol className="mt-3">
-          {day.items.length === 0 && <li className="px-6 py-10 text-center text-muted">Nothing planned this day.</li>}
-          {day.items.map((it) => (
-            <li key={it.id}>
-              {it.kind === "place" && legLine(it.id)}
-              {it.kind === "place" ? (
-                <StopRow it={it} n={numberOf.get(it.id)!} color={day.color} open={open === it.id} onToggle={() => setOpen((o) => (o === it.id ? null : it.id))} mode={legs?.get(it.id)?.mode} current={current?.id === it.id} weekday={new Date(`${day.date}T12:00`).getDay()} />
-              ) : it.kind === "checklist" ? (
-                <div className="mx-3 my-2 rounded-2xl bg-surface px-4 py-3">
-                  {it.name && <p className="mb-1.5 text-[15px] font-bold">{it.name}</p>}
-                  {(it.checks ?? []).map((c) => (
-                    <label key={c.id} className="flex min-h-11 items-center gap-3 text-[15px]">
-                      <input type="checkbox" checked={!!c.done} disabled={!p.onToggleCheck} onChange={() => p.onToggleCheck?.(it.id, c.id)} className="size-5 accent-[var(--accent)]" />
-                      <RichLine text={c.text} className={c.done ? "text-muted line-through" : ""} />
-                    </label>
-                  ))}
-                </div>
-              ) : (
-                <div className="mx-3 my-2 rounded-2xl bg-surface px-4 py-3 text-[15px] text-muted">
-                  <RichText text={it.name} />
-                </div>
-              )}
-            </li>
-          ))}
-          {legLine("end")}
-        </ol>
-
-        {/* Where you sleep tonight */}
-        {tonight && (
-          <div className="m-3 flex items-center gap-3 rounded-2xl border border-line bg-surface p-3.5">
-            <BedDouble className="size-5 shrink-0 text-muted" />
-            <div className="min-w-0 flex-1">
-              <p className="text-[11px] font-bold tracking-wider text-muted uppercase">Tonight</p>
-              <p className="truncate text-[15px] font-bold">{tonight.title}</p>
-              {tonight.address && <p className="truncate text-[13px] text-muted">{tonight.address}</p>}
-            </div>
-            {tonight.lat != null && tonight.lng != null && (
-              <a href={dirUrl(tonight.lat, tonight.lng)} target="_blank" rel="noreferrer" className="grid size-11 shrink-0 place-items-center rounded-full bg-accent text-on-accent" aria-label="Directions to the hotel">
-                <Navigation className="size-4" />
-              </a>
-            )}
-          </div>
-        )}
+        {isToday && (current || next) && <NowNextCard current={current} next={next} legs={legs} />}
+        <BookingCards chips={chips} />
+        <DayItems day={day} legs={legs} numberOf={numberOf} currentId={current?.id} open={open} onToggle={toggleStop} onToggleCheck={p.onToggleCheck} />
+        {tonight && <TonightCard tonight={tonight} />}
       </div>
 
-      {map && (
-        <div className="fixed inset-0 z-[95] bg-bg">
-          <Suspense fallback={null}>
-            <TripMap mini {...p.mapFor(day)} selectedId={null} onSelect={() => undefined} theme={p.theme} fitKey={day.key} />
-          </Suspense>
-          <button onClick={() => setMap(false)} className="absolute top-[max(env(safe-area-inset-top),0.75rem)] left-3 grid size-11 place-items-center rounded-full border border-line bg-surface shadow-lg" aria-label="Close map">
-            <X className="size-5" />
+      {map && <DayMapOverlay data={p.mapFor(day)} theme={p.theme} fitKey={day.key} onClose={() => setMap(false)} />}
+    </div>
+  );
+}
+
+/** Header: back to the full app, the trip, the map on demand. */
+function TravelHeader({ title, onExit, onMap }: { title: string; onExit: () => void; onMap: () => void }) {
+  return (
+    <header className="flex shrink-0 items-center gap-2 border-b border-line px-3 pt-[max(env(safe-area-inset-top),0.5rem)] pb-2">
+      <button onClick={onExit} className="flex items-center gap-1.5 rounded-full px-2.5 py-2 text-[13px] font-semibold text-muted active:bg-surface-2" aria-label="Leave travel mode">
+        <ArrowLeft className="size-4" /> Full view
+      </button>
+      <p className="min-w-0 flex-1 truncate text-center font-display text-[17px]">{title}</p>
+      <button onClick={onMap} className="flex items-center gap-1.5 rounded-full border border-line px-3 py-2 text-[13px] font-semibold active:bg-surface-2">
+        <MapIcon className="size-4" /> Map
+      </button>
+    </header>
+  );
+}
+
+/** Previous / next day, the day's heading, and a way back to today when viewing another day. */
+function DaySwitcher({
+  day,
+  isToday,
+  todayIdx,
+  start,
+  today,
+  atFirst,
+  atLast,
+  onPrev,
+  onNext,
+  onToday,
+}: {
+  day: SectionInfo;
+  isToday: boolean;
+  todayIdx: number;
+  start: string;
+  today: string;
+  atFirst: boolean;
+  atLast: boolean;
+  onPrev: () => void;
+  onNext: () => void;
+  onToday: () => void;
+}) {
+  return (
+    <div className="flex shrink-0 items-center gap-2 border-b border-line px-2 py-1.5">
+      <button disabled={atFirst} onClick={onPrev} className="grid size-11 place-items-center rounded-full text-muted active:bg-surface-2 disabled:opacity-30" aria-label="Previous day">
+        <ChevronLeft className="size-5" />
+      </button>
+      <div className="min-w-0 flex-1 text-center">
+        <p className="flex items-center justify-center gap-2 text-[16px] font-bold">
+          <span className="size-2.5 shrink-0 rounded-full" style={{ background: day.color }} />
+          <span className="truncate">Day {day.dayNumber} · {formatDayHeading(day.date!)}</span>
+        </p>
+        {!isToday && todayIdx >= 0 && (
+          <button onClick={onToday} className="text-[12px] font-semibold text-accent">
+            Back to today
           </button>
+        )}
+        {!isToday && todayIdx < 0 && <p className="text-[12px] text-muted">{today < start ? "Trip hasn't started" : "Trip is over"}</p>}
+      </div>
+      <button disabled={atLast} onClick={onNext} className="grid size-11 place-items-center rounded-full text-muted active:bg-surface-2 disabled:opacity-30" aria-label="Next day">
+        <ChevronRight className="size-5" />
+      </button>
+    </div>
+  );
+}
+
+/** Now / next: the stop under way today and the one after, with directions to the next. */
+function NowNextCard({ current, next, legs }: { current?: Item; next?: Item; legs: Legs }) {
+  return (
+    <div className="m-3 space-y-3 rounded-2xl border border-accent/40 bg-accent/10 p-4">
+      {current && (
+        <div>
+          <p className="text-[11px] font-bold tracking-wider text-accent uppercase">Now</p>
+          <p className="truncate text-[18px] font-bold">{current.name}</p>
+          {current.endTime && <p className="text-[13px] text-muted">until {fmtTime(current.endTime)}</p>}
         </div>
       )}
+      {next && (
+        <div>
+          <p className="text-[11px] font-bold tracking-wider text-accent uppercase">Next · {fmtTime(next.startTime)}</p>
+          <p className="truncate text-[18px] font-bold">{next.name}</p>
+          {(() => {
+            const l = legs?.get(next.id);
+            const r = l && typeof l.state === "object" ? l.state : null;
+            return r?.duration ? <p className="text-[13px] text-muted">{formatDuration(r.duration)} from the stop before</p> : null;
+          })()}
+          {next.lat != null && next.lng != null && (
+            <a href={dirUrl(next.lat, next.lng, legs?.get(next.id)?.mode, next.googlePlaceId)} target="_blank" rel="noreferrer" className="mt-2.5 flex items-center justify-center gap-2 rounded-xl bg-accent py-3 text-[15px] font-bold text-on-accent active:opacity-90">
+              <Navigation className="size-4" /> Directions
+            </a>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Today's bookings: what you'll be asked for at the counter. */
+function BookingCards({ chips }: { chips: ReturnType<typeof dayChips> }) {
+  if (!chips.length) return null;
+  return (
+    <div className="space-y-2 px-3 pt-3">
+      {chips.map((c, i) => (
+        <div key={`${c.r.id}-${i}`} className="rounded-2xl border border-line bg-surface p-3.5">
+          <div className="flex items-center gap-3">
+            <span className="grid size-9 shrink-0 place-items-center rounded-xl bg-surface-2 text-muted [&>svg]:size-4">{RES_ICON[c.r.type]}</span>
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-[15px] font-bold">{c.r.title}</p>
+              <p className="truncate text-[13px] text-muted">
+                {c.verb}
+                {c.clock ? ` · ${fmtTime(c.clock)}` : ""}
+                {c.people ? ` · ${c.people} people` : ""}
+              </p>
+            </div>
+          </div>
+          {[...new Set((c.copies ?? [c.r]).map((x) => x.confirmation).filter(Boolean))].map((conf) => (
+            <CopyRow key={conf} label="Confirmation" value={conf!} />
+          ))}
+          {c.verb !== "Staying" &&
+            (c.copies ?? [c.r])
+              .filter((x) => x.notes?.trim())
+              .map((x) => (
+                <div key={x.id} className="mt-2.5 text-[14px] leading-snug text-muted">
+                  {(c.copies?.length ?? 1) > 1 && x.traveler && <p className="mb-0.5 text-[11px] font-bold tracking-wide text-fg/80 uppercase">{x.traveler}</p>}
+                  <RichText text={x.notes!} />
+                </div>
+              ))}
+          {c.r.lat != null && c.r.lng != null && c.r.type !== "flight" && (
+            <a href={dirUrl(c.r.lat, c.r.lng)} target="_blank" rel="noreferrer" className="mt-3 flex items-center justify-center gap-2 rounded-xl border border-line py-2.5 text-[14px] font-semibold active:bg-surface-2">
+              <Navigation className="size-4" /> Directions
+            </a>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** The day's stops in order, each with its travel line, plus the checklists and notes. */
+function DayItems({
+  day,
+  legs,
+  numberOf,
+  currentId,
+  open,
+  onToggle,
+  onToggleCheck,
+}: {
+  day: SectionInfo;
+  legs: Legs;
+  numberOf: Map<string, number>;
+  currentId?: string;
+  open: string | null;
+  onToggle: (id: string) => void;
+  onToggleCheck?: Props["onToggleCheck"];
+}) {
+  return (
+    <ol className="mt-3">
+      {day.items.length === 0 && <li className="px-6 py-10 text-center text-muted">Nothing planned this day.</li>}
+      {day.items.map((it) => (
+        <li key={it.id}>
+          {it.kind === "place" && legLine(legs, it.id)}
+          {it.kind === "place" ? (
+            <StopRow it={it} n={numberOf.get(it.id)!} color={day.color} open={open === it.id} onToggle={() => onToggle(it.id)} mode={legs?.get(it.id)?.mode} current={currentId === it.id} weekday={new Date(`${day.date}T12:00`).getDay()} />
+          ) : it.kind === "checklist" ? (
+            <ChecklistCard it={it} onToggleCheck={onToggleCheck} />
+          ) : (
+            <div className="mx-3 my-2 rounded-2xl bg-surface px-4 py-3 text-[15px] text-muted">
+              <RichText text={it.name} />
+            </div>
+          )}
+        </li>
+      ))}
+      {legLine(legs, "end")}
+    </ol>
+  );
+}
+
+function ChecklistCard({ it, onToggleCheck }: { it: Item; onToggleCheck?: Props["onToggleCheck"] }) {
+  return (
+    <div className="mx-3 my-2 rounded-2xl bg-surface px-4 py-3">
+      {it.name && <p className="mb-1.5 text-[15px] font-bold">{it.name}</p>}
+      {(it.checks ?? []).map((c) => (
+        <label key={c.id} className="flex min-h-11 items-center gap-3 text-[15px]">
+          <input type="checkbox" checked={!!c.done} disabled={!onToggleCheck} onChange={() => onToggleCheck?.(it.id, c.id)} className="size-5 accent-[var(--accent)]" />
+          <RichLine text={c.text} className={c.done ? "text-muted line-through" : ""} />
+        </label>
+      ))}
+    </div>
+  );
+}
+
+/** The travel time and distance line(s) under a stop (or the day's end), from the day's legs. */
+function legLine(legs: Legs, id: string) {
+  const keys = legs ? [...legs.keys()].filter((k) => k === id || k.startsWith(`${id}#`)) : [];
+  return keys.map((k) => {
+    const l = legs!.get(k)!;
+    const r = typeof l.state === "object" ? l.state : null;
+    if (!r || r.mode === "flight") return null;
+    return (
+      <p key={k} className="ml-[4.25rem] flex items-center gap-1.5 py-1 text-[13px] text-muted">
+        <span className="h-4 w-px bg-line" />
+        {l.who?.length ? `${l.who.join(" & ")} · ` : ""}
+        {r.duration ? formatDuration(r.duration) : ""} · {formatDistance(r.distance)} {l.mode === "walk" ? "walk" : l.mode === "transit" ? "transit" : l.mode === "bike" ? "bike" : "drive"}
+      </p>
+    );
+  });
+}
+
+/** Where you sleep tonight, with directions to the hotel. */
+function TonightCard({ tonight }: { tonight: Reservation }) {
+  return (
+    <div className="m-3 flex items-center gap-3 rounded-2xl border border-line bg-surface p-3.5">
+      <BedDouble className="size-5 shrink-0 text-muted" />
+      <div className="min-w-0 flex-1">
+        <p className="text-[11px] font-bold tracking-wider text-muted uppercase">Tonight</p>
+        <p className="truncate text-[15px] font-bold">{tonight.title}</p>
+        {tonight.address && <p className="truncate text-[13px] text-muted">{tonight.address}</p>}
+      </div>
+      {tonight.lat != null && tonight.lng != null && (
+        <a href={dirUrl(tonight.lat, tonight.lng)} target="_blank" rel="noreferrer" className="grid size-11 shrink-0 place-items-center rounded-full bg-accent text-on-accent" aria-label="Directions to the hotel">
+          <Navigation className="size-4" />
+        </a>
+      )}
+    </div>
+  );
+}
+
+/** Full-screen mini map of one day, closed with the X. */
+function DayMapOverlay({ data, theme, fitKey, onClose }: { data: { pins: Pin[]; routes: Route[] }; theme: Theme; fitKey: string; onClose: () => void }) {
+  return (
+    <div className="fixed inset-0 z-[95] bg-bg">
+      <Suspense fallback={null}>
+        <TripMap mini {...data} selectedId={null} onSelect={() => undefined} theme={theme} fitKey={fitKey} />
+      </Suspense>
+      <button onClick={onClose} className="absolute top-[max(env(safe-area-inset-top),0.75rem)] left-3 grid size-11 place-items-center rounded-full border border-line bg-surface shadow-lg" aria-label="Close map">
+        <X className="size-5" />
+      </button>
     </div>
   );
 }

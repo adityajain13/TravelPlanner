@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type RefObject } from "react";
 import * as maplibregl from "maplibre-gl";
 import type { GeoJSONSource, LngLatLike, MapLayerMouseEvent } from "maplibre-gl";
 import type { FeatureCollection } from "geojson";
@@ -96,15 +96,71 @@ const readMode = (): MapMode => {
   }
 };
 
+type Latest = { pins: Pin[]; routes: Route[]; selectedId: string | null; onSelect: (id: string) => void; focusColor?: string };
+type MapRef = RefObject<maplibregl.Map | null>;
+type LatestRef = RefObject<Latest>;
+
 export function TripMap({ pins, routes, selectedId, onSelect, theme, fitKey, fallbackCenter, inset, frame, focusColor, holdView, mini, frameAll }: Props) {
   const container = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const [mode, setMode] = useState<MapMode>(readMode);
-  const latest = useRef({ pins, routes, selectedId, onSelect, focusColor });
+  const latest = useRef<Latest>({ pins, routes, selectedId, onSelect, focusColor });
   latest.current = { pins, routes, selectedId, onSelect, focusColor };
   const firstStyle = useRef(true);
+  const popup = useRef<maplibregl.Popup | null>(null);
+  const centered = useRef<{ id: string; insetKnown: boolean } | null>(null);
 
-  // Create the map once
+  useMapInstance({ container, mapRef, latest, theme, mode, mini, fallbackCenter });
+  useMapStyle({ mapRef, firstStyle, theme, mode });
+  useMapData({ mapRef, latest, pins, routes, selectedId, focusColor });
+  useMapFraming({ mapRef, latest, pins, routes, fitKey, frame, inset, mini, frameAll });
+  useSelectionPopup({ mapRef, popup, centered, pins, selectedId, inset, holdView });
+
+  if (!PROTOMAPS_KEY) {
+    return (
+      <div className="grid h-full place-items-center bg-surface-2 p-8 text-center text-sm text-muted">
+        <div className="max-w-xs space-y-2">
+          <MapIcon className="mx-auto size-6" />
+          <p>
+            Add <code className="text-fg">VITE_PROTOMAPS_KEY</code> to <code className="text-fg">.env</code> to load the
+            map.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="relative h-full w-full">
+      <div ref={container} className="h-full w-full" />
+      {MAPTILER_KEY && !mini && <ModeToggle mode={mode} onMode={setMode} />}
+    </div>
+  );
+}
+
+function ModeToggle({ mode, onMode }: { mode: MapMode; onMode: (m: MapMode) => void }) {
+  return (
+    <div className="absolute top-3 right-3 flex overflow-hidden rounded-full border border-line bg-surface/90 text-xs shadow-lg backdrop-blur">
+      <ModeButton active={mode === "map"} onClick={() => onMode("map")} icon={<Layers className="size-3.5" />}>
+        Map
+      </ModeButton>
+      <ModeButton active={mode === "satellite"} onClick={() => onMode("satellite")} icon={<Satellite className="size-3.5" />}>
+        Satellite
+      </ModeButton>
+    </div>
+  );
+}
+
+/** Creates the map once (and tears it down on unmount), with its load, click and resize wiring. */
+function useMapInstance({
+  container,
+  mapRef,
+  latest,
+  theme,
+  mode,
+  mini,
+  fallbackCenter,
+}: Pick<Props, "theme" | "mini" | "fallbackCenter"> & { container: RefObject<HTMLDivElement | null>; mapRef: MapRef; latest: LatestRef; mode: MapMode }) {
   useEffect(() => {
     if (!container.current || !PROTOMAPS_KEY) return;
     const bounds = () => (mini ? allBounds(latest.current.pins, latest.current.routes) : coreBounds(latest.current.pins));
@@ -156,8 +212,10 @@ export function TripMap({ pins, routes, selectedId, onSelect, theme, fitKey, fal
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+}
 
-  // Theme / satellite switch
+/** Theme / satellite switch: restyles the map and remembers the satellite choice. */
+function useMapStyle({ mapRef, firstStyle, theme, mode }: { mapRef: MapRef; firstStyle: RefObject<boolean>; theme: Theme; mode: MapMode }) {
   useEffect(() => {
     if (firstStyle.current) {
       firstStyle.current = false;
@@ -170,13 +228,18 @@ export function TripMap({ pins, routes, selectedId, onSelect, theme, fitKey, fal
       /* ignore */
     }
   }, [theme, mode]);
+}
 
-  // Data changes
+/** Pushes pins and routes into the map's sources whenever they change. */
+function useMapData({ mapRef, latest, pins, routes, selectedId, focusColor }: Pick<Props, "pins" | "routes" | "selectedId" | "focusColor"> & { mapRef: MapRef; latest: LatestRef }) {
   useEffect(() => {
     const map = mapRef.current;
     if (map?.isStyleLoaded()) pushData(map, latest.current);
   }, [pins, routes, selectedId, focusColor]);
+}
 
+/** Framing: the mini map's fit, re-framing on fitKey, and framing one day's pins. */
+function useMapFraming({ mapRef, latest, pins, routes, fitKey, frame, inset, mini, frameAll }: Pick<Props, "pins" | "routes" | "fitKey" | "frame" | "inset" | "mini" | "frameAll"> & { mapRef: MapRef; latest: LatestRef }) {
   // Mini: keep everything in frame as routes come in or stops change
   const miniKey = mini ? `${pins.map((p) => p.id).join()}|${routes.reduce((n, r) => n + r.coords.length, 0)}` : "";
   useEffect(() => {
@@ -212,10 +275,22 @@ export function TripMap({ pins, routes, selectedId, onSelect, theme, fitKey, fal
     map.fitBounds(coreBounds(sel)!, { padding: { top: 64, left: 64, right: 64, bottom }, maxZoom: FIT.maxZoom, duration: 700 });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [frame?.nonce]);
+}
 
-  // Follow selection, with a small photo card above the pin (like Wanderlog's map popups)
-  const popup = useRef<maplibregl.Popup | null>(null);
-  const centered = useRef<{ id: string; insetKnown: boolean } | null>(null);
+/** Follows the selection: frames the selected pin and shows its photo card (or the panel takes over). */
+function useSelectionPopup({
+  mapRef,
+  popup,
+  centered,
+  pins,
+  selectedId,
+  inset,
+  holdView,
+}: Pick<Props, "pins" | "selectedId" | "inset" | "holdView"> & {
+  mapRef: MapRef;
+  popup: RefObject<maplibregl.Popup | null>;
+  centered: RefObject<{ id: string; insetKnown: boolean } | null>;
+}) {
   useEffect(() => {
     const map = mapRef.current;
     const p = pins.find((x) => x.id === selectedId);
@@ -235,75 +310,46 @@ export function TripMap({ pins, routes, selectedId, onSelect, theme, fitKey, fal
     }
     // The place panel replaces the little photo popup
     if (p.name && !inset) {
-      const el = document.createElement("div");
-      el.className = "tp-popup";
-      if (p.image) {
-        const img = document.createElement("img");
-        img.src = p.image;
-        img.referrerPolicy = /googleapis\.com\//.test(p.image) ? "strict-origin-when-cross-origin" : "no-referrer";
-        img.alt = "";
-        img.onerror = () => img.remove();
-        el.append(img);
-      }
-      const t = document.createElement("p");
-      t.textContent = p.name; // textContent: names come from user/OSM data
-      el.append(t);
-      if (p.image && p.unsplash) {
-        // Unsplash attribution: "Photo by <name> on Unsplash", both linked (textContent keeps it safe)
-        const c = document.createElement("small");
-        const link = (href: string | undefined, text: string) => {
-          const a = document.createElement("a");
-          a.href = href ?? "https://unsplash.com/";
-          a.target = "_blank";
-          a.rel = "noreferrer";
-          a.textContent = text;
-          return a;
-        };
-        c.append("Photo by ", link(p.unsplash.author, p.unsplash.name), " on ", link("https://unsplash.com/?utm_source=travelplanner&utm_medium=referral", "Unsplash"));
-        c.style.cssText = "display:block;font-size:10px;opacity:.7;margin-top:2px";
-        el.append(c);
-      }
       popup.current = new maplibregl.Popup({ closeButton: false, closeOnClick: false, offset: [0, -44], maxWidth: "220px", className: "tp-popup-wrap" })
         .setLngLat([p.lng, p.lat])
-        .setDOMContent(el)
+        .setDOMContent(popupElement(p))
         .addTo(map);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedId, pins.find((x) => x.id === selectedId)?.image, inset ? Math.round(inset.top / 80) * 80 + Math.round(inset.bottom / 80) * 80 * 1000 : -1]);
+}
 
-  if (!PROTOMAPS_KEY) {
-    return (
-      <div className="grid h-full place-items-center bg-surface-2 p-8 text-center text-sm text-muted">
-        <div className="max-w-xs space-y-2">
-          <MapIcon className="mx-auto size-6" />
-          <p>
-            Add <code className="text-fg">VITE_PROTOMAPS_KEY</code> to <code className="text-fg">.env</code> to load the
-            map.
-          </p>
-        </div>
-      </div>
-    );
+/** The photo card shown above a selected pin: image, name, and the Unsplash credit when there is one. */
+function popupElement(p: Pin): HTMLDivElement {
+  const el = document.createElement("div");
+  el.className = "tp-popup";
+  if (p.image) {
+    const img = document.createElement("img");
+    img.src = p.image;
+    img.referrerPolicy = /googleapis\.com\//.test(p.image) ? "strict-origin-when-cross-origin" : "no-referrer";
+    img.alt = "";
+    img.onerror = () => img.remove();
+    el.append(img);
   }
-
-  return (
-    <div className="relative h-full w-full">
-      <div ref={container} className="h-full w-full" />
-      {MAPTILER_KEY && !mini && (
-        <div className="absolute top-3 right-3 flex overflow-hidden rounded-full border border-line bg-surface/90 text-xs shadow-lg backdrop-blur">
-          <ModeButton active={mode === "map"} onClick={() => setMode("map")} icon={<Layers className="size-3.5" />}>
-            Map
-          </ModeButton>
-          <ModeButton
-            active={mode === "satellite"}
-            onClick={() => setMode("satellite")}
-            icon={<Satellite className="size-3.5" />}
-          >
-            Satellite
-          </ModeButton>
-        </div>
-      )}
-    </div>
-  );
+  const t = document.createElement("p");
+  t.textContent = p.name ?? ""; // textContent: names come from user/OSM data
+  el.append(t);
+  if (p.image && p.unsplash) {
+    // Unsplash attribution: "Photo by <name> on Unsplash", both linked (textContent keeps it safe)
+    const c = document.createElement("small");
+    const link = (href: string | undefined, text: string) => {
+      const a = document.createElement("a");
+      a.href = href ?? "https://unsplash.com/";
+      a.target = "_blank";
+      a.rel = "noreferrer";
+      a.textContent = text;
+      return a;
+    };
+    c.append("Photo by ", link(p.unsplash.author, p.unsplash.name), " on ", link("https://unsplash.com/?utm_source=travelplanner&utm_medium=referral", "Unsplash"));
+    c.style.cssText = "display:block;font-size:10px;opacity:.7;margin-top:2px";
+    el.append(c);
+  }
+  return el;
 }
 
 function ModeButton(props: { active: boolean; onClick: () => void; icon: React.ReactNode; children: React.ReactNode }) {

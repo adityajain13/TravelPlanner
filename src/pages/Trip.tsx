@@ -21,11 +21,11 @@ import { ORPHAN } from "../lib/itinerary";
 import { fetchInbox, type InboxItem } from "../lib/inbox";
 import { useItinerary } from "../hooks/useItinerary";
 import { useTripUpkeep } from "../hooks/useTripUpkeep";
+import { useTripViewState } from "../hooks/useTripViewState";
 import { dayChips, ReservationsPanel } from "../components/Reservations";
 import { BudgetPanel } from "../components/Budget";
 import { TripOverview } from "../components/TripOverview";
 import type { Tab } from "../components/Contents";
-import type { PanelMode } from "../components/PlacePanel";
 import type { SectionTarget } from "../components/SectionPicker";
 import { ContentsColumn, ContentsDrawer } from "../components/trip/ContentsColumn";
 import { CollapsedContentsBar } from "../components/trip/CollapsedContentsBar";
@@ -53,90 +53,27 @@ export function TripPage() {
   // Multi-select (checkboxes) — separate from the single "open" card
   const [checked, setChecked] = useState<Set<string>>(new Set());
   const lastChecked = useRef<string | null>(null);
-  const [panelMode, setPanelModeState] = useState<PanelMode>(() => {
-    try {
-      return localStorage.getItem("tp-place-panel") === "compact" ? "compact" : "full";
-    } catch {
-      return "full";
-    }
-  });
-  const setPanelMode = (m: PanelMode) => {
-    setPanelModeState(m);
-    try {
-      localStorage.setItem("tp-place-panel", m);
-    } catch {
-      /* private mode */
-    }
-  };
+  // Device-local view state (panel mode, hidden columns, day drafts, unpinned places)
+  const { panelMode, setPanelMode, dayDraft, setDayDraft, contentsHidden, hideContents, planHidden, togglePlan, unpinned, dismissUnpinned } = useTripViewState(id);
   const [panelInset, setPanelInset] = useState<{ top: number; bottom: number } | null>(null);
   const [costFor, setCostFor] = useState<string | null>(null); // stop whose cost details are open
   const [focus, setFocus] = useState<string | null>(null); // section shown alone on the map
-  // Day drafts: which draft each day shows (by date; absent = the day's plan), kept per device
-  const [dayDraft, setDayDraftState] = useState<Record<string, string>>(() => {
-    try {
-      return JSON.parse(localStorage.getItem(`tp-drafts-${id}`) ?? "{}");
-    } catch {
-      return {};
-    }
-  });
-  const setDayDraft = (date: string, draft: string | undefined) =>
-    setDayDraftState((cur) => {
-      const next = { ...cur };
-      if (draft) next[date] = draft;
-      else delete next[date];
-      try {
-        localStorage.setItem(`tp-drafts-${id}`, JSON.stringify(next));
-      } catch {
-        /* private mode */
-      }
-      return next;
-    });
   const [compareDay, setCompareDay] = useState<string | null>(null);
   const [receiptFor, setReceiptFor] = useState<ReceiptTarget | null>(null);
   const [mobileView, setMobileView] = useState<"plan" | "map">("plan");
   const [dragging, setDragging] = useState<Item | null>(null);
   const [sharing, setSharing] = useState(false);
   const [tab, setTab] = useState<Tab>("plan");
-  const [contentsHidden, setContentsHidden] = useState(() => {
-    try {
-      return localStorage.getItem("tp-contents-hidden") === "1";
-    } catch {
-      return false;
-    }
-  });
   const [contentsDrawer, setContentsDrawer] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [mapPicked, setMapPicked] = useState<string | null>(null);
   const [dayFrame, setDayFrame] = useState<DayFrame | null>(null);
-  const [planHidden, setPlanHidden] = useState(() => {
-    try {
-      return localStorage.getItem("tp-plan-hidden") === "1";
-    } catch {
-      return false;
-    }
-  });
-  const togglePlan = (hidden: boolean) => {
-    setPlanHidden(hidden);
-    try {
-      localStorage.setItem("tp-plan-hidden", hidden ? "1" : "0");
-    } catch {
-      /* private mode */
-    }
-  };
   const headerRef = useRef<HTMLElement>(null);
   const fx = useConverter(state?.meta.currency ?? "CAD");
   const [editingRes, setEditingRes] = useState<Partial<Reservation> | null>(null);
   const [pickingCover, setPickingCover] = useState(false);
   const [photoFill, setPhotoFill] = useState<PhotoFill | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
-  // Places a Wanderlog import couldn't locate (set by the importer for this session)
-  const [unpinned, setUnpinned] = useState<string[]>(() => {
-    try {
-      return JSON.parse(sessionStorage.getItem(`tp-unpinned-${id}`) ?? "[]");
-    } catch {
-      return [];
-    }
-  });
   const [waited, setWaited] = useState(false);
 
   // Trip index row tells us whether this is our trip or one opened from a share link
@@ -274,14 +211,6 @@ export function TripPage() {
     setSelectedId(itemId);
     requestAnimationFrame(() => scrollToId(scrollRef.current, `item-${itemId}`, "center"));
   };
-  const hideContents = (hidden: boolean) => {
-    setContentsHidden(hidden);
-    try {
-      localStorage.setItem("tp-contents-hidden", hidden ? "1" : "0");
-    } catch {
-      /* private mode */
-    }
-  };
   const showContents = () => (window.matchMedia("(min-width: 1024px)").matches ? hideContents(false) : setContentsDrawer(true));
   const go = (next: Tab, targetId?: string) => {
     setTab(next);
@@ -308,7 +237,6 @@ export function TripPage() {
     go,
     subtitles: state.meta.subtitles,
   };
-  const dismissUnpinned = () => (sessionStorage.removeItem(`tp-unpinned-${id}`), setUnpinned([]));
   // Everything the itinerary's sections read or change
   const plan: PlanContext = {
     doc,
