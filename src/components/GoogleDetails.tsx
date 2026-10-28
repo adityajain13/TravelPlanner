@@ -10,10 +10,12 @@ interface Props {
   onSnapshot?: (d: Details) => void;
 }
 
+type LookupState = "idle" | "loading" | "error" | "notfound";
+
 /** Google data for a place: the saved snapshot first, refreshed when online and saved back. */
 export function GoogleDetails({ item, onLink, onSnapshot }: Props) {
   const [details, setDetails] = useState<Details | null>(item.google ?? null);
-  const [state, setState] = useState<"idle" | "loading" | "error" | "notfound">("idle");
+  const [state, setState] = useState<LookupState>("idle");
   const [error, setError] = useState("");
   const [online, setOnline] = useState(navigator.onLine);
   const [showHours, setShowHours] = useState(false);
@@ -54,58 +56,35 @@ export function GoogleDetails({ item, onLink, onSnapshot }: Props) {
 
   if (!GOOGLE_KEY) return null;
 
-  if (!details) {
-    return (
-      <div className="flex items-center gap-2 text-[13px]">
-        <button
-          onClick={load}
-          disabled={!online || state === "loading"}
-          className="flex items-center gap-1.5 rounded-full border border-line px-3 py-1.5 font-semibold text-muted transition-colors hover:border-accent hover:text-fg disabled:opacity-50"
-        >
-          {state === "loading" ? <Loader2 className="size-3.5 animate-spin" /> : !online ? <WifiOff className="size-3.5" /> : <GoogleG />}
-          {!online ? "Google details need a connection" : "Google details"}
-        </button>
-        {state === "notfound" && <span className="text-muted">No match on Google</span>}
-        {state === "error" && <span className="text-danger">{error}</span>}
-      </div>
-    );
-  }
+  if (!details) return <LookupPill online={online} state={state} error={error} onLoad={load} />;
 
-  const d = details;
+  return <SavedDetails d={details} savedAt={item.google ? item.google.fetchedAt : null} showHours={showHours} onToggleHours={() => setShowHours((s) => !s)} />;
+}
+
+/** The "Google details" button shown until the place has been looked up. */
+function LookupPill({ online, state, error, onLoad }: { online: boolean; state: LookupState; error: string; onLoad: () => void }) {
+  return (
+    <div className="flex items-center gap-2 text-[13px]">
+      <button
+        onClick={onLoad}
+        disabled={!online || state === "loading"}
+        className="flex items-center gap-1.5 rounded-full border border-line px-3 py-1.5 font-semibold text-muted transition-colors hover:border-accent hover:text-fg disabled:opacity-50"
+      >
+        {state === "loading" ? <Loader2 className="size-3.5 animate-spin" /> : !online ? <WifiOff className="size-3.5" /> : <GoogleG />}
+        {!online ? "Google details need a connection" : "Google details"}
+      </button>
+      {state === "notfound" && <span className="text-muted">No match on Google</span>}
+      {state === "error" && <span className="text-danger">{error}</span>}
+    </div>
+  );
+}
+
+/** The saved or freshly fetched Google card: photos, rating, hours, contact links. */
+function SavedDetails({ d, savedAt, showHours, onToggleHours }: { d: Details; savedAt: number | null; showHours: boolean; onToggleHours: () => void }) {
   return (
     <div className="space-y-2 rounded-lg border border-line bg-surface p-2.5 text-xs">
-      {d.photos.length > 0 && (
-        <div className="-mx-0.5 flex gap-1.5 overflow-x-auto pb-1">
-          {d.photos.map((ph) => (
-            <img
-              key={ph.name}
-              src={photoUrl(ph.name)}
-              alt=""
-              loading="lazy"
-              title={ph.attributions.map((a) => a.displayName).join(", ")}
-              className="h-24 w-36 shrink-0 rounded-md bg-surface-2 object-cover"
-            />
-          ))}
-        </div>
-      )}
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-muted">
-        {d.rating != null && (
-          <span className="flex items-center gap-1 text-fg">
-            <Star className="size-3.5 fill-current text-[#f2c14e]" />
-            {d.rating.toFixed(1)}
-            <span className="text-muted">({d.ratingCount?.toLocaleString()})</span>
-          </span>
-        )}
-        {d.priceLevel && PRICE_LABEL[d.priceLevel] && <span>{PRICE_LABEL[d.priceLevel]}</span>}
-        {d.openNow != null && (
-          <span className={d.openNow ? "text-accent" : "text-danger"}>{d.openNow ? "Open now" : "Closed now"}</span>
-        )}
-        {d.hours && (
-          <button onClick={() => setShowHours((s) => !s)} className="underline decoration-dotted underline-offset-2 hover:text-fg">
-            {showHours ? "Hide hours" : "Hours"}
-          </button>
-        )}
-      </div>
+      {d.photos.length > 0 && <PhotoStrip photos={d.photos} />}
+      <FactsRow d={d} showHours={showHours} onToggleHours={onToggleHours} />
       {showHours && d.hours && (
         <ul className="space-y-0.5 text-muted">
           {d.hours.map((h) => (
@@ -113,24 +92,70 @@ export function GoogleDetails({ item, onLink, onSnapshot }: Props) {
           ))}
         </ul>
       )}
-      <div className="flex flex-wrap gap-x-3 gap-y-1">
-        {d.phone && (
-          <a href={`tel:${d.phone.replace(/\s/g, "")}`} className="flex items-center gap-1 text-muted hover:text-fg">
-            <Phone className="size-3.5" /> {d.phone}
-          </a>
-        )}
-        {d.website && (
-          <a href={d.website} target="_blank" rel="noreferrer" className="flex items-center gap-1 text-muted hover:text-fg">
-            <Globe className="size-3.5" /> Website
-          </a>
-        )}
-        {d.mapsUri && (
-          <a href={d.mapsUri} target="_blank" rel="noreferrer" className="flex items-center gap-1 text-muted hover:text-fg">
-            <ExternalLink className="size-3.5" /> Google Maps
-          </a>
-        )}
-      </div>
-      <p className="text-[10px] text-muted/70">From Google{item.google ? ` · saved ${new Date(item.google.fetchedAt).toLocaleDateString()}` : ""}</p>
+      <LinksRow d={d} />
+      <p className="text-[10px] text-muted/70">From Google{savedAt !== null ? ` · saved ${new Date(savedAt).toLocaleDateString()}` : ""}</p>
+    </div>
+  );
+}
+
+function PhotoStrip({ photos }: { photos: Details["photos"] }) {
+  return (
+    <div className="-mx-0.5 flex gap-1.5 overflow-x-auto pb-1">
+      {photos.map((ph) => (
+        <img
+          key={ph.name}
+          src={photoUrl(ph.name)}
+          alt=""
+          loading="lazy"
+          title={ph.attributions.map((a) => a.displayName).join(", ")}
+          className="h-24 w-36 shrink-0 rounded-md bg-surface-2 object-cover"
+        />
+      ))}
+    </div>
+  );
+}
+
+/** Rating, price, open-now and the hours toggle. */
+function FactsRow({ d, showHours, onToggleHours }: { d: Details; showHours: boolean; onToggleHours: () => void }) {
+  return (
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-muted">
+      {d.rating != null && (
+        <span className="flex items-center gap-1 text-fg">
+          <Star className="size-3.5 fill-current text-[#f2c14e]" />
+          {d.rating.toFixed(1)}
+          <span className="text-muted">({d.ratingCount?.toLocaleString()})</span>
+        </span>
+      )}
+      {d.priceLevel && PRICE_LABEL[d.priceLevel] && <span>{PRICE_LABEL[d.priceLevel]}</span>}
+      {d.openNow != null && <span className={d.openNow ? "text-accent" : "text-danger"}>{d.openNow ? "Open now" : "Closed now"}</span>}
+      {d.hours && (
+        <button onClick={onToggleHours} className="underline decoration-dotted underline-offset-2 hover:text-fg">
+          {showHours ? "Hide hours" : "Hours"}
+        </button>
+      )}
+    </div>
+  );
+}
+
+/** Phone, website and the Google Maps page. */
+function LinksRow({ d }: { d: Details }) {
+  return (
+    <div className="flex flex-wrap gap-x-3 gap-y-1">
+      {d.phone && (
+        <a href={`tel:${d.phone.replace(/\s/g, "")}`} className="flex items-center gap-1 text-muted hover:text-fg">
+          <Phone className="size-3.5" /> {d.phone}
+        </a>
+      )}
+      {d.website && (
+        <a href={d.website} target="_blank" rel="noreferrer" className="flex items-center gap-1 text-muted hover:text-fg">
+          <Globe className="size-3.5" /> Website
+        </a>
+      )}
+      {d.mapsUri && (
+        <a href={d.mapsUri} target="_blank" rel="noreferrer" className="flex items-center gap-1 text-muted hover:text-fg">
+          <ExternalLink className="size-3.5" /> Google Maps
+        </a>
+      )}
     </div>
   );
 }
