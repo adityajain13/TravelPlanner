@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
-import { Crosshair, EyeOff, Moon, MoonStar, PanelBottom, PanelLeft, PanelLeftDashed, Plane, RectangleHorizontal, Pill, Clock, Hourglass, Sun, X, Sparkles, Loader2, Check } from "lucide-react";
+import { Crosshair, EyeOff, Moon, MoonStar, PanelBottom, PanelLeft, PanelLeftDashed, Plane, RectangleHorizontal, Pill, Clock, Hourglass, Sun, X, Sparkles, Loader2, Check, Luggage } from "lucide-react";
+import { useIsPhone, useTravelMode } from "../lib/travelMode";
 import type * as Y from "yjs";
 import { readTrip } from "../lib/trips";
 import { withNotes, tidyNotes } from "../lib/tidyNotes";
@@ -11,6 +12,8 @@ import { useSettings, type Settings, type SettingsScope } from "../lib/settings"
 export function SettingsDialog({ onClose, scope }: { onClose: () => void; scope?: SettingsScope | null }) {
   const [settings, update, where] = useSettings(scope);
   const [theme, , setTheme] = useTheme();
+  const [travel, setTravel] = useTravelMode();
+  const phone = useIsPhone();
   const themes: { key: Theme; icon: React.ReactNode; short: string; hint: string }[] = [
     { key: "light", icon: <Sun />, short: "Light", hint: "Light background" },
     { key: "dark", icon: <Moon />, short: "Dark", hint: "Dark grey background" },
@@ -38,6 +41,21 @@ export function SettingsDialog({ onClose, scope }: { onClose: () => void; scope?
         </div>
 
         <Row title="Appearance" hint={themes.find((t) => t.key === theme)!.hint} value={theme} options={themes} onPick={setTheme} />
+        {phone && (
+          <>
+            <div className="my-4 border-t border-line" />
+            <Row
+              title="Travel mode"
+              hint={travel ? "Today first, big buttons, no photos" : "Quick and light on battery, for the road"}
+              value={travel ? "on" : "off"}
+              options={[
+                { key: "off", icon: <PanelBottom />, short: "Off" },
+                { key: "on", icon: <Luggage />, short: "On" },
+              ]}
+              onPick={(k) => (setTravel(k === "on"), k === "on" && onClose())}
+            />
+          </>
+        )}
         <div className="my-4 border-t border-line" />
         <Row title="Clicking a pin on the map" hint={options.find((o) => o.key === settings.pinClick)!.hint} value={settings.pinClick} options={options} onPick={(k) => update({ pinClick: k })} />
         <div className="my-4 border-t border-line" />

@@ -12,7 +12,7 @@ export const MODE_ICON: Record<TravelMode | "flight", React.ReactNode> = {
 export const MODE_LABEL: Record<TravelMode, string> = { drive: "Drive", walk: "Walk", bike: "Bike", transit: "Transit" };
 
 /** The travel row between two stops: "🚗 21 min · 8.7 km". Tap to change how you get there. */
-const GMAPS_MODE: Record<TravelMode, string> = { drive: "driving", walk: "walking", bike: "bicycling", transit: "transit" };
+export const GMAPS_MODE: Record<TravelMode, string> = { drive: "driving", walk: "walking", bike: "bicycling", transit: "transit" };
 
 export function LegChip({ mode, state, readOnly, onMode, from, to, label }: { mode: TravelMode; state?: LegState; readOnly?: boolean; onMode: (m: TravelMode) => void; from?: [number, number]; to?: [number, number]; /** "From Hotel X" / "To Hotel X" */ label?: string }) {
   const [open, setOpen] = useState(false);
