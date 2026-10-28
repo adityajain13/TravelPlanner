@@ -14,21 +14,11 @@ export function SettingsDialog({ onClose, scope }: { onClose: () => void; scope?
   const [theme, , setTheme] = useTheme();
   const [travel, setTravel] = useTravelMode();
   const phone = useIsPhone();
-  const themes: { key: Theme; icon: React.ReactNode; short: string; hint: string }[] = [
-    { key: "light", icon: <Sun />, short: "Light", hint: "Light background" },
-    { key: "dark", icon: <Moon />, short: "Dark", hint: "Dark grey background" },
-    { key: "amoled", icon: <MoonStar />, short: "Black", hint: "True black, for OLED screens" },
-  ];
   useEffect(() => {
     const esc = (e: KeyboardEvent) => e.key === "Escape" && onClose();
     window.addEventListener("keydown", esc);
     return () => window.removeEventListener("keydown", esc);
   }, [onClose]);
-
-  const options: { key: Settings["pinClick"]; icon: React.ReactNode; short: string; title: string; hint: string }[] = [
-    { key: "focus", icon: <Crosshair />, short: "Zoom", title: "Zoom to the pin", hint: "Zooms in and opens its card" },
-    { key: "card", icon: <PanelBottom />, short: "Card", title: "Just open the card", hint: "Opens its card; map stays put" },
-  ];
 
   return createPortal(
     <div className="fixed inset-0 z-[100] grid grid-cols-[minmax(0,1fr)] place-items-center bg-black/60 p-4 backdrop-blur-sm" onClick={onClose}>
@@ -40,68 +30,23 @@ export function SettingsDialog({ onClose, scope }: { onClose: () => void; scope?
           </button>
         </div>
 
-        <Row title="Appearance" hint={themes.find((t) => t.key === theme)!.hint} value={theme} options={themes} onPick={setTheme} />
+        <AppearanceRow theme={theme} onPick={setTheme} />
         {phone && (
           <>
             <div className="my-4 border-t border-line" />
-            <Row
-              title="Travel mode"
-              hint={travel ? "Today first, big buttons, no photos" : "Quick and light on battery, for the road"}
-              value={travel ? "on" : "off"}
-              options={[
-                { key: "off", icon: <PanelBottom />, short: "Off" },
-                { key: "on", icon: <Luggage />, short: "On" },
-              ]}
-              onPick={(k) => (setTravel(k === "on"), k === "on" && onClose())}
-            />
+            <TravelModeRow travel={travel} setTravel={setTravel} onClose={onClose} />
           </>
         )}
         <div className="my-4 border-t border-line" />
-        <Row title="Clicking a pin on the map" hint={options.find((o) => o.key === settings.pinClick)!.hint} value={settings.pinClick} options={options} onPick={(k) => update({ pinClick: k })} />
+        <PinClickRow value={settings.pinClick} onPick={(k) => update({ pinClick: k })} />
         <div className="my-4 border-t border-line" />
-        <Row
-          title="Flight paths on the map"
-          hint={settings.flightPaths === "show" ? "Arcs between the airports you fly" : "Airport pins only, no arcs"}
-          value={settings.flightPaths}
-          options={[
-            { key: "show", icon: <Plane />, short: "Show" },
-            { key: "hide", icon: <EyeOff />, short: "Hide" },
-          ]}
-          onPick={(k) => update({ flightPaths: k })}
-        />
+        <FlightPathsRow value={settings.flightPaths} onPick={(k) => update({ flightPaths: k })} />
         <div className="my-4 border-t border-line" />
-        <Row
-          title="Contents column"
-          hint={settings.contentsWidth === "thick" ? "Every day with its stops" : "Icons and day numbers only"}
-          value={settings.contentsWidth}
-          options={[
-            { key: "thick", icon: <PanelLeft />, short: "Thick" },
-            { key: "thin", icon: <PanelLeftDashed />, short: "Thin" },
-          ]}
-          onPick={(k) => update({ contentsWidth: k })}
-        />
+        <ContentsRow value={settings.contentsWidth} onPick={(k) => update({ contentsWidth: k })} />
         <div className="my-4 border-t border-line" />
-        <Row
-          title="Bookings in a day"
-          hint={settings.bookingStyle === "card" ? "Slim cards, lined up with the stops" : "Small pills under the stops"}
-          value={settings.bookingStyle}
-          options={[
-            { key: "card", icon: <RectangleHorizontal />, short: "Card" },
-            { key: "pill", icon: <Pill />, short: "Pill" },
-          ]}
-          onPick={(k) => update({ bookingStyle: k })}
-        />
+        <BookingStyleRow value={settings.bookingStyle} onPick={(k) => update({ bookingStyle: k })} />
         <div className="my-4 border-t border-line" />
-        <Row
-          title="Stop times"
-          hint={settings.timing === "set" ? "You type each stop's start and end" : "From how long each stop takes + travel"}
-          value={settings.timing}
-          options={[
-            { key: "set", icon: <Clock />, short: "Set" },
-            { key: "auto", icon: <Hourglass />, short: "Auto" },
-          ]}
-          onPick={(k) => update({ timing: k })}
-        />
+        <TimingRow value={settings.timing} onPick={(k) => update({ timing: k })} />
         {scope && <TidyNotesRow doc={scope.doc} />}
         <p className="mt-5 text-[12px] text-muted">
           {where === "trip" ? "Saved to your account for this trip; appearance is saved on this device." : "Settings are saved on this device."}
@@ -109,6 +54,98 @@ export function SettingsDialog({ onClose, scope }: { onClose: () => void; scope?
       </div>
     </div>,
     document.body,
+  );
+}
+
+function AppearanceRow({ theme, onPick }: { theme: Theme; onPick: (t: Theme) => void }) {
+  const themes: { key: Theme; icon: React.ReactNode; short: string; hint: string }[] = [
+    { key: "light", icon: <Sun />, short: "Light", hint: "Light background" },
+    { key: "dark", icon: <Moon />, short: "Dark", hint: "Dark grey background" },
+    { key: "amoled", icon: <MoonStar />, short: "Black", hint: "True black, for OLED screens" },
+  ];
+  return <Row title="Appearance" hint={themes.find((t) => t.key === theme)!.hint} value={theme} options={themes} onPick={onPick} />;
+}
+
+function TravelModeRow({ travel, setTravel, onClose }: { travel: boolean; setTravel: ReturnType<typeof useTravelMode>[1]; onClose: () => void }) {
+  return (
+    <Row
+      title="Travel mode"
+      hint={travel ? "Today first, big buttons, no photos" : "Quick and light on battery, for the road"}
+      value={travel ? "on" : "off"}
+      options={[
+        { key: "off", icon: <PanelBottom />, short: "Off" },
+        { key: "on", icon: <Luggage />, short: "On" },
+      ]}
+      onPick={(k) => (setTravel(k === "on"), k === "on" && onClose())}
+    />
+  );
+}
+
+function PinClickRow({ value, onPick }: { value: Settings["pinClick"]; onPick: (k: Settings["pinClick"]) => void }) {
+  const options: { key: Settings["pinClick"]; icon: React.ReactNode; short: string; title: string; hint: string }[] = [
+    { key: "focus", icon: <Crosshair />, short: "Zoom", title: "Zoom to the pin", hint: "Zooms in and opens its card" },
+    { key: "card", icon: <PanelBottom />, short: "Card", title: "Just open the card", hint: "Opens its card; map stays put" },
+  ];
+  return <Row title="Clicking a pin on the map" hint={options.find((o) => o.key === value)!.hint} value={value} options={options} onPick={onPick} />;
+}
+
+function FlightPathsRow({ value, onPick }: { value: Settings["flightPaths"]; onPick: (k: Settings["flightPaths"]) => void }) {
+  return (
+    <Row
+      title="Flight paths on the map"
+      hint={value === "show" ? "Arcs between the airports you fly" : "Airport pins only, no arcs"}
+      value={value}
+      options={[
+        { key: "show", icon: <Plane />, short: "Show" },
+        { key: "hide", icon: <EyeOff />, short: "Hide" },
+      ]}
+      onPick={onPick}
+    />
+  );
+}
+
+function ContentsRow({ value, onPick }: { value: Settings["contentsWidth"]; onPick: (k: Settings["contentsWidth"]) => void }) {
+  return (
+    <Row
+      title="Contents column"
+      hint={value === "thick" ? "Every day with its stops" : "Icons and day numbers only"}
+      value={value}
+      options={[
+        { key: "thick", icon: <PanelLeft />, short: "Thick" },
+        { key: "thin", icon: <PanelLeftDashed />, short: "Thin" },
+      ]}
+      onPick={onPick}
+    />
+  );
+}
+
+function BookingStyleRow({ value, onPick }: { value: Settings["bookingStyle"]; onPick: (k: Settings["bookingStyle"]) => void }) {
+  return (
+    <Row
+      title="Bookings in a day"
+      hint={value === "card" ? "Slim cards, lined up with the stops" : "Small pills under the stops"}
+      value={value}
+      options={[
+        { key: "card", icon: <RectangleHorizontal />, short: "Card" },
+        { key: "pill", icon: <Pill />, short: "Pill" },
+      ]}
+      onPick={onPick}
+    />
+  );
+}
+
+function TimingRow({ value, onPick }: { value: Settings["timing"]; onPick: (k: Settings["timing"]) => void }) {
+  return (
+    <Row
+      title="Stop times"
+      hint={value === "set" ? "You type each stop's start and end" : "From how long each stop takes + travel"}
+      value={value}
+      options={[
+        { key: "set", icon: <Clock />, short: "Set" },
+        { key: "auto", icon: <Hourglass />, short: "Auto" },
+      ]}
+      onPick={onPick}
+    />
   );
 }
 
