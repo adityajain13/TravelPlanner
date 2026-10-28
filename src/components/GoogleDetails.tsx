@@ -58,7 +58,7 @@ export function GoogleDetails({ item, onLink, onSnapshot }: Props) {
 
   if (!details) return <LookupPill online={online} state={state} error={error} onLoad={load} />;
 
-  return <SavedDetails d={details} savedAt={item.google ? item.google.fetchedAt : null} showHours={showHours} onToggleHours={() => setShowHours((s) => !s)} />;
+  return <SavedDetails d={details} savedAt={item.google ? item.google.fetchedAt : null} showHours={showHours} onToggleHours={() => setShowHours((s) => !s)} weekday={weekdayOf(item)} />;
 }
 
 /** The "Google details" button shown until the place has been looked up. */
@@ -80,15 +80,17 @@ function LookupPill({ online, state, error, onLoad }: { online: boolean; state: 
 }
 
 /** The saved or freshly fetched Google card: photos, rating, hours, contact links. */
-function SavedDetails({ d, savedAt, showHours, onToggleHours }: { d: Details; savedAt: number | null; showHours: boolean; onToggleHours: () => void }) {
+function SavedDetails({ d, savedAt, showHours, onToggleHours, weekday }: { d: Details; savedAt: number | null; showHours: boolean; onToggleHours: () => void; weekday: number }) {
   return (
     <div className="space-y-2 rounded-lg border border-line bg-surface p-2.5 text-xs">
       {d.photos.length > 0 && <PhotoStrip photos={d.photos} />}
       <FactsRow d={d} showHours={showHours} onToggleHours={onToggleHours} />
       {showHours && d.hours && (
         <ul className="space-y-0.5 text-muted">
-          {d.hours.map((h) => (
-            <li key={h}>{h}</li>
+          {d.hours.map((h, i) => (
+            <li key={h} className={i === (weekday + 6) % 7 ? "font-bold text-fg" : undefined}>
+              {h}
+            </li>
           ))}
         </ul>
       )}
@@ -169,4 +171,10 @@ function GoogleG() {
       <path fill="#EA4335" d="M12 5.4c1.6 0 3.1.6 4.2 1.7l3.2-3.2C17.5 2.1 15 1 12 1 7.7 1 3.9 3.5 2.1 7l3.7 2.8C6.7 7.3 9.1 5.4 12 5.4z" />
     </svg>
   );
+}
+
+/** The day the stop is planned for (lists: today), Sunday = 0. Google lists hours Monday first. */
+function weekdayOf(item: Item) {
+  const m = /^day:(\d{4})-(\d{2})-(\d{2})$/.exec(item.section);
+  return (m ? new Date(+m[1], +m[2] - 1, +m[3]) : new Date()).getDay();
 }
