@@ -172,3 +172,4 @@ Hosted at **adityajain.ca/travelplanner** by the `travelplanner` Cloudflare Work
 - Oct 27: Budget on phones: summary wraps (budget + currency on their own row), chart tabs full-width/no wrap, bars fill what a fixed 16ch amount column leaves (nothing runs off the card at large text sizes).
 - Oct 27: Receipt parser: prompt copes with sideways/crumpled photos (readable=false only if not a receipt), weighed items; falls back to EXTRACT_MODEL if RECEIPT_MODEL fails or gives up; API errors surfaced in the message + logged.
 - Oct 27: Receipt parser: prompt copes with sideways/crumpled photos (readable=false only if not a receipt), weighed items; falls back to EXTRACT_MODEL if RECEIPT_MODEL fails or gives up; API errors surfaced in the message + logged.
+- Oct 27: Menu: capped height (min(22rem,55vh)) scrolling inside, optional search box + left align; receipt stop picker uses both (same day first, then by date).

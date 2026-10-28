@@ -167,7 +167,7 @@ export function ReceiptFlow({ doc, state, file, expense, stop, onClose }: Props)
                   label={<span className="max-w-[16rem] truncate">{linked ? linked.name : "Not linked to a stop"}</span>}
                   options={[
                     { key: "", label: "Not linked to a stop", on: !itemId },
-                    ...[...sameDay, ...stops.filter((s) => !sameDay.includes(s))].slice(0, 60).map((s) => ({
+                    ...[...sameDay, ...stops.filter((s) => !sameDay.includes(s)).sort((a, b) => a.section.localeCompare(b.section))].map((s) => ({
                       key: s.id,
                       label: s.name,
                       hint: s.section.startsWith("day:") ? formatShort(s.section.slice(4)) : "List",
@@ -175,6 +175,8 @@ export function ReceiptFlow({ doc, state, file, expense, stop, onClose }: Props)
                     })),
                   ]}
                   onPick={(k) => setItemId(k || undefined)}
+                  searchable
+                  align="left"
                 />
                 {linked && !stop && !expense && <span className="text-[12px] text-accent">matched</span>}
               </div>
