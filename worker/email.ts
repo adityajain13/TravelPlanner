@@ -52,7 +52,7 @@ const TOOL = {
           type: "object",
           properties: {
             type: { type: "string", enum: ["flight", "hotel", "train", "bus", "car", "restaurant", "activity", "other"] },
-            title: { type: "string", description: 'Short label for an itinerary, e.g. "AC1 Toronto → Tokyo Haneda", "Hotel Granvia Kyoto", "Nozomi 21 Tokyo → Kyoto".' },
+            title: { type: "string", description: 'Short label for an itinerary, e.g. "AC1 Toronto → Tokyo Haneda", "Hotel Granvia Kyoto", "Nozomi 21 Tokyo → Kyoto", "Nintendo Museum". No order/purchase/confirmation numbers in the title (they go in confirmation).' },
             confirmation: { type: "string" },
             start_date: { type: "string", description: "YYYY-MM-DD in the local time of the place (departure, check-in, reservation)." },
             start_time: { type: "string", description: "HH:MM 24h local time." },

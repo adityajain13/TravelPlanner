@@ -70,7 +70,7 @@ export const DETAILS_SCHEMA = {
   properties: Object.fromEntries(ALL.map((k) => [k, { type: "string", description: FIELDS[k].hint }])),
 };
 
-const KIND: Record<string, Kind> = { lodging: "hotel" };
+const KIND: Record<string, Kind> = { lodging: "hotel", other: "activity" }; // "Other" bookings are mostly tickets and timed entries
 
 /** Standard notes: details in the type's order (others after), then free notes after a blank line. */
 export function formatBookingNotes(type: string, details: unknown, notes?: string): string | undefined {
