@@ -77,9 +77,9 @@ export function BudgetCharts({ lines, state, currency }: { lines: Line[]; state:
 
   return (
     <section className="rounded-2xl border border-line bg-surface p-4">
-      <div className="mb-4 flex items-center justify-between gap-3">
-        <h3 className="font-display text-lg">Spending breakdown</h3>
-        <div className="flex rounded-full border border-line p-0.5 text-[13px] font-semibold" role="tablist">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
+        <h3 className="font-display text-lg whitespace-nowrap">Spending breakdown</h3>
+        <div className="flex max-w-full rounded-full border border-line p-0.5 text-[13px] font-semibold max-sm:w-full" role="tablist">
           {(
             [
               ["category", "Category"],
@@ -89,7 +89,7 @@ export function BudgetCharts({ lines, state, currency }: { lines: Line[]; state:
           )
             .filter(([k]) => k !== "people" || travelers.length > 1)
             .map(([k, label]) => (
-            <button key={k} role="tab" aria-selected={tab === k} onClick={() => setTab(k)} className={`rounded-full px-3 py-1 ${tab === k ? "bg-accent text-on-accent" : "text-muted hover:text-fg"}`}>
+            <button key={k} role="tab" aria-selected={tab === k} onClick={() => setTab(k)} className={`rounded-full px-3 py-1 whitespace-nowrap max-sm:flex-1 ${tab === k ? "bg-accent text-on-accent" : "text-muted hover:text-fg"}`}>
               {label}
             </button>
           ))}
@@ -107,18 +107,20 @@ export function BudgetCharts({ lines, state, currency }: { lines: Line[]; state:
               onMouseEnter={() => setHover(r.key)}
               onFocus={() => setHover(r.key)}
               tabIndex={0}
-              className={`relative grid grid-cols-[6.5rem_1fr] items-center gap-3 rounded-lg px-1 py-1 outline-none ${on ? "bg-surface-2" : ""}`}
+              className={`relative grid grid-cols-[minmax(0,6.5rem)_minmax(0,1fr)] items-center gap-3 rounded-lg px-1 py-1 outline-none max-sm:grid-cols-[minmax(0,5.5rem)_minmax(0,1fr)] max-sm:gap-2 ${on ? "bg-surface-2" : ""}`}
             >
               <span className="min-w-0 truncate text-right text-[13px] leading-tight">
                 <span className={r.amount ? "text-fg" : "text-muted"}>{r.label}</span>
                 {r.sub && <span className="block text-[11px] text-muted">{r.sub}</span>}
               </span>
               <span className="flex min-w-0 items-center gap-2">
+                {/* The bar fills what the amount label leaves, so long amounts never run off the card */}
+                <span className="flex min-w-0 flex-1 items-center">
                 <span
                   // Category bars use the icon colour. Day bars are stacked by category; only
                   // uncategorised ("Other") spending takes the day's pin colour. Brightens on hover.
                   className={`flex h-[18px] shrink-0 overflow-hidden rounded-r-[4px] transition-opacity ${r.amount ? (on ? "opacity-100" : "opacity-80") : "bg-line"}`}
-                  style={{ width: r.amount ? `max(3px, ${(r.amount / max) * 72}%)` : "2px", background: r.amount && tab === "category" ? (r.color ?? "var(--muted)") : undefined }}
+                  style={{ width: r.amount ? `max(3px, ${(r.amount / max) * 100}%)` : "2px", background: r.amount && tab === "category" ? (r.color ?? "var(--muted)") : undefined }}
                 >
                   {tab !== "category" &&
                     r.amount > 0 &&
@@ -131,8 +133,10 @@ export function BudgetCharts({ lines, state, currency }: { lines: Line[]; state:
                       />
                     ))}
                 </span>
+                </span>
+                {r.amount <= 0 && <span className="w-[16ch] shrink-0" />}
                 {r.amount > 0 && (
-                  <span className="shrink-0 text-[12.5px] whitespace-nowrap tabular-nums">
+                  <span className="w-[16ch] shrink-0 text-[12.5px] whitespace-nowrap tabular-nums">
                     {formatMoney(r.amount, currency)} <span className="text-muted">· {pct < 1 ? "<1" : Math.round(pct)}%</span>
                   </span>
                 )}

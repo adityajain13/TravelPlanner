@@ -66,12 +66,12 @@ export function BudgetPanel({ doc, state, readOnly }: { doc: Y.Doc; state: TripS
     <div className="space-y-6 px-2 py-4">
       {/* Summary */}
       <section className="rounded-2xl border border-line bg-surface p-4">
-        <div className="flex items-end justify-between gap-3">
-          <div>
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div className="min-w-0">
             <p className="text-xs tracking-wide text-muted uppercase">Spent</p>
             <p className="font-display text-3xl">{formatMoney(total, currency)}</p>
           </div>
-          <div className="flex items-center gap-2 text-sm">
+          <div className="flex min-w-0 items-center gap-2 text-sm max-sm:w-full">
             <span className="text-muted">Budget</span>
             <input
               type="number"
@@ -82,7 +82,7 @@ export function BudgetPanel({ doc, state, readOnly }: { doc: Y.Doc; state: TripS
               defaultValue={budget ?? ""}
               placeholder="—"
               onBlur={(e) => updateMeta(doc, { budget: e.target.value ? Number(e.target.value) : undefined })}
-              className="w-24 rounded-md bg-surface-2 px-2 py-1 text-right outline-none"
+              className="w-24 min-w-0 rounded-md bg-surface-2 px-2 py-1 text-right outline-none max-sm:flex-1"
             />
             <CurrencySelect value={currency} disabled={readOnly} onChange={(c) => updateMeta(doc, { currency: c })} className="bg-surface-2 text-[14px]" />
           </div>
