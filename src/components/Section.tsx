@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from 
 import { memoLatest } from "../lib/memo";
 import { useDroppable } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
-import { Check, ChevronDown, Columns3, Eye, GitBranch, PenLine, ListChecks, MapPin, Pencil, Plus, StickyNote } from "lucide-react";
+import { Check, ChevronDown, Columns3, Eye, GitBranch, PenLine, ListChecks, MapPin, Pencil, Plus, StickyNote, Trash2 } from "lucide-react";
 import type { Item, Reservation } from "../lib/trips";
 import { RES_ICON } from "./Reservations";
 import { LegChip } from "./LegChip";
@@ -54,6 +54,8 @@ interface Props {
   onFocus: () => void;
   onSelect: (id: string) => void;
   onRename?: (title: string) => void;
+  /** Lists only: delete this section and its items. */
+  onDeleteSection?: () => void;
   /** index: insert before the item at that position (from the "+" between stops); omitted = append. */
   onAddPlace: (p: PlaceResult, index?: number) => void;
   onAddNote: (text: string, index?: number) => void;
@@ -138,6 +140,7 @@ function SectionView(p: Props & { dropRef: (el: HTMLElement | null) => void; isO
         subtitle={p.subtitle}
         onSubtitle={p.onSubtitle}
         onRename={p.onRename}
+        onDeleteSection={p.onDeleteSection}
         onColor={p.onColor}
         dayStart={p.dayStart}
         onVersion={p.onVersion}
@@ -345,7 +348,7 @@ function BookingRows({
   );
 }
 
-interface HeaderProps extends Pick<Props, "readOnly" | "subtitle" | "onSubtitle" | "onRename" | "onColor" | "dayStart" | "onVersion" | "onFork" | "onCompare" | "onUseDraft" | "focused" | "onFocus"> {
+interface HeaderProps extends Pick<Props, "readOnly" | "subtitle" | "onSubtitle" | "onRename" | "onDeleteSection" | "onColor" | "dayStart" | "onVersion" | "onFork" | "onCompare" | "onUseDraft" | "focused" | "onFocus"> {
   info: SectionInfo;
   open: boolean;
   setOpen: (f: (o: boolean) => boolean) => void;
@@ -396,6 +399,7 @@ function SectionHeader(p: HeaderProps) {
         multiVersion={!!info.versions && info.versions.length > 1}
         focused={p.focused}
         onFocus={p.onFocus}
+        onDelete={p.readOnly ? undefined : p.onDeleteSection}
       />
     </div>
   );
@@ -502,6 +506,7 @@ function SectionActions({
   multiVersion,
   focused,
   onFocus,
+  onDelete,
 }: {
   dayTravel: string | null;
   placeCount: number;
@@ -514,6 +519,7 @@ function SectionActions({
   multiVersion: boolean;
   focused: boolean;
   onFocus: () => void;
+  onDelete?: () => void;
 }) {
   return (
     <div className="flex h-8 shrink-0 items-center gap-1.5 text-xs text-muted tabular-nums">
@@ -538,6 +544,16 @@ function SectionActions({
           aria-label="New draft of this day"
         >
           <GitBranch className="size-3.5" />
+        </button>
+      )}
+      {onDelete && (
+        <button
+          onClick={onDelete}
+          className="grid size-7 place-items-center rounded-md text-muted opacity-0 transition-opacity group-hover/section:opacity-100 hover:bg-surface-2 hover:text-red-400 focus-visible:opacity-100 max-md:opacity-60"
+          title="Delete section"
+          aria-label="Delete section"
+        >
+          <Trash2 className="size-3.5" />
         </button>
       )}
       <button

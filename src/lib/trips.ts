@@ -713,6 +713,19 @@ export function renameList(doc: Y.Doc, listId: string, title: string) {
   if (l) edit(doc, () => l.set("title", title));
 }
 
+/** Delete a list section and everything in it, in one undoable change. */
+export function removeList(doc: Y.Doc, listId: string, origin: EditOrigin = ME) {
+  const items = doc.getMap<Y.Map<unknown>>("items");
+  edit(
+    doc,
+    () => {
+      for (const it of itemsIn(doc, listSection(listId))) items.delete(it.id);
+      doc.getMap("lists").delete(listId);
+    },
+    origin,
+  );
+}
+
 /** Adds a list at the end; returns its id. */
 export function addList(doc: Y.Doc, title: string): string {
   const lists = [...doc.getMap<Y.Map<unknown>>("lists").values()].map((m) => m.get("order") as string).sort();
