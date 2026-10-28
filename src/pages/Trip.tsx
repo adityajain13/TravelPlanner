@@ -20,14 +20,14 @@ import { ArrowLeft, Camera, Redo2, Undo2, Copy, FolderInput, Trash2, X, Cloud, C
 import { Contents, ContentsThin, type Tab } from "../components/Contents";
 import { useConverter } from "../lib/fx";
 import { budgetLines, lineForItem, totals, travelersOf } from "../lib/budget";
-import { bestImage, firstPhoto } from "../lib/images";
+import { bestImage } from "../lib/images";
 import { setShareToken } from "../lib/shareToken";
 import { ImagePicker } from "../components/ImagePicker";
 import { Photo } from "../components/Photo";
 import { PhotoCredit } from "../components/PhotoCredit";
 import { RES_ICON, RES_SINGULAR } from "../components/Reservations";
 import { GENERIC_PLACE } from "../lib/geocode";
-import { findPlaceId, getDetails, GOOGLE_KEY, photoUrl } from "../lib/google";
+import { addPlace, changeItem, setCollapsed, setLegMode, setMetaEntry } from "../lib/itemActions";
 import { edit } from "../lib/trips";
 import { parseISODate } from "../lib/dates";
 import { scrollToEl, scrollToId } from "../lib/scroll";
@@ -38,7 +38,6 @@ import { useSync } from "../lib/sync";
 import { useTrip } from "../lib/useTrip";
 import { useTheme } from "../lib/theme";
 import {
-  readTrip,
   addItem,
   addList,
   moveItem,
@@ -47,28 +46,22 @@ import {
   removeItem,
   removeItems,
   setReadOnly,
-  setItemImage,
   samePlace,
   renameList,
   updateItem,
   updateMeta,
   type Item,
   forkDay,
-  renameDraft,
-  deleteDraft,
   adoptDraft,
-  draftSection,
   isDraftSection,
-  mainPlanName,
   nextDraftName,
 } from "../lib/trips";
-import { DayCompare } from "../components/DayCompare";
+import { DayCompareHost } from "../components/DayCompareHost";
 import { TravelView } from "../components/TravelView";
 import { ReceiptFlow } from "../components/ReceiptFlow";
 import { formatMoney } from "../lib/fx";
 import { useIsPhone, useTravelMode } from "../lib/travelMode";
-import { autoTimes, DEFAULT_DAY_START } from "../lib/autoTime";
-import type { Pin, Route } from "../components/TripMap";
+import { DEFAULT_DAY_START } from "../lib/autoTime";
 // MapLibre is the heaviest dependency; load it after the plan panel is on screen.
 // Start fetching the (large) map chunk as soon as the trip page loads, in parallel with the
 // trip's own data, instead of only once the page has rendered
@@ -93,7 +86,7 @@ import { fetchInbox, type InboxItem } from "../lib/inbox";
 import { ReservationForm, ReservationsPanel, dayChips } from "../components/Reservations";
 import { BudgetPanel, ExpenseForm } from "../components/Budget";
 import { MODES } from "../lib/routing";
-import { ORPHAN } from "../lib/itinerary";
+import { ORPHAN, planMapData } from "../lib/itinerary";
 import { useItinerary } from "../hooks/useItinerary";
 import { useTripUpkeep } from "../hooks/useTripUpkeep";
 import { MODE_ICON, MODE_LABEL } from "../components/LegChip";
@@ -487,18 +480,9 @@ export function TripPage() {
             if (it) updateItem(doc, itemId, { checks: (it.checks ?? []).map((c) => (c.id === checkId ? { ...c, done: !c.done } : c)) });
           }}
           mapFor={(d) => {
-            const ids = new Set(d.items.map((i) => i.id));
             const ver = d.writeKey ?? d.key;
-            const dayLegs = view.legs.filter((l) => l.ver === ver && !l.ghost);
-            const ends = dayLegs.flatMap((l) => [l.req.from, l.req.to]);
-            const pins = [...view.pins, ...flights.pins].filter(
-              (x) => ids.has(x.id) || ((x.id.startsWith("res:") || x.id.startsWith("apt:")) && ends.some(([lng, lat]) => Math.abs(lng - x.lng) + Math.abs(lat - x.lat) < 0.002)),
-            );
-            const routes: Route[] = dayLegs.map((l) => {
-              const r = legResults.get(l.req.key);
-              return typeof r === "object" ? { color: l.color, coords: r.coords, style: r.mode === "flight" || r.rough ? "dashed" : r.mode === "walk" ? "dotted" : "solid" } : { color: l.color, coords: [l.req.from, l.req.to], style: "dashed" };
-            });
-            return { pins, routes };
+            const m = planMapData(view, flights.pins, legResults, ver, d.items, d.color, { includeGhost: false, numberedPins: false });
+            return { pins: m.pins, routes: m.routes };
           }}
         />
         {showSettings && <SettingsDialog scope={readOnly ? null : settingsScope} onClose={() => setShowSettings(false)} />}
@@ -795,60 +779,20 @@ export function TripPage() {
                 onReceipt={readOnly ? undefined : (itemId, file) => setReceiptFor({ file, itemId })}
                 receiptsLabel={receiptsLabel}
                 legs={legsBySection.get(s.writeKey ?? s.key)}
-                onLegMode={(legId, m) => {
-                  const itemId = legId.replace(/#\d+$/, ""); // a person's own leg into the stop
-                  return itemId === "end" || itemId.startsWith("dep:")
-                    ? updateMeta(doc, { hotelLegModes: { ...(state.meta.hotelLegModes ?? {}), [itemId === "end" ? s.key : `${s.key}|dep`]: m } })
-                    : updateItem(doc, itemId, { travelMode: m === (state.meta.travelMode ?? "drive") ? undefined : m });
-                }}
+                onLegMode={(legId, m) => setLegMode(doc, state, s.key, legId, m)}
                 onChipClick={(r) => !readOnly && setEditingRes(r)}
                 onFocus={() => setFocus((f) => (f === s.key ? null : s.key))}
                 onSelect={(itemId) => setSelectedId((cur) => (cur === itemId ? null : itemId))}
                 onRename={s.listId ? (t) => renameList(doc, s.listId!, t) : undefined}
                 onAddPlace={(p, index) => {
-                  const newId = addItem(doc, s.writeKey ?? s.key, { kind: "place", name: p.name, address: p.address || undefined, category: p.category || undefined, lat: p.lat, lng: p.lng, osmId: p.osmId, googlePlaceId: p.googlePlaceId }, undefined, index);
+                  const newId = addPlace(doc, s.writeKey ?? s.key, p, index, { destination: state.meta.destination, near });
                   // Lists (Places to visit…) collect ideas: add them closed; a day's new stop opens
                   if (s.kind === "day") setSelectedId(newId);
                   revealAdded(newId);
-                  // Already on the trip elsewhere with a photo: reuse that photo
-                  const all = readTrip(doc).items;
-                  const added = all.find((x) => x.id === newId);
-                  const twin = added && all.find((x) => x.id !== newId && x.image && samePlace(added, x));
-                  if (twin) updateItem(doc, newId, { image: twin.image });
-                  // Picked from Google: copy its details (rating, hours…) and use its first photo
-                  if (p.googlePlaceId && GOOGLE_KEY)
-                    getDetails(p.googlePlaceId)
-                      .then((d) => {
-                        const ph = d.photos[0];
-                        const image = ph
-                          ? { url: photoUrl(ph.name, 1600), thumb: photoUrl(ph.name, 600), source: "google" as const, credit: ph.attributions.map((a) => a.displayName).join(", ") || "Google", link: ph.attributions[0]?.uri, title: d.name }
-                          : undefined;
-                        const cur = readTrip(doc).items.find((x) => x.id === newId);
-                        updateItem(doc, newId, { google: { ...d, fetchedAt: Date.now() }, ...(image && !cur?.image ? { image } : {}) });
-                      })
-                      .catch(() => undefined);
-                  // Give it a photo straight away (Wikipedia match, else Unsplash)
-                  if (navigator.onLine && !p.googlePlaceId && !GENERIC_PLACE.test(p.name.trim()))
-                    firstPhoto(p.name, [p.lng, p.lat], state.meta.destination)
-                      .then((image) => image && !readTrip(doc).items.find((x) => x.id === newId)?.image && updateItem(doc, newId, { image }))
-                      .catch(() => undefined);
-                  // From a Google Maps link without a Google match yet: link its place ID so Google details work straight away
-                  if (p.fromLink && !p.googlePlaceId && GOOGLE_KEY)
-                    findPlaceId({ name: p.name, lat: p.lat, lng: p.lng })
-                      .then((googlePlaceId) => googlePlaceId && updateItem(doc, newId, { googlePlaceId }))
-                      .catch(() => undefined);
-                  if (!near) updateMeta(doc, { center: [p.lng, p.lat] });
                 }}
                 onAddNote={(text, index) => addItem(doc, s.writeKey ?? s.key, { kind: "note", name: text }, undefined, index)}
                 onAddChecklist={(index) => addItem(doc, s.writeKey ?? s.key, { kind: "checklist", name: "", checks: [{ id: Math.random().toString(36).slice(2, 10), text: "" }] }, undefined, index)}
-                onChange={(itemId, patch) => {
-                  // A new photo goes on every stop at the same place
-                  if ("image" in patch) {
-                    const { image, ...rest } = patch;
-                    setItemImage(doc, itemId, image);
-                    if (Object.keys(rest).length) updateItem(doc, itemId, rest);
-                  } else updateItem(doc, itemId, patch);
-                }}
+                onChange={(itemId, patch) => changeItem(doc, itemId, patch)}
                 onDelete={(itemId) => removeItem(doc, itemId)}
                 checked={readOnly ? undefined : checked}
                 onCheck={readOnly ? undefined : onCheck}
@@ -860,12 +804,7 @@ export function TripPage() {
                 subtitle={state.meta.subtitles?.[s.key]}
                 onColor={
                   s.kind === "day" && !readOnly
-                    ? (c) => {
-                        const next = { ...(state.meta.dayColors ?? {}) };
-                        if (c) next[s.date!] = c;
-                        else delete next[s.date!];
-                        updateMeta(doc, { dayColors: next });
-                      }
+                    ? (c) => setMetaEntry(doc, state, "dayColors", s.date!, c)
                     : undefined
                 }
                 onFork={
@@ -900,10 +839,7 @@ export function TripPage() {
                 onCollapsed={
                   readOnly
                     ? undefined
-                    : (c) => {
-                        const cur = (state.meta.collapsed ?? []).filter((k) => k !== s.key);
-                        updateMeta(doc, { collapsed: c ? [...cur, s.key] : cur });
-                      }
+                    : (c) => setCollapsed(doc, state, s.key, c)
                 }
                 autoTimes={autoOn && s.kind === "day" ? timed.info : undefined}
                 onStay={readOnly ? undefined : (itemId, m) => updateItem(doc, itemId, { stay: m })}
@@ -915,21 +851,11 @@ export function TripPage() {
                         landed: view.landings.get(s.writeKey ?? s.key),
                         onChange: readOnly
                           ? undefined
-                          : (t) => {
-                              const next = { ...(state.meta.dayStarts ?? {}) };
-                              if (t) next[s.date!] = t;
-                              else delete next[s.date!];
-                              updateMeta(doc, { dayStarts: next });
-                            },
+                          : (t) => setMetaEntry(doc, state, "dayStarts", s.date!, t),
                       }
                     : undefined
                 }
-                onSubtitle={(t) => {
-                  const next = { ...(state.meta.subtitles ?? {}) };
-                  if (t) next[s.key] = t;
-                  else delete next[s.key];
-                  updateMeta(doc, { subtitles: next });
-                }}
+                onSubtitle={(t) => setMetaEntry(doc, state, "subtitles", s.key, t)}
               />
               {s.kind === "list" && view.sections[si + 1]?.kind !== "list" && !readOnly && <AddSection onAdd={(t) => addList(doc, t)} />}
               </Fragment>
@@ -989,78 +915,30 @@ export function TripPage() {
         />
         </Suspense>
         {receiptFor && <ReceiptFlow doc={doc} state={state} file={receiptFor.file} stop={state.items.find((i) => i.id === receiptFor.itemId)} onClose={() => setReceiptFor(null)} />}
-        {compareDay && (() => {
-          const sec = view.sections.find((x) => x.kind === "day" && x.date === compareDay);
-          if (!sec) return null;
-          const dayKey = sec.key;
-          const vers = sec.versions ?? [{ id: undefined, name: mainPlanName(state.meta, compareDay) }];
-          const of = (section: string) => state.items.filter((i) => i.section === section);
-          return (
-            <DayCompare
-              date={compareDay}
-              color={sec.color}
-              shown={sec.draftId}
-              currency={state.meta.currency ?? "CAD"}
-              theme={theme}
-              convert={fx.convert}
-              readOnly={readOnly}
-              versions={vers.map((v) => {
-                const ver = v.id ? draftSection(v.id) : dayKey;
-                const raw = of(ver);
-                const at = autoOn ? autoTimes(raw, legsBySection.get(ver), state.meta.dayStarts?.[compareDay] ?? DEFAULT_DAY_START, view.landings.get(ver)) : null;
-                const items = at ? raw.map((it) => (at.get(it.id) ? { ...it, startTime: at.get(it.id)!.start, endTime: at.get(it.id)!.end } : it)) : raw;
-                const vlegs = view.legs.filter((l) => l.ver === ver);
-                const routes: Route[] = vlegs.map((l) => {
-                  const r = legResults.get(l.req.key);
-                  if (typeof r === "object") return { color: l.color, coords: r.coords, style: r.mode === "flight" || r.rough ? "dashed" : r.mode === "walk" ? "dotted" : "solid" };
-                  return { color: l.color, coords: [l.req.from, l.req.to], style: "dashed" };
-                });
-                let n = 0;
-                const pins: Pin[] = [];
-                for (const it of items) {
-                  if (it.kind !== "place") continue;
-                  n++;
-                  if (it.lat != null && it.lng != null) pins.push({ id: it.id, lat: it.lat, lng: it.lng, color: sec.color, label: String(n), name: it.name });
-                }
-                // The hotel / airport a leg starts or ends at
-                const ends = vlegs.flatMap((l) => [l.req.from, l.req.to]);
-                for (const x of [...view.pins, ...flights.pins])
-                  if ((x.id.startsWith("res:") || x.id.startsWith("apt:")) && ends.some(([lng, lat]) => Math.abs(lng - x.lng) + Math.abs(lat - x.lat) < 0.002) && !pins.some((q) => q.id === x.id))
-                    pins.push(x);
-                return {
-                  id: v.id,
-                  name: v.name,
-                  items,
-                  legs: vlegs.map((l) => legResults.get(l.req.key)).filter((x) => x != null),
-                  pins,
-                  routes,
-                  ...view.bookends.get(ver),
-                };
-              })}
-              onEdit={(d) => {
-                setDayDraft(compareDay, d);
-                setCompareDay(null);
-                setTab("plan");
-                setTimeout(() => scrollToId(scrollRef.current, `sec-${dayKey}`), 60);
-              }}
-              onUse={(d) => {
-                adoptDraft(doc, d);
-                setDayDraft(compareDay, undefined);
-              }}
-              onRename={(d, n) => (d ? renameDraft(doc, d, n) : updateMeta(doc, { planNames: { ...(state.meta.planNames ?? {}), [compareDay]: n.trim() } }))}
-              onDelete={(d) => {
-                deleteDraft(doc, d);
-                if (sec.draftId === d) setDayDraft(compareDay, undefined);
-                if (vers.length <= 2) setCompareDay(null);
-              }}
-              onFork={(from) => {
-                const d = forkDay(doc, compareDay, from ? draftSection(from) : dayKey, nextDraftName(state.drafts, compareDay));
-                setDayDraft(compareDay, d);
-              }}
-              onClose={() => setCompareDay(null)}
-            />
-          );
-        })()}
+        {compareDay && (
+          <DayCompareHost
+            doc={doc}
+            state={state}
+            view={view}
+            flightPins={flights.pins}
+            legResults={legResults}
+            legsBySection={legsBySection}
+            date={compareDay}
+            theme={theme}
+            convert={fx.convert}
+            readOnly={readOnly}
+            autoOn={autoOn}
+            onShowPlan={(d) => {
+              const dayKey = view.sections.find((x) => x.kind === "day" && x.date === compareDay)?.key;
+              setDayDraft(compareDay, d);
+              setCompareDay(null);
+              setTab("plan");
+              setTimeout(() => scrollToId(scrollRef.current, `sec-${dayKey}`), 60);
+            }}
+            onDraftShown={(d) => setDayDraft(compareDay, d)}
+            onClose={() => setCompareDay(null)}
+          />
+        )}
         {openItem && (
           <PlacePanel
             key={panelMode}

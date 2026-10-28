@@ -296,3 +296,32 @@ export function withAutoTimes(view: Itinerary | null, state: TripState | null, a
   });
   return { sections, info };
 }
+
+/** Pins (numbered stops + the hotel/airport its legs touch) and routes for one plan of a day. */
+export function planMapData(view: Itinerary, extraPins: Pin[], legResults: Map<string, LegState>, ver: string, items: Item[], color: string, opts: { includeGhost: boolean; numberedPins: boolean }) {
+  const legs = view.legs.filter((l) => l.ver === ver && (opts.includeGhost || !l.ghost));
+  const routes = legs.map((l): Route => {
+    const r = legResults.get(l.req.key);
+    if (typeof r === "object") return { color: l.color, coords: r.coords, style: r.mode === "flight" || r.rough ? "dashed" : r.mode === "walk" ? "dotted" : "solid" };
+    return { color: l.color, coords: [l.req.from, l.req.to], style: "dashed" };
+  });
+  // A hotel or airport pin that a leg starts or ends at
+  const ends = legs.flatMap((l) => [l.req.from, l.req.to]);
+  const atEnd = (x: Pin) => (x.id.startsWith("res:") || x.id.startsWith("apt:")) && ends.some(([lng, lat]) => Math.abs(lng - x.lng) + Math.abs(lat - x.lat) < 0.002);
+  const pins: Pin[] = [];
+  if (opts.numberedPins) {
+    // Compare: the plan's stops numbered in order, then the hotel / airport its legs touch
+    let n = 0;
+    for (const it of items) {
+      if (it.kind !== "place") continue;
+      n++;
+      if (it.lat != null && it.lng != null) pins.push({ id: it.id, lat: it.lat, lng: it.lng, color, label: String(n), name: it.name });
+    }
+    for (const x of [...view.pins, ...extraPins]) if (atEnd(x) && !pins.some((q) => q.id === x.id)) pins.push(x);
+  } else {
+    // Travel mode: the day's existing pins (stops, hotel / airport pins at its legs)
+    const ids = new Set(items.map((i) => i.id));
+    pins.push(...[...view.pins, ...extraPins].filter((x) => ids.has(x.id) || atEnd(x)));
+  }
+  return { legs, pins, routes };
+}
