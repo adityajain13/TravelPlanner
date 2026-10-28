@@ -69,14 +69,19 @@ Hosted at **adityajain.ca/travelplanner** by the `travelplanner` Cloudflare Work
   - Place cards: teardrop numbered marker in the day colour, name / category·address / notes preview / time + cost chips, photo thumbnail on the right; leg rows get a Google Maps "Directions" link.
   - Map: SDF teardrop pins tinted per day (selected pin larger), photo popup for the selected stop.
   - Photos: picker searches Wikipedia (geosearch near the pin + title match), Wikimedia Commons and Openverse, or takes a pasted URL; stores `{url, thumb, credit, link, source}` on the item (`item.image`) / trip (`meta.cover`). Auto-fill uses confident Wikipedia matches only (≥0.75 name similarity) and skips generic stops; country/region lead images that are flags, maps or coats of arms are filtered. Photos cached by the service worker (`place-photos`).
-- [ ] **6. Polish** — edit history with per-origin undo, trip cover image, budget/expenses, packing list, ICS export, travel-time estimates between stops (OSRM), Wanderlog import if an export path exists.
+- [ ] **6. Polish**
+  - [x] Trip cover image, budget/expenses, travel-time estimates between stops, Wanderlog import (shipped above).
+  - [x] Undo/redo for your own edits (`lib/undo.ts`).
+  - [ ] Edit history with per-origin revert (Claude, email, collaborators).
+  - [ ] ICS export.
+  - [ ] Packing list (checklist preset).
 
 ## Notes for the next session
 
 - Read `src/lib/trips.ts` first: all trip writes go through it (`edit()` with an origin).
 - `npm run dev` for the app; `npm run cf:dev` runs the Worker locally against the built app.
 - Keys go in `.env` (see `.env.example`). Without `VITE_PROTOMAPS_KEY` the map shows a placeholder.
-- Not yet verified against real keys: map tiles, satellite, Google details, offline save (sandbox can't reach those hosts). Check these first.
+- Map tiles, satellite, Google details and offline save are in daily use with real keys; the sandbox still can't reach those hosts, so test them in the browser.
 - Smoke-tested in headless Chromium: create trip, add note, reload persists, drag note into another day.
 
 - Photos fix: covers come from Commons landscape photos (no more "Iceland (supermarket)"); auto-fill only takes exact-title or nearby Wikipedia matches; cards use the API-returned standard-width thumbnails with a fallback chain (Photo.tsx); broken picker tiles are hidden; ImagePicker is portalled to <body> as a centered modal; Cover button sits above the title overlay.
@@ -170,7 +175,6 @@ Hosted at **adityajain.ca/travelplanner** by the `travelplanner` Cloudflare Work
 - Oct 27: Emailed activities/tickets become reservations (Other, geocoded, ticket field order) instead of stops; '(Purchase …)' moved from title to confirmation (cleanTitle); older email-added activity stops converted once (then notes tidied).
 - Oct 27: Receipts. Camera button on a stop (header icons) or Budget → Receipts → Scan receipt (label+file input capture=environment). Photo → 1600px JPEG → POST /api/receipts/parse (worker/receipts.ts, Claude vision, RECEIPT_MODEL default sonnet) → merchant/date/currency/category/items(taxable)/tax(added vs included)/tip/total. ReceiptFlow: check & edit lines → who paid → payer only / even (pick people) / by item (people per line, Shared). Tax added on top goes onto taxable lines by price, tip/fees onto all lines; Expense.kind='receipt', receipt, shares (uneven split; settleUp/people chart use shareOf), itemId (matchStop by name, same day preferred). Stop cards show their receipts total.
 - Oct 27: Budget on phones: summary wraps (budget + currency on their own row), chart tabs full-width/no wrap, bars fill what a fixed 16ch amount column leaves (nothing runs off the card at large text sizes).
-- Oct 27: Receipt parser: prompt copes with sideways/crumpled photos (readable=false only if not a receipt), weighed items; falls back to EXTRACT_MODEL if RECEIPT_MODEL fails or gives up; API errors surfaced in the message + logged.
 - Oct 27: Receipt parser: prompt copes with sideways/crumpled photos (readable=false only if not a receipt), weighed items; falls back to EXTRACT_MODEL if RECEIPT_MODEL fails or gives up; API errors surfaced in the message + logged.
 - Oct 27: Menu: capped height (min(22rem,55vh)) scrolling inside, optional search box + left align; receipt stop picker uses both (same day first, then by date).
 - Oct 28: Receipt prompt: surcharges/service charges only in tip (not also as items), cover charge per person is an item, merchant = brand (+ short branch), address = this branch not head office. Tested in chat: Haiku and Sonnet both read a sideways Canadian grocery receipt correctly; on a Japanese izakaya receipt both got amounts/tax-included right, Sonnet got the shop name (Uotami) where Haiku didn't.
