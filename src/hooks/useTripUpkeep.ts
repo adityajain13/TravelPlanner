@@ -182,7 +182,9 @@ export function useLocateTravelEnds(a: UpkeepArgs) {
     if (!jobs.length) return;
     (async () => {
       for (const j of jobs) {
-        const hit = (await searchPlaces(j.q, state.meta.center).catch(() => []))[0];
+        const res = readTrip(doc).reservations.find((x) => x.id === j.id);
+        const careful = res?.type === "car" ? await locateBooking(j.q, undefined, state.meta.center).catch(() => null) : null;
+        const hit = careful ?? (await searchPlaces(j.q, state.meta.center).catch(() => []))[0];
         if (!hit) continue;
         const tz = await zoneAt(hit.lat, hit.lng);
         const cur = readTrip(doc).reservations.find((x) => x.id === j.id);

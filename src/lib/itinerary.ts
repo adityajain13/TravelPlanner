@@ -240,12 +240,26 @@ function stopPins(s: SectionInfo, focus: string | null): Pin[] {
   return pins;
 }
 
-/** Lodging and restaurant bookings with a location get their own pins (one per booking, with its type's symbol). */
+/**
+ * Bookings with a location get their own pins (one per booking, with its type's symbol). Cars are
+ * pinned at both ends because pick-up and drop-off are often different places.
+ */
 function bookingPins(state: TripState, pins: Pin[]): Pin[] {
   const out: Pin[] = [];
-  for (const r of state.reservations)
-    if (r.lat != null && r.lng != null && r.type !== "flight" && ![...pins, ...out].some((p) => p.id === `res:${r.id}` || (p.id.startsWith("res:") && p.name === r.title)))
-      out.push({ id: `res:${r.id}`, lat: r.lat, lng: r.lng, color: "#e8ece9", label: "", glyph: RES_GLYPH[r.type], name: r.title });
+  // Shared bookings come as one copy per traveller with the same title, so a name or id already taken is skipped
+  const add = (p: Pin) => {
+    if (![...pins, ...out].some((x) => x.id === p.id || (x.id.startsWith("res:") && x.name === p.name))) out.push(p);
+  };
+  for (const r of state.reservations) {
+    if (r.type === "flight") continue;
+    const glyph = RES_GLYPH[r.type];
+    if (r.type === "car" && (r.fromAt || r.toAt)) {
+      const { fromAt, toAt } = r;
+      const sameSpot = !!fromAt && !!toAt && Math.hypot((fromAt.lat - toAt.lat) * 111_000, (fromAt.lng - toAt.lng) * 111_000 * Math.cos((fromAt.lat * Math.PI) / 180)) < 200;
+      if (fromAt) add({ id: `res:${r.id}:pick`, lat: fromAt.lat, lng: fromAt.lng, color: "#e8ece9", label: "", glyph, name: `${sameSpot ? "Pick-up & drop-off" : "Pick-up"} · ${r.title}` });
+      if (toAt && !sameSpot) add({ id: `res:${r.id}:drop`, lat: toAt.lat, lng: toAt.lng, color: "#e8ece9", label: "", glyph, name: `Drop-off · ${r.title}` });
+    } else if (r.lat != null && r.lng != null) add({ id: `res:${r.id}`, lat: r.lat, lng: r.lng, color: "#e8ece9", label: "", glyph, name: r.title });
+  }
   return out;
 }
 
