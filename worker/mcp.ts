@@ -346,239 +346,272 @@ function pinSummary(notFound: string[], deferred: string[]) {
   ].filter(Boolean);
 }
 
-async function callTool(env: Env, name: string, a: Args): Promise<string> {
-  switch (name) {
-    case "get_trip": {
-      const { room, role } = await access(env, a, "view");
-      const snap = await room.read();
-      if (!snap.meta.title) return "This trip has no data on the server yet. The owner needs to open it once in the app while online.";
-      return render(snap, role);
-    }
-    case "search_places": {
-      const q = str(a, "query", true)!;
-      const budget = new Budget(LOOKUPS_PER_CALL);
-      let near: number[] | undefined;
-      let countryCode: string | undefined;
-      if (a.trip_link) {
-        const { room } = await access(env, a, "view");
-        const meta = (await room.read()).meta;
-        near = meta.center;
-        countryCode = meta.countryCode;
-      }
-      const hits = await search(q, { near, countryCode, budget });
-      if (!hits.length) return "No places found (both Photon and Nominatim). Try a different spelling or add the city name.";
-      return hits
-        .map(
-          (h, i) =>
-            `${i + 1}. ${h.name}${h.category ? ` (${h.category})` : ""}${countryCode && h.countryCode && h.countryCode !== countryCode ? " [different country from the trip]" : ""}\n   address: ${h.address ?? "?"}\n   lat: ${h.lat}, lng: ${h.lng}${h.osmId ? `, osm_id: ${h.osmId}` : ""}`,
-        )
-        .join("\n");
-    }
-    case "add_place": {
-      const lat = num(a, "lat");
-      const lng = num(a, "lng");
-      if ((lat == null) !== (lng == null)) throw new ToolError("Pass both lat and lng, or neither.");
-      const item: ItemInput = {
-        kind: "place",
-        name: str(a, "name", true)!,
-        lat,
-        lng,
-        address: str(a, "address"),
-        category: str(a, "category"),
-        osmId: str(a, "osm_id"),
-        notes: str(a, "notes"),
-        startTime: time(a, "start_time"),
-        endTime: time(a, "end_time"),
-        cost: num(a, "cost"),
-        costCurrency: str(a, "cost_currency")?.toUpperCase() || undefined,
-      };
-      return mutate(env, a, { type: "add", section: str(a, "section", true)!, item, position: num(a, "position") }, "Added");
-    }
-    case "add_note":
-      return mutate(env, a, { type: "add", section: str(a, "section", true)!, item: { kind: "note", name: str(a, "text", true)! }, position: num(a, "position") }, "Added note");
-    case "add_items": {
-      const list = a.items;
-      if (!Array.isArray(list) || list.length === 0) throw new ToolError('"items" must be a non-empty array.');
-      if (list.length > 300) throw new ToolError("At most 300 items per call; split the import.");
-      const { room } = await access(env, a, "edit");
-      const center = (await room.read()).meta.center;
-      const items = list.map((raw, i) => {
-        const x = (raw ?? {}) as Args;
-        try {
-          const kind = str(x, "kind") === "note" ? "note" : "place";
-          return {
-            section: str(x, "section", true)!,
-            city: str(x, "city"),
-            item: {
-              kind,
-              name: str(x, "name", true)!,
-              lat: num(x, "lat"),
-              lng: num(x, "lng"),
-              address: str(x, "address") || undefined,
-              category: str(x, "category") || undefined,
-              notes: str(x, "notes") || undefined,
-              startTime: time(x, "start_time") || undefined,
-              endTime: time(x, "end_time") || undefined,
-              cost: num(x, "cost"),
-              costCurrency: str(x, "cost_currency")?.toUpperCase() || undefined,
-            } as ItemInput,
-          };
-        } catch (e) {
-          throw new ToolError(`Item ${i + 1}: ${(e as Error).message}`);
-        }
-      });
+async function toolGetTrip(env: Env, a: Args): Promise<string> {
+  const { room, role } = await access(env, a, "view");
+  const snap = await room.read();
+  if (!snap.meta.title) return "This trip has no data on the server yet. The owner needs to open it once in the app while online.";
+  return render(snap, role);
+}
 
-      const budget = new Budget(LOOKUPS_PER_CALL);
-      const snap = await room.read();
-      const countryCode = await tripCountry(room, snap.meta, budget);
-      const missing = items
-        .map((x, i) => ({ x, key: String(i) }))
-        .filter(({ x }) => x.item.kind === "place" && (x.item.lat == null || x.item.lng == null));
-      const { found, notFound, deferred } = await pinPlaces(
-        missing.map(({ x, key }) => ({ key, name: x.item.name, query: [x.item.name, x.item.address, x.city].filter(Boolean).join(", "), section: x.section })),
-        { countryCode, center: center ?? snap.meta.center, budget },
-      );
-      for (const { x, key } of missing) {
-        const hit = found.get(key);
-        if (hit) Object.assign(x.item, { lat: hit.lat, lng: hit.lng, osmId: hit.osmId, address: x.item.address ?? hit.address });
-        else (x.item.lat = undefined), (x.item.lng = undefined);
-      }
-
-      const r = await room.mutate({ type: "addMany", items: items.map(({ section, item }) => ({ section, item })) });
-      if (!r.ok) throw new ToolError(r.error);
-      const pinned = items.filter((x) => x.item.lat != null).length;
-      return [`Added ${items.length} items (${pinned} with map pins). The app shows them live.`, ...pinSummary(notFound, deferred)].join("\n");
-    }
-    case "pin_missing": {
-      const { room } = await access(env, a, "edit");
-      const snap = await room.read();
-      if (!snap.meta.title) throw new ToolError("This trip has no data on the server yet.");
-      const budget = new Budget(LOOKUPS_PER_CALL);
-      const countryCode = await tripCountry(room, snap.meta, budget);
-      const prevBySection = new Map<string, number[]>();
-      const todo: { key: string; name: string; query: string; section: string }[] = [];
-      for (const s of [...snap.sections, { key: "outside", label: "", items: snap.outsideDates }]) {
-        for (const it of s.items) {
-          if (it.kind !== "place") continue;
-          if (it.lat != null && it.lng != null) {
-            if (!todo.some((t) => t.section === s.key)) prevBySection.set(s.key, [it.lng, it.lat]);
-            continue;
-          }
-          todo.push({ key: it.id, name: it.name, query: [it.name, it.address].filter(Boolean).join(", "), section: s.key });
-        }
-      }
-      if (!todo.length) return "Every place already has a map pin.";
-      const { found, notFound, deferred } = await pinPlaces(todo, { countryCode, center: snap.meta.center, budget, prevBySection });
-      if (found.size) {
-        const r = await room.mutate({
-          type: "updateMany",
-          updates: [...found].map(([id, h]) => ({ id, patch: { lat: h.lat, lng: h.lng, osmId: h.osmId, address: h.address } })),
-        });
-        if (!r.ok) throw new ToolError(r.error);
-      }
-      return [`Pinned ${found.size} of ${todo.length} unpinned places.`, ...pinSummary(notFound, deferred)].join("\n");
-    }
-    case "add_reservations": {
-      const list = a.reservations;
-      if (!Array.isArray(list) || !list.length) throw new ToolError('"reservations" must be a non-empty array.');
-      const { room } = await access(env, a, "edit");
-      const snap = await room.read();
-      if (!snap.meta.title) throw new ToolError("This trip has no data on the server yet. Open it once in the app while online.");
-      const resBudget = new Budget(LOOKUPS_PER_CALL);
-      const resCountry = await tripCountry(room, snap.meta, resBudget);
-      const records = [];
-      for (const [i, raw] of list.entries()) {
-        const x = (raw ?? {}) as Args;
-        try {
-          const type = str(x, "type", true)!;
-          if (!(RES_TYPES as readonly string[]).includes(type)) throw new ToolError(`type must be one of ${RES_TYPES.join(", ")}`);
-          const rec: Omit<Rec, "id"> = {
-            type,
-            title: str(x, "title", true),
-            confirmation: str(x, "confirmation"),
-            startDate: str(x, "start_date"),
-            startTime: time(x, "start_time"),
-            endDate: str(x, "end_date"),
-            endTime: time(x, "end_time"),
-            from: str(x, "from"),
-            to: str(x, "to"),
-            address: str(x, "address"),
-            cost: num(x, "cost"),
-            costCurrency: str(x, "cost_currency")?.toUpperCase(),
-            // Same standard layout as emailed bookings
-            notes: formatBookingNotes(type, x.details, str(x, "notes")),
-          };
-          if ((type === "lodging" || type === "restaurant") && (rec.address || rec.title)) {
-            const hit = await geocode(String(rec.address ?? rec.title), { countries: resCountry ? [resCountry] : [], near: snap.meta.center, budget: resBudget });
-            if (hit && hit !== OUT_OF_BUDGET) Object.assign(rec, { lat: hit.lat, lng: hit.lng, address: rec.address ?? hit.address });
-          }
-          records.push(rec);
-        } catch (e) {
-          throw new ToolError(`Reservation ${i + 1}: ${(e as Error).message}`);
-        }
-      }
-      const r = await room.mutate({ type: "addRecords", map: "reservations", records });
-      if (!r.ok) throw new ToolError(r.error);
-      return `Added ${records.length} reservation${records.length > 1 ? "s" : ""}. They show in the Reservations tab and on their days.`;
-    }
-    case "add_expenses": {
-      const list = a.expenses;
-      if (!Array.isArray(list) || !list.length) throw new ToolError('"expenses" must be a non-empty array.');
-      const { room } = await access(env, a, "edit");
-      const snap = await room.read();
-      if (!snap.meta.title) throw new ToolError("This trip has no data on the server yet. Open it once in the app while online.");
-      const records = list.map((raw, i) => {
-        const x = (raw ?? {}) as Args;
-        try {
-          const amount = num(x, "amount");
-          if (amount == null) throw new ToolError('Missing "amount".');
-          const category = str(x, "category") ?? "other";
-          if (!(EXPENSE_CATEGORIES as readonly string[]).includes(category)) throw new ToolError(`category must be one of ${EXPENSE_CATEGORIES.join(", ")}`);
-          return {
-            title: str(x, "title", true)!,
-            amount,
-            currency: (str(x, "currency") || snap.meta.currency || "CAD").toUpperCase(),
-            category,
-            date: str(x, "date"),
-            paidBy: str(x, "paid_by"),
-            notes: str(x, "notes"),
-          };
-        } catch (e) {
-          throw new ToolError(`Expense ${i + 1}: ${(e as Error).message}`);
-        }
-      });
-      const r = await room.mutate({ type: "addRecords", map: "expenses", records });
-      if (!r.ok) throw new ToolError(r.error);
-      return `Added ${records.length} expense${records.length > 1 ? "s" : ""} to the budget.`;
-    }
-    case "update_item": {
-      const patch: Record<string, unknown> = {
-        name: str(a, "name"),
-        address: str(a, "address"),
-        category: str(a, "category"),
-        notes: str(a, "notes"),
-        startTime: time(a, "start_time"),
-        endTime: time(a, "end_time"),
-        cost: a.cost === "" ? "" : num(a, "cost"),
-        costCurrency: str(a, "cost_currency")?.toUpperCase(),
-      };
-      if (patch.name === "") throw new ToolError("name can't be empty.");
-      return mutate(env, a, { type: "update", id: str(a, "item_id", true)!, patch }, "Updated");
-    }
-    case "move_item":
-      return mutate(env, a, { type: "move", id: str(a, "item_id", true)!, section: str(a, "section", true)!, position: num(a, "position") }, "Moved");
-    case "remove_item":
-      return mutate(env, a, { type: "remove", id: str(a, "item_id", true)! }, "Removed the item");
-    case "update_trip":
-      return mutate(
-        env,
-        a,
-        { type: "meta", patch: { title: str(a, "title"), destination: str(a, "destination"), startDate: str(a, "start_date"), endDate: str(a, "end_date") } },
-        "Updated the trip details",
-      );
-    default:
-      throw new ToolError(`Unknown tool "${name}".`);
+async function toolSearchPlaces(env: Env, a: Args): Promise<string> {
+  const q = str(a, "query", true)!;
+  const budget = new Budget(LOOKUPS_PER_CALL);
+  let near: number[] | undefined;
+  let countryCode: string | undefined;
+  if (a.trip_link) {
+    const { room } = await access(env, a, "view");
+    const meta = (await room.read()).meta;
+    near = meta.center;
+    countryCode = meta.countryCode;
   }
+  const hits = await search(q, { near, countryCode, budget });
+  if (!hits.length) return "No places found (both Photon and Nominatim). Try a different spelling or add the city name.";
+  return hits
+    .map(
+      (h, i) =>
+        `${i + 1}. ${h.name}${h.category ? ` (${h.category})` : ""}${countryCode && h.countryCode && h.countryCode !== countryCode ? " [different country from the trip]" : ""}\n   address: ${h.address ?? "?"}\n   lat: ${h.lat}, lng: ${h.lng}${h.osmId ? `, osm_id: ${h.osmId}` : ""}`,
+    )
+    .join("\n");
+}
+
+async function toolAddPlace(env: Env, a: Args): Promise<string> {
+  const lat = num(a, "lat");
+  const lng = num(a, "lng");
+  if ((lat == null) !== (lng == null)) throw new ToolError("Pass both lat and lng, or neither.");
+  const item: ItemInput = {
+    kind: "place",
+    name: str(a, "name", true)!,
+    lat,
+    lng,
+    address: str(a, "address"),
+    category: str(a, "category"),
+    osmId: str(a, "osm_id"),
+    notes: str(a, "notes"),
+    startTime: time(a, "start_time"),
+    endTime: time(a, "end_time"),
+    cost: num(a, "cost"),
+    costCurrency: str(a, "cost_currency")?.toUpperCase() || undefined,
+  };
+  return mutate(env, a, { type: "add", section: str(a, "section", true)!, item, position: num(a, "position") }, "Added");
+}
+
+async function toolAddNote(env: Env, a: Args): Promise<string> {
+  return mutate(env, a, { type: "add", section: str(a, "section", true)!, item: { kind: "note", name: str(a, "text", true)! }, position: num(a, "position") }, "Added note");
+}
+
+async function toolAddItems(env: Env, a: Args): Promise<string> {
+  const list = a.items;
+  if (!Array.isArray(list) || list.length === 0) throw new ToolError('"items" must be a non-empty array.');
+  if (list.length > 300) throw new ToolError("At most 300 items per call; split the import.");
+  const { room } = await access(env, a, "edit");
+  const center = (await room.read()).meta.center;
+  const items = list.map((raw, i) => {
+    const x = (raw ?? {}) as Args;
+    try {
+      const kind = str(x, "kind") === "note" ? "note" : "place";
+      return {
+        section: str(x, "section", true)!,
+        city: str(x, "city"),
+        item: {
+          kind,
+          name: str(x, "name", true)!,
+          lat: num(x, "lat"),
+          lng: num(x, "lng"),
+          address: str(x, "address") || undefined,
+          category: str(x, "category") || undefined,
+          notes: str(x, "notes") || undefined,
+          startTime: time(x, "start_time") || undefined,
+          endTime: time(x, "end_time") || undefined,
+          cost: num(x, "cost"),
+          costCurrency: str(x, "cost_currency")?.toUpperCase() || undefined,
+        } as ItemInput,
+      };
+    } catch (e) {
+      throw new ToolError(`Item ${i + 1}: ${(e as Error).message}`);
+    }
+  });
+
+  const budget = new Budget(LOOKUPS_PER_CALL);
+  const snap = await room.read();
+  const countryCode = await tripCountry(room, snap.meta, budget);
+  const missing = items
+    .map((x, i) => ({ x, key: String(i) }))
+    .filter(({ x }) => x.item.kind === "place" && (x.item.lat == null || x.item.lng == null));
+  const { found, notFound, deferred } = await pinPlaces(
+    missing.map(({ x, key }) => ({ key, name: x.item.name, query: [x.item.name, x.item.address, x.city].filter(Boolean).join(", "), section: x.section })),
+    { countryCode, center: center ?? snap.meta.center, budget },
+  );
+  for (const { x, key } of missing) {
+    const hit = found.get(key);
+    if (hit) Object.assign(x.item, { lat: hit.lat, lng: hit.lng, osmId: hit.osmId, address: x.item.address ?? hit.address });
+    else (x.item.lat = undefined), (x.item.lng = undefined);
+  }
+
+  const r = await room.mutate({ type: "addMany", items: items.map(({ section, item }) => ({ section, item })) });
+  if (!r.ok) throw new ToolError(r.error);
+  const pinned = items.filter((x) => x.item.lat != null).length;
+  return [`Added ${items.length} items (${pinned} with map pins). The app shows them live.`, ...pinSummary(notFound, deferred)].join("\n");
+}
+
+async function toolPinMissing(env: Env, a: Args): Promise<string> {
+  const { room } = await access(env, a, "edit");
+  const snap = await room.read();
+  if (!snap.meta.title) throw new ToolError("This trip has no data on the server yet.");
+  const budget = new Budget(LOOKUPS_PER_CALL);
+  const countryCode = await tripCountry(room, snap.meta, budget);
+  const prevBySection = new Map<string, number[]>();
+  const todo: { key: string; name: string; query: string; section: string }[] = [];
+  for (const s of [...snap.sections, { key: "outside", label: "", items: snap.outsideDates }]) {
+    for (const it of s.items) {
+      if (it.kind !== "place") continue;
+      if (it.lat != null && it.lng != null) {
+        if (!todo.some((t) => t.section === s.key)) prevBySection.set(s.key, [it.lng, it.lat]);
+        continue;
+      }
+      todo.push({ key: it.id, name: it.name, query: [it.name, it.address].filter(Boolean).join(", "), section: s.key });
+    }
+  }
+  if (!todo.length) return "Every place already has a map pin.";
+  const { found, notFound, deferred } = await pinPlaces(todo, { countryCode, center: snap.meta.center, budget, prevBySection });
+  if (found.size) {
+    const r = await room.mutate({
+      type: "updateMany",
+      updates: [...found].map(([id, h]) => ({ id, patch: { lat: h.lat, lng: h.lng, osmId: h.osmId, address: h.address } })),
+    });
+    if (!r.ok) throw new ToolError(r.error);
+  }
+  return [`Pinned ${found.size} of ${todo.length} unpinned places.`, ...pinSummary(notFound, deferred)].join("\n");
+}
+
+async function toolAddReservations(env: Env, a: Args): Promise<string> {
+  const list = a.reservations;
+  if (!Array.isArray(list) || !list.length) throw new ToolError('"reservations" must be a non-empty array.');
+  const { room } = await access(env, a, "edit");
+  const snap = await room.read();
+  if (!snap.meta.title) throw new ToolError("This trip has no data on the server yet. Open it once in the app while online.");
+  const resBudget = new Budget(LOOKUPS_PER_CALL);
+  const resCountry = await tripCountry(room, snap.meta, resBudget);
+  const records = [];
+  for (const [i, raw] of list.entries()) {
+    const x = (raw ?? {}) as Args;
+    try {
+      const type = str(x, "type", true)!;
+      if (!(RES_TYPES as readonly string[]).includes(type)) throw new ToolError(`type must be one of ${RES_TYPES.join(", ")}`);
+      const rec: Omit<Rec, "id"> = {
+        type,
+        title: str(x, "title", true),
+        confirmation: str(x, "confirmation"),
+        startDate: str(x, "start_date"),
+        startTime: time(x, "start_time"),
+        endDate: str(x, "end_date"),
+        endTime: time(x, "end_time"),
+        from: str(x, "from"),
+        to: str(x, "to"),
+        address: str(x, "address"),
+        cost: num(x, "cost"),
+        costCurrency: str(x, "cost_currency")?.toUpperCase(),
+        // Same standard layout as emailed bookings
+        notes: formatBookingNotes(type, x.details, str(x, "notes")),
+      };
+      if ((type === "lodging" || type === "restaurant") && (rec.address || rec.title)) {
+        const hit = await geocode(String(rec.address ?? rec.title), { countries: resCountry ? [resCountry] : [], near: snap.meta.center, budget: resBudget });
+        if (hit && hit !== OUT_OF_BUDGET) Object.assign(rec, { lat: hit.lat, lng: hit.lng, address: rec.address ?? hit.address });
+      }
+      records.push(rec);
+    } catch (e) {
+      throw new ToolError(`Reservation ${i + 1}: ${(e as Error).message}`);
+    }
+  }
+  const r = await room.mutate({ type: "addRecords", map: "reservations", records });
+  if (!r.ok) throw new ToolError(r.error);
+  return `Added ${records.length} reservation${records.length > 1 ? "s" : ""}. They show in the Reservations tab and on their days.`;
+}
+
+async function toolAddExpenses(env: Env, a: Args): Promise<string> {
+  const list = a.expenses;
+  if (!Array.isArray(list) || !list.length) throw new ToolError('"expenses" must be a non-empty array.');
+  const { room } = await access(env, a, "edit");
+  const snap = await room.read();
+  if (!snap.meta.title) throw new ToolError("This trip has no data on the server yet. Open it once in the app while online.");
+  const records = list.map((raw, i) => {
+    const x = (raw ?? {}) as Args;
+    try {
+      const amount = num(x, "amount");
+      if (amount == null) throw new ToolError('Missing "amount".');
+      const category = str(x, "category") ?? "other";
+      if (!(EXPENSE_CATEGORIES as readonly string[]).includes(category)) throw new ToolError(`category must be one of ${EXPENSE_CATEGORIES.join(", ")}`);
+      return {
+        title: str(x, "title", true)!,
+        amount,
+        currency: (str(x, "currency") || snap.meta.currency || "CAD").toUpperCase(),
+        category,
+        date: str(x, "date"),
+        paidBy: str(x, "paid_by"),
+        notes: str(x, "notes"),
+      };
+    } catch (e) {
+      throw new ToolError(`Expense ${i + 1}: ${(e as Error).message}`);
+    }
+  });
+  const r = await room.mutate({ type: "addRecords", map: "expenses", records });
+  if (!r.ok) throw new ToolError(r.error);
+  return `Added ${records.length} expense${records.length > 1 ? "s" : ""} to the budget.`;
+}
+
+async function toolUpdateItem(env: Env, a: Args): Promise<string> {
+  const patch: Record<string, unknown> = {
+    name: str(a, "name"),
+    address: str(a, "address"),
+    category: str(a, "category"),
+    notes: str(a, "notes"),
+    startTime: time(a, "start_time"),
+    endTime: time(a, "end_time"),
+    cost: a.cost === "" ? "" : num(a, "cost"),
+    costCurrency: str(a, "cost_currency")?.toUpperCase(),
+  };
+  if (patch.name === "") throw new ToolError("name can't be empty.");
+  return mutate(env, a, { type: "update", id: str(a, "item_id", true)!, patch }, "Updated");
+}
+
+async function toolMoveItem(env: Env, a: Args): Promise<string> {
+  return mutate(env, a, { type: "move", id: str(a, "item_id", true)!, section: str(a, "section", true)!, position: num(a, "position") }, "Moved");
+}
+
+async function toolRemoveItem(env: Env, a: Args): Promise<string> {
+  return mutate(env, a, { type: "remove", id: str(a, "item_id", true)! }, "Removed the item");
+}
+
+async function toolUpdateTrip(env: Env, a: Args): Promise<string> {
+  return mutate(
+    env,
+    a,
+    { type: "meta", patch: { title: str(a, "title"), destination: str(a, "destination"), startDate: str(a, "start_date"), endDate: str(a, "end_date") } },
+    "Updated the trip details",
+  );
+}
+
+type ToolHandler = (env: Env, a: Args) => Promise<string>;
+
+// A Map rather than an object literal, so names like "constructor" never hit a prototype property.
+const TOOL_HANDLERS = new Map<string, ToolHandler>([
+  ["get_trip", toolGetTrip],
+  ["search_places", toolSearchPlaces],
+  ["add_place", toolAddPlace],
+  ["add_note", toolAddNote],
+  ["add_items", toolAddItems],
+  ["pin_missing", toolPinMissing],
+  ["add_reservations", toolAddReservations],
+  ["add_expenses", toolAddExpenses],
+  ["update_item", toolUpdateItem],
+  ["move_item", toolMoveItem],
+  ["remove_item", toolRemoveItem],
+  ["update_trip", toolUpdateTrip],
+]);
+
+async function callTool(env: Env, name: string, a: Args): Promise<string> {
+  const handler = TOOL_HANDLERS.get(name);
+  if (!handler) throw new ToolError(`Unknown tool "${name}".`);
+  return handler(env, a);
 }
 
 interface RpcRequest {
