@@ -104,34 +104,10 @@ export function ItemCardDragPreview(props: Pick<Props, "item" | "number" | "colo
 const ItemCardMemo = memoLatest(ItemCardView, "ItemCard");
 
 function ItemCardView({
-  item,
-  number,
-  color,
-  selected,
-  readOnly,
-  currency = "CAD",
-  searchContext,
-  timeBefore,
-  auto,
-  onStay,
-  onSelect,
-  onChange,
-  onDelete,
-  checked,
-  selecting,
-  onCheck,
-  targets,
-  onMoveTo,
-  sections,
-  onToggleSection,
-  onCostDetails,
-  people,
-  onReceipt,
-  receiptsLabel,
-  sortable,
-  overlay,
+  item, number, color, selected, readOnly, currency = "CAD", searchContext, timeBefore, auto, onStay, onSelect, onChange, onDelete,
+  checked, selecting, onCheck, targets, onMoveTo, sections, onToggleSection, onCostDetails, people, onReceipt, receiptsLabel, sortable, overlay,
 }: Props & { sortable?: SortableBits; overlay?: boolean }) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = sortable ?? ({} as Partial<SortableBits>);
+  const { setNodeRef, transform, transition, isDragging } = sortable ?? ({} as Partial<SortableBits>);
   const style = sortable ? { transform: CSS.Translate.toString(transform ?? null), transition } : undefined;
   const [picking, setPicking] = useState(false);
   const isPlace = item.kind === "place";
@@ -144,10 +120,76 @@ function ItemCardView({
       id={overlay ? undefined : `item-${item.id}`}
       className={`group relative flex items-start gap-2 py-1 ${overlay ? "bg-bg pr-1 pl-1" : ""} ${isDragging ? "z-10 opacity-30" : ""}`}
     >
+      <CardGutter item={item} color={color} number={number} readOnly={readOnly} sortable={sortable} onCheck={onCheck} selecting={selecting} checked={checked} />
+
+      <div
+        onClick={isPlace ? onSelect : undefined}
+        className={`flex min-w-0 flex-1 gap-3 rounded-xl border p-3 transition-colors ${isPlace ? "cursor-pointer" : ""} ${
+          selected && isPlace
+            ? "border-accent/60 bg-surface-2"
+            : isPlace
+              ? "border-line/70 bg-surface hover:border-line hover:bg-surface-2/60"
+              : item.kind === "checklist"
+                ? "border-line/70 bg-surface"
+                : "border-transparent bg-surface-2/40 hover:bg-surface-2/70"
+        }`}
+      >
+        <div className="min-w-0 flex-1">
+          <div className="flex items-start justify-between gap-2">
+            <CardTitle item={item} readOnly={readOnly} onChange={onChange} onDelete={onDelete} />
+            <CardActions item={item} readOnly={readOnly} onReceipt={onReceipt} onDelete={onDelete} />
+          </div>
+          {isPlace && subtitle && <p className="mt-0.5 truncate text-sm text-muted">{subtitle}</p>}
+          {isPlace && !selected && item.notes && <RichText text={item.notes} className="mt-1.5 line-clamp-3 text-[15px] leading-snug text-muted" />}
+
+          {isPlace && !selected && (auto || item.startTime || item.endTime || item.cost != null || !!item.who?.length || !!receiptsLabel) && (
+            <ClosedChips item={item} auto={auto} onStay={onStay} readOnly={readOnly} timeBefore={timeBefore} receiptsLabel={receiptsLabel} currency={currency} onChange={onChange} onCostDetails={onCostDetails} />
+          )}
+
+          {selected && isPlace && (
+            <OpenDetails
+              item={item} auto={auto} onStay={onStay} readOnly={readOnly} timeBefore={timeBefore} targets={targets} onMoveTo={onMoveTo} onToggleSection={onToggleSection}
+              sections={sections} onCheck={onCheck} checked={checked} people={people} onChange={onChange} currency={currency} onCostDetails={onCostDetails}
+            />
+          )}
+        </div>
+
+        {isPlace && (item.image || (selected && !readOnly)) && <PhotoSlot item={item} selected={selected} readOnly={readOnly} onOpenPicker={() => setPicking(true)} />}
+      </div>
+
+      {picking && (
+        <ImagePicker
+          initialQuery={[item.name, searchContext].filter(Boolean).join(" ")}
+          name={item.name}
+          coords={item.lat != null && item.lng != null ? [item.lng, item.lat] : undefined}
+          googlePlaceId={item.googlePlaceId}
+          address={item.address}
+          current={item.image}
+          onPick={(image) => onChange({ image })}
+          onClose={() => setPicking(false)}
+        />
+      )}
+    </div>
+  );
+}
+
+/** The left gutter: the drag handle (not in read-only), then the pin, which becomes a checkbox while selecting. */
+function CardGutter({
+  item,
+  color,
+  number,
+  readOnly,
+  sortable,
+  onCheck,
+  selecting,
+  checked,
+}: Pick<Props, "item" | "color" | "number" | "readOnly" | "onCheck" | "selecting" | "checked"> & { sortable?: SortableBits }) {
+  return (
+    <>
       {!readOnly && sortable && (
         <button
-          {...attributes}
-          {...listeners}
+          {...sortable.attributes}
+          {...sortable.listeners}
           onClick={(e) => e.stopPropagation()}
           className="absolute top-1/2 -left-5 grid h-12 w-7 -translate-y-1/2 cursor-grab touch-none place-items-center rounded-lg text-muted/60 opacity-0 transition-opacity group-hover:opacity-100 hover:bg-surface-2 hover:text-fg active:cursor-grabbing max-md:opacity-100"
           aria-label="Drag to reorder"
@@ -159,7 +201,7 @@ function ItemCardView({
       <div className="relative mt-2.5 w-7 shrink-0">
         {/* Hovering swaps the pin for a checkbox (multi-select); while selecting, every row shows one */}
         <div className={onCheck && (selecting || checked) ? "invisible" : onCheck ? "md:group-hover:invisible" : ""}>
-          {isPlace ? (
+          {item.kind === "place" ? (
             <PinMarker color={color} label={number} />
           ) : item.kind === "checklist" ? (
             <ListChecks className="mx-auto mt-0.5 size-5 text-muted" />
@@ -184,218 +226,257 @@ function ItemCardView({
           </label>
         )}
       </div>
+    </>
+  );
+}
 
-      <div
-        onClick={isPlace ? onSelect : undefined}
-        className={`flex min-w-0 flex-1 gap-3 rounded-xl border p-3 transition-colors ${isPlace ? "cursor-pointer" : ""} ${
-          selected && isPlace
-            ? "border-accent/60 bg-surface-2"
-            : isPlace
-              ? "border-line/70 bg-surface hover:border-line hover:bg-surface-2/60"
-              : item.kind === "checklist"
-                ? "border-line/70 bg-surface"
-                : "border-transparent bg-surface-2/40 hover:bg-surface-2/70"
-        }`}
-      >
-        <div className="min-w-0 flex-1">
-          <div className="flex items-start justify-between gap-2">
-            {isPlace ? (
-              <p className="text-[17px] leading-snug font-bold">{item.name}</p>
-            ) : item.kind === "checklist" ? (
-              <ChecklistBody item={item} readOnly={readOnly} onChange={onChange} onDelete={onDelete} />
-            ) : (
-              <NoteBody text={item.name} readOnly={readOnly} onCommit={(name) => (name.trim() ? name !== item.name && onChange({ name }) : onDelete())} />
-            )}
-            <div className="-mt-1 -mr-1 flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 max-md:opacity-100">
-              {isPlace && onReceipt && !readOnly && (
-                <ReceiptButton onFile={onReceipt} title="Scan a receipt from here" className="grid size-7 place-items-center rounded-md text-muted hover:bg-surface-2 hover:text-fg" />
-              )}
-              {isPlace && (
-                <a
-                  href={googleMapsLink(item)}
-                  target="_blank"
-                  rel="noreferrer"
-                  onClick={(e) => e.stopPropagation()}
-                  className="grid size-7 place-items-center rounded-md text-muted hover:bg-surface-2 hover:text-fg"
-                  title="Open in Google Maps"
-                >
-                  <ExternalLink className="size-3.5" />
-                </a>
-              )}
-              {!readOnly && (
-                <button onClick={(e) => (e.stopPropagation(), onDelete())} className="grid size-7 place-items-center rounded-md text-muted hover:bg-surface-2 hover:text-danger" title="Remove">
-                  <Trash2 className="size-3.5" />
-                </button>
-              )}
-            </div>
-          </div>
-          {isPlace && subtitle && <p className="mt-0.5 truncate text-sm text-muted">{subtitle}</p>}
-          {isPlace && !selected && item.notes && <RichText text={item.notes} className="mt-1.5 line-clamp-3 text-[15px] leading-snug text-muted" />}
+/** The card's heading: a stop's name, or a checklist / note in its editable form. */
+function CardTitle({ item, readOnly, onChange, onDelete }: Pick<Props, "item" | "readOnly" | "onChange" | "onDelete">) {
+  return item.kind === "place" ? (
+    <p className="text-[17px] leading-snug font-bold">{item.name}</p>
+  ) : item.kind === "checklist" ? (
+    <ChecklistBody item={item} readOnly={readOnly} onChange={onChange} onDelete={onDelete} />
+  ) : (
+    <NoteBody text={item.name} readOnly={readOnly} onCommit={(name) => (name.trim() ? name !== item.name && onChange({ name }) : onDelete())} />
+  );
+}
 
-          {isPlace && !selected && (auto || item.startTime || item.endTime || item.cost != null || !!item.who?.length || !!receiptsLabel) && (
-            <div className="mt-2.5 flex flex-wrap gap-1.5 text-[13px] font-semibold">
-              {receiptsLabel && (
-                <span className={chip} title="Receipts linked to this stop (Budget → Receipts)">
-                  <ReceiptText className="size-3.5 text-accent" /> {receiptsLabel}
-                </span>
-              )}
-              {!!item.who?.length && (
-                <span className="flex items-center gap-1.5 rounded-full bg-surface-2 px-2.5 py-1 text-muted" title="Only they go here; their route is drawn on its own">
-                  <Users className="size-3.5" /> {item.who.join(" & ")}
-                </span>
-              )}
-              {auto && <AutoTimeChips item={item} auto={auto} onStay={onStay} readOnly={readOnly} chip={chip} />}
-              {!auto && (item.startTime || item.endTime) && (
-                <TimeRangeField
-                    after={timeBefore}
-                  disabled={readOnly}
-                  start={item.startTime}
-                  end={item.endTime}
-                  onChange={(startTime, endTime) => onChange({ startTime, endTime })}
-                  title="Change time"
-                  className={`${chip} ${readOnly ? "" : "hover:bg-accent/20"}`}
-                >
-                  <Clock className="size-3.5 text-accent" />{" "}
-                  {item.startTime ? `${fmtTime(item.startTime)}${item.endTime ? ` – ${fmtTime(item.endTime)}` : ""}` : `Until ${fmtTime(item.endTime!)}`}
-                </TimeRangeField>
-              )}
-              {item.cost != null && (
-                <button
-                  type="button"
-                  disabled={readOnly || !onCostDetails}
-                  onClick={(e) => (e.stopPropagation(), onCostDetails?.())}
-                  title="Cost details"
-                  className={`${chip} ${readOnly ? "" : "hover:bg-accent/20"}`}
-                >
-                  <Wallet className="size-3.5 text-accent" /> {formatMoney(item.cost, item.costCurrency ?? currency)}
-                </button>
-              )}
-            </div>
-          )}
-
-          {selected && isPlace && (
-            <div className="mt-3 space-y-2" onClick={(e) => e.stopPropagation()}>
-              {!readOnly && (targets?.length || onCheck) && (
-                <div className="flex flex-wrap items-center gap-2 text-[13px]">
-                  {targets && onMoveTo && (
-                    <SectionPicker
-                      targets={targets}
-                      current={item.section}
-                      onPick={(k) => (onToggleSection ? onToggleSection(k) : k !== item.section && onMoveTo(k))}
-                      selected={onToggleSection ? sections : undefined}
-                      className={`${PILL} hover:border-accent hover:text-fg`}
-                    >
-                      <Bookmark className="size-3.5" />
-                      {targets.find((t) => t.key === item.section)?.label ?? "Move to"}
-                      {sections && sections.length > 1 && <span className="text-accent">+{sections.length - 1}</span>}
-                    </SectionPicker>
-                  )}
-                  {onCheck && !checked && (
-                    <button onClick={() => onCheck(true, false)} className="flex items-center gap-1.5 rounded-full px-2 py-1 font-semibold text-muted hover:text-fg md:hidden">
-                      <CheckSquare className="size-3.5" /> Select
-                    </button>
-                  )}
-                </div>
-              )}
-              {isPlace && people && people.length > 1 && !readOnly && (
-                <div className="flex flex-wrap items-center gap-1.5 text-[13px]">
-                  <Users className="size-3.5 text-muted" />
-                  {[undefined, ...people].map((t) => {
-                    const on = t === undefined ? !item.who?.length : !!item.who?.includes(t);
-                    return (
-                      <button
-                        key={t ?? "everyone"}
-                        type="button"
-                        onClick={() => {
-                          if (t === undefined) return onChange({ who: undefined });
-                          const next = on ? (item.who ?? []).filter((x) => x !== t) : [...(item.who ?? []), t];
-                          // Everyone ticked = everyone
-                          onChange({ who: next.length && next.length < people.length ? next : undefined });
-                        }}
-                        title={t ? `Only ${t} goes here (their own route)` : "Everyone goes here"}
-                        className={`rounded-full px-2.5 py-1 font-semibold ${on ? "bg-accent text-on-accent" : "bg-surface-2 text-muted hover:text-fg"}`}
-                      >
-                        {t ?? "Everyone"}
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
-              {isPlace && auto && (
-                <div className="flex flex-wrap items-center gap-2 text-[13px] font-semibold">
-                  <AutoTimeChips item={item} auto={auto} onStay={onStay} readOnly={readOnly} chip={`${PILL}`} />
-                </div>
-              )}
-              {isPlace && !auto && (
-                <div className="flex items-center">
-                  <TimeRangeField
-                    after={timeBefore}
-                    disabled={readOnly}
-                    start={item.startTime}
-                    end={item.endTime}
-                    onChange={(startTime, endTime) => onChange({ startTime, endTime })}
-                    className={`${PILL} ${readOnly ? "" : "hover:border-accent hover:text-fg"}`}
-                  />
-                </div>
-              )}
-              {(item.cost != null || !readOnly) && (
-                <div className="flex flex-wrap items-center gap-2">
-                  <CostInput
-                    disabled={readOnly}
-                    amount={item.cost}
-                    currency={item.costCurrency ?? currency}
-                    onCommit={(cost, costCurrency) => onChange({ cost, costCurrency: cost == null || costCurrency === currency ? undefined : costCurrency })}
-                  />
-                  {item.cost != null && onCostDetails && !readOnly && (
-                    <button onClick={onCostDetails} className="flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[12px] font-semibold text-muted hover:bg-surface hover:text-fg">
-                      <Users className="size-3.5" /> Category & split
-                    </button>
-                  )}
-                </div>
-              )}
-              {isPlace && <GoogleDetails item={item} onLink={(googlePlaceId) => onChange({ googlePlaceId })} onSnapshot={(d) => onChange({ google: { ...d, fetchedAt: Date.now() } })} />}
-              {(item.notes || !readOnly) && <NotesInput disabled={readOnly} value={item.notes ?? ""} onCommit={(v) => onChange({ notes: v })} />}
-            </div>
-          )}
-        </div>
-
-        {isPlace && (item.image || (selected && !readOnly)) && (
-          <div className="flex w-[72px] shrink-0 flex-col items-stretch gap-1 sm:w-20">
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              if (!readOnly) setPicking(true);
-              else if (item.image?.link) window.open(item.image.link, "_blank", "noopener");
-            }}
-            className={`relative size-[72px] shrink-0 overflow-hidden rounded-lg sm:size-20 ${item.image ? "bg-surface-2" : "border border-dashed border-line text-muted hover:border-accent hover:text-fg"}`}
-            title={item.image ? item.image.credit ?? "Photo" : "Add a photo"}
-          >
-            {item.image ? (
-              <Photo srcs={[item.image.thumb, item.image.url]} className="size-full object-cover" />
-            ) : (
-              <span className="flex size-full flex-col items-center justify-center gap-1 text-[10px]">
-                <ImagePlus className="size-4" /> Photo
-              </span>
-            )}
-          </button>
-          {/* The photo's credit sits under the photo when the card is open, using no extra row */}
-          {selected && item.image && <PhotoCredit img={item.image} className="line-clamp-3 block text-center text-[10px] leading-tight [overflow-wrap:anywhere] text-muted" />}
-          </div>
-        )}
-      </div>
-
-      {picking && (
-        <ImagePicker
-          initialQuery={[item.name, searchContext].filter(Boolean).join(" ")}
-          name={item.name}
-          coords={item.lat != null && item.lng != null ? [item.lng, item.lat] : undefined}
-          googlePlaceId={item.googlePlaceId}
-          address={item.address}
-          current={item.image}
-          onPick={(image) => onChange({ image })}
-          onClose={() => setPicking(false)}
-        />
+/** The icon buttons at the card's top right: scan a receipt from the stop, open it in Google Maps, remove it. */
+function CardActions({ item, readOnly, onReceipt, onDelete }: Pick<Props, "item" | "readOnly" | "onReceipt" | "onDelete">) {
+  const isPlace = item.kind === "place";
+  return (
+    <div className="-mt-1 -mr-1 flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 max-md:opacity-100">
+      {isPlace && onReceipt && !readOnly && (
+        <ReceiptButton onFile={onReceipt} title="Scan a receipt from here" className="grid size-7 place-items-center rounded-md text-muted hover:bg-surface-2 hover:text-fg" />
       )}
+      {isPlace && (
+        <a
+          href={googleMapsLink(item)}
+          target="_blank"
+          rel="noreferrer"
+          onClick={(e) => e.stopPropagation()}
+          className="grid size-7 place-items-center rounded-md text-muted hover:bg-surface-2 hover:text-fg"
+          title="Open in Google Maps"
+        >
+          <ExternalLink className="size-3.5" />
+        </a>
+      )}
+      {!readOnly && (
+        <button onClick={(e) => (e.stopPropagation(), onDelete())} className="grid size-7 place-items-center rounded-md text-muted hover:bg-surface-2 hover:text-danger" title="Remove">
+          <Trash2 className="size-3.5" />
+        </button>
+      )}
+    </div>
+  );
+}
+
+/** The chip row on a closed stop card: receipts, who goes, the times (worked out or set), and the cost. */
+function ClosedChips({
+  item,
+  auto,
+  onStay,
+  readOnly,
+  timeBefore,
+  receiptsLabel,
+  currency,
+  onChange,
+  onCostDetails,
+}: Pick<Props, "item" | "auto" | "onStay" | "readOnly" | "timeBefore" | "receiptsLabel" | "onChange" | "onCostDetails"> & { currency: string }) {
+  return (
+    <div className="mt-2.5 flex flex-wrap gap-1.5 text-[13px] font-semibold">
+      {receiptsLabel && (
+        <span className={chip} title="Receipts linked to this stop (Budget → Receipts)">
+          <ReceiptText className="size-3.5 text-accent" /> {receiptsLabel}
+        </span>
+      )}
+      {!!item.who?.length && (
+        <span className="flex items-center gap-1.5 rounded-full bg-surface-2 px-2.5 py-1 text-muted" title="Only they go here; their route is drawn on its own">
+          <Users className="size-3.5" /> {item.who.join(" & ")}
+        </span>
+      )}
+      {auto && <AutoTimeChips item={item} auto={auto} onStay={onStay} readOnly={readOnly} chip={chip} />}
+      {!auto && (item.startTime || item.endTime) && (
+        <TimeRangeField
+          after={timeBefore}
+          disabled={readOnly}
+          start={item.startTime}
+          end={item.endTime}
+          onChange={(startTime, endTime) => onChange({ startTime, endTime })}
+          title="Change time"
+          className={`${chip} ${readOnly ? "" : "hover:bg-accent/20"}`}
+        >
+          <Clock className="size-3.5 text-accent" />{" "}
+          {item.startTime ? `${fmtTime(item.startTime)}${item.endTime ? ` – ${fmtTime(item.endTime)}` : ""}` : `Until ${fmtTime(item.endTime!)}`}
+        </TimeRangeField>
+      )}
+      {item.cost != null && (
+        <button
+          type="button"
+          disabled={readOnly || !onCostDetails}
+          onClick={(e) => (e.stopPropagation(), onCostDetails?.())}
+          title="Cost details"
+          className={`${chip} ${readOnly ? "" : "hover:bg-accent/20"}`}
+        >
+          <Wallet className="size-3.5 text-accent" /> {formatMoney(item.cost, item.costCurrency ?? currency)}
+        </button>
+      )}
+    </div>
+  );
+}
+
+/** The open stop card: where it sits in the plan, who goes, times, cost, Google details and notes. */
+function OpenDetails({
+  item,
+  auto,
+  onStay,
+  readOnly,
+  timeBefore,
+  targets,
+  onMoveTo,
+  onToggleSection,
+  sections,
+  onCheck,
+  checked,
+  people,
+  onChange,
+  currency,
+  onCostDetails,
+}: Pick<Props, "item" | "auto" | "onStay" | "readOnly" | "timeBefore" | "targets" | "onMoveTo" | "onToggleSection" | "sections" | "onCheck" | "checked" | "people" | "onChange" | "onCostDetails"> & { currency: string }) {
+  return (
+    <div className="mt-3 space-y-2" onClick={(e) => e.stopPropagation()}>
+      {!readOnly && (targets?.length || onCheck) && (
+        <SectionRow item={item} targets={targets} onMoveTo={onMoveTo} onToggleSection={onToggleSection} sections={sections} onCheck={onCheck} checked={checked} />
+      )}
+      {people && people.length > 1 && !readOnly && <WhoPicker item={item} people={people} onChange={onChange} />}
+      <TimeRow item={item} auto={auto} onStay={onStay} readOnly={readOnly} timeBefore={timeBefore} onChange={onChange} />
+      {(item.cost != null || !readOnly) && <CostRow item={item} readOnly={readOnly} currency={currency} onChange={onChange} onCostDetails={onCostDetails} />}
+      <GoogleDetails item={item} onLink={(googlePlaceId) => onChange({ googlePlaceId })} onSnapshot={(d) => onChange({ google: { ...d, fetchedAt: Date.now() } })} />
+      {(item.notes || !readOnly) && <NotesInput disabled={readOnly} value={item.notes ?? ""} onCommit={(v) => onChange({ notes: v })} />}
+    </div>
+  );
+}
+
+/** The "Added to ▾" row: the day or list this stop sits on, and the select button on touch screens. */
+function SectionRow({ item, targets, onMoveTo, onToggleSection, sections, onCheck, checked }: Pick<Props, "item" | "targets" | "onMoveTo" | "onToggleSection" | "sections" | "onCheck" | "checked">) {
+  return (
+    <div className="flex flex-wrap items-center gap-2 text-[13px]">
+      {targets && onMoveTo && (
+        <SectionPicker
+          targets={targets}
+          current={item.section}
+          onPick={(k) => (onToggleSection ? onToggleSection(k) : k !== item.section && onMoveTo(k))}
+          selected={onToggleSection ? sections : undefined}
+          className={`${PILL} hover:border-accent hover:text-fg`}
+        >
+          <Bookmark className="size-3.5" />
+          {targets.find((t) => t.key === item.section)?.label ?? "Move to"}
+          {sections && sections.length > 1 && <span className="text-accent">+{sections.length - 1}</span>}
+        </SectionPicker>
+      )}
+      {onCheck && !checked && (
+        <button onClick={() => onCheck(true, false)} className="flex items-center gap-1.5 rounded-full px-2 py-1 font-semibold text-muted hover:text-fg md:hidden">
+          <CheckSquare className="size-3.5" /> Select
+        </button>
+      )}
+    </div>
+  );
+}
+
+/** Who goes here: everyone, or only the people ticked (they get their own route). */
+function WhoPicker({ item, people, onChange }: { item: Item; people: string[]; onChange: (patch: Partial<Item>) => void }) {
+  return (
+    <div className="flex flex-wrap items-center gap-1.5 text-[13px]">
+      <Users className="size-3.5 text-muted" />
+      {[undefined, ...people].map((t) => {
+        const on = t === undefined ? !item.who?.length : !!item.who?.includes(t);
+        return (
+          <button
+            key={t ?? "everyone"}
+            type="button"
+            onClick={() => {
+              if (t === undefined) return onChange({ who: undefined });
+              const next = on ? (item.who ?? []).filter((x) => x !== t) : [...(item.who ?? []), t];
+              // Everyone ticked = everyone
+              onChange({ who: next.length && next.length < people.length ? next : undefined });
+            }}
+            title={t ? `Only ${t} goes here (their own route)` : "Everyone goes here"}
+            className={`rounded-full px-2.5 py-1 font-semibold ${on ? "bg-accent text-on-accent" : "bg-surface-2 text-muted hover:text-fg"}`}
+          >
+            {t ?? "Everyone"}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+/** The time row: the worked-out arrival to leave with its "how long" pill (auto), or a time range you set. */
+function TimeRow({ item, auto, onStay, readOnly, timeBefore, onChange }: Pick<Props, "item" | "auto" | "onStay" | "readOnly" | "timeBefore" | "onChange">) {
+  return (
+    <>
+      {auto && (
+        <div className="flex flex-wrap items-center gap-2 text-[13px] font-semibold">
+          <AutoTimeChips item={item} auto={auto} onStay={onStay} readOnly={readOnly} chip={`${PILL}`} />
+        </div>
+      )}
+      {!auto && (
+        <div className="flex items-center">
+          <TimeRangeField
+            after={timeBefore}
+            disabled={readOnly}
+            start={item.startTime}
+            end={item.endTime}
+            onChange={(startTime, endTime) => onChange({ startTime, endTime })}
+            className={`${PILL} ${readOnly ? "" : "hover:border-accent hover:text-fg"}`}
+          />
+        </div>
+      )}
+    </>
+  );
+}
+
+/** The cost box, and once there's a cost, the button for its category and split. */
+function CostRow({ item, readOnly, currency, onChange, onCostDetails }: Pick<Props, "item" | "readOnly" | "onChange" | "onCostDetails"> & { currency: string }) {
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <CostInput
+        disabled={readOnly}
+        amount={item.cost}
+        currency={item.costCurrency ?? currency}
+        onCommit={(cost, costCurrency) => onChange({ cost, costCurrency: cost == null || costCurrency === currency ? undefined : costCurrency })}
+      />
+      {item.cost != null && onCostDetails && !readOnly && (
+        <button onClick={onCostDetails} className="flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[12px] font-semibold text-muted hover:bg-surface hover:text-fg">
+          <Users className="size-3.5" /> Category & split
+        </button>
+      )}
+    </div>
+  );
+}
+
+/** The photo at the card's right edge: the stop's photo, or a placeholder that opens the picker. */
+function PhotoSlot({ item, selected, readOnly, onOpenPicker }: Pick<Props, "item" | "selected" | "readOnly"> & { onOpenPicker: () => void }) {
+  return (
+    <div className="flex w-[72px] shrink-0 flex-col items-stretch gap-1 sm:w-20">
+      <button
+        onClick={(e) => {
+          e.stopPropagation();
+          if (!readOnly) onOpenPicker();
+          else if (item.image?.link) window.open(item.image.link, "_blank", "noopener");
+        }}
+        className={`relative size-[72px] shrink-0 overflow-hidden rounded-lg sm:size-20 ${item.image ? "bg-surface-2" : "border border-dashed border-line text-muted hover:border-accent hover:text-fg"}`}
+        title={item.image ? item.image.credit ?? "Photo" : "Add a photo"}
+      >
+        {item.image ? (
+          <Photo srcs={[item.image.thumb, item.image.url]} className="size-full object-cover" />
+        ) : (
+          <span className="flex size-full flex-col items-center justify-center gap-1 text-[10px]">
+            <ImagePlus className="size-4" /> Photo
+          </span>
+        )}
+      </button>
+      {/* The photo's credit sits under the photo when the card is open, using no extra row */}
+      {selected && item.image && <PhotoCredit img={item.image} className="line-clamp-3 block text-center text-[10px] leading-tight [overflow-wrap:anywhere] text-muted" />}
     </div>
   );
 }

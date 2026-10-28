@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import { createPortal } from "react-dom";
 import { ArrowLeft, Camera, Check, Loader2, MapPin, Plus, Receipt as ReceiptIcon, Trash2, X } from "lucide-react";
 import type * as Y from "yjs";
@@ -23,6 +23,9 @@ const CATS: { key: ExpenseCategory; label: string }[] = [
 
 type Step = "reading" | "details" | "paid" | "split" | "items";
 
+type Setter<T> = Dispatch<SetStateAction<T>>;
+type SetItem = (k: number, patch: Partial<ReceiptItem>) => void;
+
 interface Props {
   doc: Y.Doc;
   state: TripState;
@@ -36,6 +39,9 @@ interface Props {
 }
 
 const todayISO = () => new Date().toISOString().slice(0, 10);
+
+/** The pill chip for a choice: filled with the accent when on. */
+const chip = (on: boolean) => `rounded-full px-3.5 py-2 text-[14px] font-semibold ${on ? "bg-accent text-on-accent" : "bg-surface-2 text-muted hover:text-fg"}`;
 
 /**
  * Scan a receipt into Budget → Receipts: Claude reads the photo, you check it, say who paid and
@@ -69,12 +75,9 @@ export function ReceiptFlow({ doc, state, file, expense, stop, onClose }: Props)
     started.current = true;
     (async () => {
       try {
-        const img = await photoToJpeg(file);
-        const out = await parseReceipt(img, { destination: state.meta.destination, currency: currency0 });
-        const items = (out.items ?? []).filter((i) => i && typeof i.price === "number");
-        setR({ merchant: out.merchant ?? "", items, subtotal: out.subtotal, tax: out.tax_included ? undefined : out.tax, tip: out.tip, taxIncluded: !!out.tax_included });
-        const sum = items.reduce((a, b) => a + b.price, 0) + (out.tax_included ? 0 : (out.tax ?? 0)) + (out.tip ?? 0);
-        setTotal(out.total ?? Math.round(sum * 100) / 100);
+        const { out, r: parsed, total: parsedTotal } = await readPhoto(file, state, currency0);
+        setR(parsed);
+        setTotal(parsedTotal);
         if (out.currency) setCur(out.currency.toUpperCase());
         if (out.date) setDate(out.date);
         if (out.category) setCat(out.category);
@@ -93,262 +96,376 @@ export function ReceiptFlow({ doc, state, file, expense, stop, onClose }: Props)
   const itemShares = useMemo(() => sharesByItem(r, total ?? 0), [r, total]);
   const unassigned = r.items.filter((i) => !i.who?.length).length;
   const linked = state.items.find((i) => i.id === itemId);
-  const setItem = (k: number, patch: Partial<ReceiptItem>) => setR((x) => ({ ...x, items: x.items.map((it, j) => (j === k ? { ...it, ...patch } : it)) }));
+  const setItem: SetItem = (k, patch) => setR((x) => ({ ...x, items: x.items.map((it, j) => (j === k ? { ...it, ...patch } : it)) }));
 
   const save = () => {
     if (total == null || !Number.isFinite(total)) return;
-    const base = {
-      id: expense?.id,
-      createdAt: expense?.createdAt,
-      kind: "receipt" as const,
-      title: r.merchant.trim() || "Receipt",
-      amount: total,
-      currency: cur,
-      category: cat,
-      date,
-      paidBy,
-      itemId,
-      receipt: { ...r, split },
-    };
-    if (split === "payer") saveExpense(doc, { ...base, splitWith: [paidBy], shares: undefined });
-    else if (split === "even") saveExpense(doc, { ...base, splitWith: evenWith.length && evenWith.length < people.length ? evenWith : undefined, shares: undefined });
-    else saveExpense(doc, { ...base, splitWith: Object.keys(itemShares), shares: itemShares });
+    saveReceipt(doc, { expense, people, r, total, cur, cat, date, paidBy, itemId, split, evenWith, itemShares });
     onClose();
   };
 
   const stops = state.items.filter((i) => i.kind === "place" && !i.section.startsWith("draft:"));
   const sameDay = stops.filter((i) => date && i.section === `day:${date}`);
-  const chip = (on: boolean) => `rounded-full px-3.5 py-2 text-[14px] font-semibold ${on ? "bg-accent text-on-accent" : "bg-surface-2 text-muted hover:text-fg"}`;
   const money = (n: number) => formatMoney(n, cur);
-  const back: Partial<Record<Step, Step>> = { paid: "details", split: "paid", items: "split" };
 
   return createPortal(
     <div className="fixed inset-0 z-[100] grid grid-cols-[minmax(0,1fr)] place-items-center bg-black/60 backdrop-blur-sm sm:p-4" onClick={onClose}>
       <div role="dialog" aria-label="Receipt" onClick={(e) => e.stopPropagation()} className="flex max-h-[100dvh] w-full max-w-md flex-col border border-line bg-surface shadow-2xl max-sm:h-[100dvh] sm:max-h-[92vh] sm:rounded-3xl">
-        <div className="flex items-center gap-2 border-b border-line px-4 py-3">
-          {back[step] ? (
-            <button onClick={() => setStep(back[step]!)} className="grid size-9 place-items-center rounded-full text-muted hover:text-fg" aria-label="Back">
-              <ArrowLeft className="size-5" />
-            </button>
-          ) : (
-            <span className="grid size-9 place-items-center text-accent">
-              <ReceiptIcon className="size-5" />
-            </span>
-          )}
-          <h2 className="min-w-0 flex-1 truncate font-display text-[20px]">
-            {step === "reading" ? "Reading receipt…" : step === "details" ? "Check the receipt" : step === "paid" ? "Who paid?" : step === "split" ? "Who's it for?" : "Who had what?"}
-          </h2>
-          <button onClick={onClose} className="grid size-9 place-items-center rounded-full border border-line text-muted hover:text-fg" aria-label="Close">
-            <X className="size-4" />
-          </button>
-        </div>
+        <FlowHeader step={step} backTo={BACK[step]} onBack={setStep} onClose={onClose} />
 
         <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
-          {step === "reading" && (
-            <div className="grid place-items-center gap-3 py-16 text-center text-muted">
-              <Loader2 className="size-8 animate-spin text-accent" />
-              <p>Reading every line, the tax and the total…</p>
-            </div>
-          )}
-
+          {step === "reading" && <ReadingStep />}
           {step === "details" && (
-            <div className="space-y-4">
-              {err && <p className="rounded-xl bg-danger/10 px-3 py-2 text-[13px] text-danger">{err}. Fill it in by hand, or try a clearer photo.</p>}
-              <input value={r.merchant} onChange={(e) => setR({ ...r, merchant: e.target.value })} placeholder="Where (shop or restaurant)" className="w-full rounded-xl border border-line bg-bg px-3 py-2.5 text-[16px] font-semibold outline-none focus:border-accent" />
-              <div className="flex gap-2">
-                <DateField value={date} onChange={setDate} placeholder="Date" className="min-w-0 flex-1 rounded-xl border border-line bg-bg px-3 py-2.5 text-[15px]" />
-                <CurrencySelect value={cur} onChange={setCur} className="rounded-xl border border-line bg-bg px-3 text-[15px]" />
-              </div>
-
-              {/* The stop it was spent at */}
-              <div className="flex items-center gap-2 text-[14px]">
-                <MapPin className="size-4 shrink-0 text-muted" />
-                <Menu
-                  label={<span className="max-w-[16rem] truncate">{linked ? linked.name : "Not linked to a stop"}</span>}
-                  options={[
-                    { key: "", label: "Not linked to a stop", on: !itemId },
-                    ...[...sameDay, ...stops.filter((s) => !sameDay.includes(s)).sort((a, b) => a.section.localeCompare(b.section))].map((s) => ({
-                      key: s.id,
-                      label: s.name,
-                      hint: s.section.startsWith("day:") ? formatShort(s.section.slice(4)) : "List",
-                      on: s.id === itemId,
-                    })),
-                  ]}
-                  onPick={(k) => setItemId(k || undefined)}
-                  searchable
-                  align="left"
-                />
-                {linked && !stop && !expense && <span className="text-[12px] text-accent">matched</span>}
-              </div>
-
-              <div className="flex flex-wrap gap-1.5">
-                {CATS.map((c) => (
-                  <button key={c.key} onClick={() => setCat(c.key)} className={chip(cat === c.key).replace("py-2", "py-1.5").replace("text-[14px]", "text-[13px]")}>
-                    {c.label}
-                  </button>
-                ))}
-              </div>
-
-              {/* Line items */}
-              <div className="rounded-2xl border border-line">
-                {r.items.map((it, k) => (
-                  <div key={k} className="flex items-center gap-2 border-b border-line/70 px-3 py-1.5 last:border-b-0">
-                    <input value={it.name} onChange={(e) => setItem(k, { name: e.target.value })} className="min-w-0 flex-1 bg-transparent py-1 text-[14px] outline-none" aria-label="Item" />
-                    {!r.taxIncluded && r.tax ? (
-                      <button onClick={() => setItem(k, { taxable: it.taxable === false })} title={it.taxable === false ? "No tax on this line" : "Taxed"} className={`rounded px-1.5 text-[11px] font-bold ${it.taxable === false ? "text-muted/50 line-through" : "text-muted"}`}>
-                        TAX
-                      </button>
-                    ) : null}
-                    <input
-                      type="number"
-                      step="any"
-                      value={Number.isFinite(it.price) ? it.price : ""}
-                      onChange={(e) => setItem(k, { price: Number(e.target.value) })}
-                      className="w-20 bg-transparent py-1 text-right text-[14px] tabular-nums outline-none"
-                      aria-label="Price"
-                    />
-                    <button onClick={() => setR({ ...r, items: r.items.filter((_, j) => j !== k) })} className="text-muted hover:text-danger" aria-label="Remove line">
-                      <Trash2 className="size-3.5" />
-                    </button>
-                  </div>
-                ))}
-                <button onClick={() => setR({ ...r, items: [...r.items, { name: "", price: 0 }] })} className="flex w-full items-center gap-1.5 px-3 py-2 text-[13px] font-semibold text-muted hover:text-fg">
-                  <Plus className="size-3.5" /> Add line
-                </button>
-              </div>
-
-              <div className="space-y-1.5 text-[14px]">
-                <label className="flex items-center justify-between gap-3">
-                  <span className="text-muted">{r.taxIncluded ? "Tax (included in prices)" : "Tax added on top"}</span>
-                  <input type="number" step="any" value={r.tax ?? ""} onChange={(e) => setR({ ...r, tax: e.target.value === "" ? undefined : Number(e.target.value) })} disabled={r.taxIncluded} className="w-24 rounded-lg bg-bg px-2 py-1 text-right tabular-nums outline-none disabled:opacity-50" />
-                </label>
-                <label className="flex items-center justify-between gap-3">
-                  <span className="text-muted">Tip</span>
-                  <input type="number" step="any" value={r.tip ?? ""} onChange={(e) => setR({ ...r, tip: e.target.value === "" ? undefined : Number(e.target.value) })} className="w-24 rounded-lg bg-bg px-2 py-1 text-right tabular-nums outline-none" />
-                </label>
-                <label className="flex items-center justify-between gap-3 text-[16px] font-bold">
-                  <span>Total</span>
-                  <input type="number" step="any" value={total ?? ""} onChange={(e) => setTotal(e.target.value === "" ? undefined : Number(e.target.value))} className="w-28 rounded-lg bg-bg px-2 py-1 text-right tabular-nums outline-none focus:ring-1 focus:ring-accent" />
-                </label>
-                <button onClick={() => setR({ ...r, taxIncluded: !r.taxIncluded })} className="text-[12px] font-semibold text-muted underline-offset-2 hover:text-fg hover:underline">
-                  {r.taxIncluded ? "Tax is added on top instead" : "Prices already include tax"}
-                </button>
-              </div>
-            </div>
+            <DetailsStep
+              r={r} setR={setR} setItem={setItem} total={total} setTotal={setTotal} cur={cur} setCur={setCur} date={date} setDate={setDate}
+              cat={cat} setCat={setCat} itemId={itemId} setItemId={setItemId} linked={linked} stop={stop} expense={expense} stops={stops} sameDay={sameDay} err={err}
+            />
           )}
 
-          {step === "paid" && (
-            <div className="flex flex-wrap gap-2">
-              {people.map((t) => (
-                <button key={t} onClick={() => (setPaidBy(t), setStep(people.length > 1 ? "split" : "split"))} className={chip(paidBy === t)}>
-                  {t}
-                </button>
-              ))}
-            </div>
-          )}
+          {step === "paid" && <PaidStep people={people} paidBy={paidBy} setPaidBy={setPaidBy} setStep={setStep} />}
 
-          {step === "split" && (
-            <div className="space-y-3">
-              {(
-                [
-                  ["payer", `Just ${paidBy}`, "Nobody owes anything"],
-                  ["even", "Split evenly", "Pick who shares it"],
-                  ["items", "By item", "Say who had each line; tax and tip follow the items"],
-                ] as const
-              ).map(([k, title, hint]) => (
-                <button key={k} onClick={() => setSplit(k)} className={`flex w-full items-start gap-3 rounded-2xl border p-3.5 text-left ${split === k ? "border-accent bg-accent/10" : "border-line hover:border-muted/50"}`}>
-                  <span className={`mt-0.5 grid size-5 shrink-0 place-items-center rounded-full border ${split === k ? "border-accent bg-accent text-on-accent" : "border-line"}`}>{split === k && <Check className="size-3" />}</span>
-                  <span>
-                    <span className="block text-[15px] font-bold">{title}</span>
-                    <span className="block text-[13px] text-muted">{hint}</span>
-                  </span>
-                </button>
-              ))}
-              {split === "even" && (
-                <div className="flex flex-wrap gap-2 pt-1">
-                  {people.map((t) => {
-                    const on = evenWith.includes(t);
-                    return (
-                      <button key={t} onClick={() => setEvenWith(on ? evenWith.filter((x) => x !== t) : [...evenWith, t])} className={chip(on)}>
-                        {t}
-                      </button>
-                    );
-                  })}
-                  {total != null && evenWith.length > 0 && <p className="w-full text-[13px] text-muted">{money(total / evenWith.length)} each</p>}
-                </div>
-              )}
-            </div>
-          )}
+          {step === "split" && <SplitStep people={people} paidBy={paidBy} split={split} setSplit={setSplit} evenWith={evenWith} setEvenWith={setEvenWith} total={total} money={money} />}
 
-          {step === "items" && (
-            <div className="space-y-2">
-              {r.items.map((it, k) => (
-                <div key={k} className="rounded-2xl border border-line p-3">
-                  <div className="flex items-baseline justify-between gap-3">
-                    <p className="min-w-0 truncate text-[15px] font-semibold">{it.name || "Item"}</p>
-                    <p className="shrink-0 text-[14px] tabular-nums">{money(costs[k] ?? it.price)}</p>
-                  </div>
-                  <div className="mt-2 flex flex-wrap gap-1.5">
-                    {people.map((t) => {
-                      const on = !!it.who?.includes(t);
-                      return (
-                        <button key={t} onClick={() => setItem(k, { who: on ? (it.who ?? []).filter((x) => x !== t) : [...(it.who ?? []), t] })} className={chip(on).replace("py-2", "py-1.5").replace("text-[14px]", "text-[13px]")}>
-                          {t}
-                        </button>
-                      );
-                    })}
-                    <button onClick={() => setItem(k, { who: people })} className="rounded-full px-2.5 py-1.5 text-[12px] font-semibold text-muted hover:text-fg">
-                      Shared
-                    </button>
-                  </div>
-                </div>
-              ))}
-              {/* Running totals per person */}
-              <div className="sticky bottom-0 -mx-4 border-t border-line bg-surface px-4 pt-3 pb-1">
-                <div className="flex flex-wrap gap-x-4 gap-y-1 text-[14px]">
-                  {people.map((t) => (
-                    <span key={t}>
-                      <span className="text-muted">{t}</span> <span className="font-semibold tabular-nums">{money(itemShares[t] ?? 0)}</span>
-                    </span>
-                  ))}
-                </div>
-                {unassigned > 0 && <p className="mt-1 text-[12px] text-danger">{unassigned} line{unassigned > 1 ? "s" : ""} not given to anyone yet</p>}
-              </div>
-            </div>
-          )}
+          {step === "items" && <ItemsStep r={r} people={people} costs={costs} itemShares={itemShares} unassigned={unassigned} money={money} setItem={setItem} />}
         </div>
 
         {step !== "reading" && (
-          <div className="border-t border-line p-4">
-            {step === "details" && (
-              <button disabled={total == null} onClick={() => setStep(people.length > 1 ? "paid" : "split")} className="w-full rounded-xl bg-accent py-3 font-bold text-on-accent disabled:opacity-50">
-                {people.length > 1 ? "Next: who paid" : "Next"}
-              </button>
-            )}
-            {step === "paid" && (
-              <button onClick={() => setStep("split")} className="w-full rounded-xl bg-accent py-3 font-bold text-on-accent">
-                Next: who it's for
-              </button>
-            )}
-            {step === "split" && (
-              <button
-                disabled={split === "even" && !evenWith.length}
-                onClick={() => (split === "items" ? setStep("items") : save())}
-                className="w-full rounded-xl bg-accent py-3 font-bold text-on-accent disabled:opacity-50"
-              >
-                {split === "items" ? "Next: who had what" : `Save ${total != null ? money(total) : ""}`}
-              </button>
-            )}
-            {step === "items" && (
-              <button disabled={unassigned > 0 || !r.items.length} onClick={save} className="w-full rounded-xl bg-accent py-3 font-bold text-on-accent disabled:opacity-50">
-                Save {total != null ? money(total) : ""}
-              </button>
-            )}
-          </div>
+          <StepFooter step={step} setStep={setStep} save={save} people={people} total={total} split={split} evenWith={evenWith} lineCount={r.items.length} unassigned={unassigned} money={money} />
         )}
       </div>
     </div>,
     document.body,
+  );
+}
+
+/**
+ * Reads a receipt photo with Claude. Returns the raw read, the parsed receipt and its total
+ * (worked out from the lines when the receipt doesn't print one).
+ */
+async function readPhoto(file: File, state: TripState, currency0: string) {
+  const img = await photoToJpeg(file);
+  const out = await parseReceipt(img, { destination: state.meta.destination, currency: currency0 });
+  const items = (out.items ?? []).filter((i) => i && typeof i.price === "number");
+  const r: Receipt = { merchant: out.merchant ?? "", items, subtotal: out.subtotal, tax: out.tax_included ? undefined : out.tax, tip: out.tip, taxIncluded: !!out.tax_included };
+  const sum = items.reduce((a, b) => a + b.price, 0) + (out.tax_included ? 0 : (out.tax ?? 0)) + (out.tip ?? 0);
+  return { out, r, total: out.total ?? Math.round(sum * 100) / 100 };
+}
+
+/** Writes the receipt as an expense: charged to the payer, split evenly, or split by item. */
+function saveReceipt(
+  doc: Y.Doc,
+  { expense, people, r, total, cur, cat, date, paidBy, itemId, split, evenWith, itemShares }: { expense?: Expense; people: string[]; r: Receipt; total: number; cur: string; cat: ExpenseCategory; date?: string; paidBy: string; itemId?: string; split: Receipt["split"]; evenWith: string[]; itemShares: Record<string, number> },
+) {
+  const base = {
+    id: expense?.id,
+    createdAt: expense?.createdAt,
+    kind: "receipt" as const,
+    title: r.merchant.trim() || "Receipt",
+    amount: total,
+    currency: cur,
+    category: cat,
+    date,
+    paidBy,
+    itemId,
+    receipt: { ...r, split },
+  };
+  if (split === "payer") saveExpense(doc, { ...base, splitWith: [paidBy], shares: undefined });
+  else if (split === "even") saveExpense(doc, { ...base, splitWith: evenWith.length && evenWith.length < people.length ? evenWith : undefined, shares: undefined });
+  else saveExpense(doc, { ...base, splitWith: Object.keys(itemShares), shares: itemShares });
+}
+
+/** The step before each step, for the back arrow. */
+const BACK: Partial<Record<Step, Step>> = { paid: "details", split: "paid", items: "split" };
+
+/** The "reading the photo" spinner, while Claude reads the receipt. */
+function ReadingStep() {
+  return (
+    <div className="grid place-items-center gap-3 py-16 text-center text-muted">
+      <Loader2 className="size-8 animate-spin text-accent" />
+      <p>Reading every line, the tax and the total…</p>
+    </div>
+  );
+}
+
+/** The top bar: back arrow (when there is a step before this one), the title, and close. */
+function FlowHeader({ step, backTo, onBack, onClose }: { step: Step; backTo?: Step; onBack: (s: Step) => void; onClose: () => void }) {
+  return (
+    <div className="flex items-center gap-2 border-b border-line px-4 py-3">
+      {backTo ? (
+        <button onClick={() => onBack(backTo)} className="grid size-9 place-items-center rounded-full text-muted hover:text-fg" aria-label="Back">
+          <ArrowLeft className="size-5" />
+        </button>
+      ) : (
+        <span className="grid size-9 place-items-center text-accent">
+          <ReceiptIcon className="size-5" />
+        </span>
+      )}
+      <h2 className="min-w-0 flex-1 truncate font-display text-[20px]">
+        {step === "reading" ? "Reading receipt…" : step === "details" ? "Check the receipt" : step === "paid" ? "Who paid?" : step === "split" ? "Who's it for?" : "Who had what?"}
+      </h2>
+      <button onClick={onClose} className="grid size-9 place-items-center rounded-full border border-line text-muted hover:text-fg" aria-label="Close">
+        <X className="size-4" />
+      </button>
+    </div>
+  );
+}
+
+interface DetailsProps {
+  r: Receipt;
+  setR: Setter<Receipt>;
+  setItem: SetItem;
+  total: number | undefined;
+  setTotal: Setter<number | undefined>;
+  cur: string;
+  setCur: Setter<string>;
+  date: string | undefined;
+  setDate: Setter<string | undefined>;
+  cat: ExpenseCategory;
+  setCat: Setter<ExpenseCategory>;
+  itemId: string | undefined;
+  setItemId: Setter<string | undefined>;
+  linked: Item | undefined;
+  stop?: Item;
+  expense?: Expense;
+  stops: Item[];
+  sameDay: Item[];
+  err: string | null;
+}
+
+/** Step 1: the merchant, date, currency, stop, category, line items and totals, as read or typed in. */
+function DetailsStep({ r, setR, setItem, total, setTotal, cur, setCur, date, setDate, cat, setCat, itemId, setItemId, linked, stop, expense, stops, sameDay, err }: DetailsProps) {
+  return (
+    <div className="space-y-4">
+      {err && <p className="rounded-xl bg-danger/10 px-3 py-2 text-[13px] text-danger">{err}. Fill it in by hand, or try a clearer photo.</p>}
+      <input value={r.merchant} onChange={(e) => setR({ ...r, merchant: e.target.value })} placeholder="Where (shop or restaurant)" className="w-full rounded-xl border border-line bg-bg px-3 py-2.5 text-[16px] font-semibold outline-none focus:border-accent" />
+      <div className="flex gap-2">
+        <DateField value={date} onChange={setDate} placeholder="Date" className="min-w-0 flex-1 rounded-xl border border-line bg-bg px-3 py-2.5 text-[15px]" />
+        <CurrencySelect value={cur} onChange={setCur} className="rounded-xl border border-line bg-bg px-3 text-[15px]" />
+      </div>
+
+      {/* The stop it was spent at */}
+      <StopRow itemId={itemId} setItemId={setItemId} linked={linked} stop={stop} expense={expense} stops={stops} sameDay={sameDay} />
+
+      <CategoryChips cat={cat} setCat={setCat} />
+
+      <LineItems r={r} setR={setR} setItem={setItem} />
+
+      <TotalsBlock r={r} setR={setR} total={total} setTotal={setTotal} />
+    </div>
+  );
+}
+
+/** The stop menu row: which stop this was spent at (today's stops first), and whether it was matched. */
+function StopRow({ itemId, setItemId, linked, stop, expense, stops, sameDay }: { itemId: string | undefined; setItemId: Setter<string | undefined>; linked: Item | undefined; stop?: Item; expense?: Expense; stops: Item[]; sameDay: Item[] }) {
+  return (
+    <div className="flex items-center gap-2 text-[14px]">
+      <MapPin className="size-4 shrink-0 text-muted" />
+      <Menu
+        label={<span className="max-w-[16rem] truncate">{linked ? linked.name : "Not linked to a stop"}</span>}
+        options={[
+          { key: "", label: "Not linked to a stop", on: !itemId },
+          ...[...sameDay, ...stops.filter((s) => !sameDay.includes(s)).sort((a, b) => a.section.localeCompare(b.section))].map((s) => ({
+            key: s.id,
+            label: s.name,
+            hint: s.section.startsWith("day:") ? formatShort(s.section.slice(4)) : "List",
+            on: s.id === itemId,
+          })),
+        ]}
+        onPick={(k) => setItemId(k || undefined)}
+        searchable
+        align="left"
+      />
+      {linked && !stop && !expense && <span className="text-[12px] text-accent">matched</span>}
+    </div>
+  );
+}
+
+/** The category chips: one is always selected. */
+function CategoryChips({ cat, setCat }: { cat: ExpenseCategory; setCat: Setter<ExpenseCategory> }) {
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      {CATS.map((c) => (
+        <button key={c.key} onClick={() => setCat(c.key)} className={chip(cat === c.key).replace("py-2", "py-1.5").replace("text-[14px]", "text-[13px]")}>
+          {c.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/** The line-items box: edit a line's name and price, mark it taxable, remove it, or add one. */
+function LineItems({ r, setR, setItem }: { r: Receipt; setR: Setter<Receipt>; setItem: SetItem }) {
+  return (
+    <div className="rounded-2xl border border-line">
+      {r.items.map((it, k) => (
+        <div key={k} className="flex items-center gap-2 border-b border-line/70 px-3 py-1.5 last:border-b-0">
+          <input value={it.name} onChange={(e) => setItem(k, { name: e.target.value })} className="min-w-0 flex-1 bg-transparent py-1 text-[14px] outline-none" aria-label="Item" />
+          {!r.taxIncluded && r.tax ? (
+            <button onClick={() => setItem(k, { taxable: it.taxable === false })} title={it.taxable === false ? "No tax on this line" : "Taxed"} className={`rounded px-1.5 text-[11px] font-bold ${it.taxable === false ? "text-muted/50 line-through" : "text-muted"}`}>
+              TAX
+            </button>
+          ) : null}
+          <input
+            type="number"
+            step="any"
+            value={Number.isFinite(it.price) ? it.price : ""}
+            onChange={(e) => setItem(k, { price: Number(e.target.value) })}
+            className="w-20 bg-transparent py-1 text-right text-[14px] tabular-nums outline-none"
+            aria-label="Price"
+          />
+          <button onClick={() => setR({ ...r, items: r.items.filter((_, j) => j !== k) })} className="text-muted hover:text-danger" aria-label="Remove line">
+            <Trash2 className="size-3.5" />
+          </button>
+        </div>
+      ))}
+      <button onClick={() => setR({ ...r, items: [...r.items, { name: "", price: 0 }] })} className="flex w-full items-center gap-1.5 px-3 py-2 text-[13px] font-semibold text-muted hover:text-fg">
+        <Plus className="size-3.5" /> Add line
+      </button>
+    </div>
+  );
+}
+
+/** Tax, tip and total, with the switch between tax included in the prices or added on top. */
+function TotalsBlock({ r, setR, total, setTotal }: { r: Receipt; setR: Setter<Receipt>; total: number | undefined; setTotal: Setter<number | undefined> }) {
+  return (
+    <div className="space-y-1.5 text-[14px]">
+      <label className="flex items-center justify-between gap-3">
+        <span className="text-muted">{r.taxIncluded ? "Tax (included in prices)" : "Tax added on top"}</span>
+        <input type="number" step="any" value={r.tax ?? ""} onChange={(e) => setR({ ...r, tax: e.target.value === "" ? undefined : Number(e.target.value) })} disabled={r.taxIncluded} className="w-24 rounded-lg bg-bg px-2 py-1 text-right tabular-nums outline-none disabled:opacity-50" />
+      </label>
+      <label className="flex items-center justify-between gap-3">
+        <span className="text-muted">Tip</span>
+        <input type="number" step="any" value={r.tip ?? ""} onChange={(e) => setR({ ...r, tip: e.target.value === "" ? undefined : Number(e.target.value) })} className="w-24 rounded-lg bg-bg px-2 py-1 text-right tabular-nums outline-none" />
+      </label>
+      <label className="flex items-center justify-between gap-3 text-[16px] font-bold">
+        <span>Total</span>
+        <input type="number" step="any" value={total ?? ""} onChange={(e) => setTotal(e.target.value === "" ? undefined : Number(e.target.value))} className="w-28 rounded-lg bg-bg px-2 py-1 text-right tabular-nums outline-none focus:ring-1 focus:ring-accent" />
+      </label>
+      <button onClick={() => setR({ ...r, taxIncluded: !r.taxIncluded })} className="text-[12px] font-semibold text-muted underline-offset-2 hover:text-fg hover:underline">
+        {r.taxIncluded ? "Tax is added on top instead" : "Prices already include tax"}
+      </button>
+    </div>
+  );
+}
+
+/** Step 2: who paid. */
+function PaidStep({ people, paidBy, setPaidBy, setStep }: { people: string[]; paidBy: string; setPaidBy: Setter<string>; setStep: Setter<Step> }) {
+  return (
+    <div className="flex flex-wrap gap-2">
+      {people.map((t) => (
+        <button key={t} onClick={() => (setPaidBy(t), setStep(people.length > 1 ? "split" : "split"))} className={chip(paidBy === t)}>
+          {t}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/** Step 3: who it's for. The three options, plus who shares it when splitting evenly. */
+function SplitStep({ people, paidBy, split, setSplit, evenWith, setEvenWith, total, money }: { people: string[]; paidBy: string; split: Receipt["split"]; setSplit: Setter<Receipt["split"]>; evenWith: string[]; setEvenWith: Setter<string[]>; total: number | undefined; money: (n: number) => string }) {
+  return (
+    <div className="space-y-3">
+      {(
+        [
+          ["payer", `Just ${paidBy}`, "Nobody owes anything"],
+          ["even", "Split evenly", "Pick who shares it"],
+          ["items", "By item", "Say who had each line; tax and tip follow the items"],
+        ] as const
+      ).map(([k, title, hint]) => (
+        <button key={k} onClick={() => setSplit(k)} className={`flex w-full items-start gap-3 rounded-2xl border p-3.5 text-left ${split === k ? "border-accent bg-accent/10" : "border-line hover:border-muted/50"}`}>
+          <span className={`mt-0.5 grid size-5 shrink-0 place-items-center rounded-full border ${split === k ? "border-accent bg-accent text-on-accent" : "border-line"}`}>{split === k && <Check className="size-3" />}</span>
+          <span>
+            <span className="block text-[15px] font-bold">{title}</span>
+            <span className="block text-[13px] text-muted">{hint}</span>
+          </span>
+        </button>
+      ))}
+      {split === "even" && (
+        <div className="flex flex-wrap gap-2 pt-1">
+          {people.map((t) => {
+            const on = evenWith.includes(t);
+            return (
+              <button key={t} onClick={() => setEvenWith(on ? evenWith.filter((x) => x !== t) : [...evenWith, t])} className={chip(on)}>
+                {t}
+              </button>
+            );
+          })}
+          {total != null && evenWith.length > 0 && <p className="w-full text-[13px] text-muted">{money(total / evenWith.length)} each</p>}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Step 3 (by item): who had each line, with running totals per person pinned at the bottom. */
+function ItemsStep({ r, people, costs, itemShares, unassigned, money, setItem }: { r: Receipt; people: string[]; costs: number[]; itemShares: Record<string, number>; unassigned: number; money: (n: number) => string; setItem: SetItem }) {
+  return (
+    <div className="space-y-2">
+      {r.items.map((it, k) => (
+        <div key={k} className="rounded-2xl border border-line p-3">
+          <div className="flex items-baseline justify-between gap-3">
+            <p className="min-w-0 truncate text-[15px] font-semibold">{it.name || "Item"}</p>
+            <p className="shrink-0 text-[14px] tabular-nums">{money(costs[k] ?? it.price)}</p>
+          </div>
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            {people.map((t) => {
+              const on = !!it.who?.includes(t);
+              return (
+                <button key={t} onClick={() => setItem(k, { who: on ? (it.who ?? []).filter((x) => x !== t) : [...(it.who ?? []), t] })} className={chip(on).replace("py-2", "py-1.5").replace("text-[14px]", "text-[13px]")}>
+                  {t}
+                </button>
+              );
+            })}
+            <button onClick={() => setItem(k, { who: people })} className="rounded-full px-2.5 py-1.5 text-[12px] font-semibold text-muted hover:text-fg">
+              Shared
+            </button>
+          </div>
+        </div>
+      ))}
+      {/* Running totals per person */}
+      <div className="sticky bottom-0 -mx-4 border-t border-line bg-surface px-4 pt-3 pb-1">
+        <div className="flex flex-wrap gap-x-4 gap-y-1 text-[14px]">
+          {people.map((t) => (
+            <span key={t}>
+              <span className="text-muted">{t}</span> <span className="font-semibold tabular-nums">{money(itemShares[t] ?? 0)}</span>
+            </span>
+          ))}
+        </div>
+        {unassigned > 0 && <p className="mt-1 text-[12px] text-danger">{unassigned} line{unassigned > 1 ? "s" : ""} not given to anyone yet</p>}
+      </div>
+    </div>
+  );
+}
+
+/** The bottom bar: the Next or Save button for the current step. */
+function StepFooter({ step, setStep, save, people, total, split, evenWith, lineCount, unassigned, money }: { step: Step; setStep: Setter<Step>; save: () => void; people: string[]; total: number | undefined; split: Receipt["split"]; evenWith: string[]; lineCount: number; unassigned: number; money: (n: number) => string }) {
+  return (
+    <div className="border-t border-line p-4">
+      {step === "details" && (
+        <button disabled={total == null} onClick={() => setStep(people.length > 1 ? "paid" : "split")} className="w-full rounded-xl bg-accent py-3 font-bold text-on-accent disabled:opacity-50">
+          {people.length > 1 ? "Next: who paid" : "Next"}
+        </button>
+      )}
+      {step === "paid" && (
+        <button onClick={() => setStep("split")} className="w-full rounded-xl bg-accent py-3 font-bold text-on-accent">
+          Next: who it's for
+        </button>
+      )}
+      {step === "split" && (
+        <button
+          disabled={split === "even" && !evenWith.length}
+          onClick={() => (split === "items" ? setStep("items") : save())}
+          className="w-full rounded-xl bg-accent py-3 font-bold text-on-accent disabled:opacity-50"
+        >
+          {split === "items" ? "Next: who had what" : `Save ${total != null ? money(total) : ""}`}
+        </button>
+      )}
+      {step === "items" && (
+        <button disabled={unassigned > 0 || !lineCount} onClick={save} className="w-full rounded-xl bg-accent py-3 font-bold text-on-accent disabled:opacity-50">
+          Save {total != null ? money(total) : ""}
+        </button>
+      )}
+    </div>
   );
 }
 
