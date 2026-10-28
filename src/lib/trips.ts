@@ -701,14 +701,17 @@ export function renameList(doc: Y.Doc, listId: string, title: string) {
   if (l) edit(doc, () => l.set("title", title));
 }
 
-export function addList(doc: Y.Doc, title: string) {
+/** Adds a list at the end; returns its id. */
+export function addList(doc: Y.Doc, title: string): string {
   const lists = [...doc.getMap<Y.Map<unknown>>("lists").values()].map((m) => m.get("order") as string).sort();
+  const id = nanoid(8);
   edit(doc, () => {
     const l = new Y.Map<unknown>();
     l.set("title", title);
     l.set("order", generateKeyBetween(lists.at(-1) ?? null, null));
-    doc.getMap<Y.Map<unknown>>("lists").set(nanoid(8), l);
+    doc.getMap<Y.Map<unknown>>("lists").set(id, l);
   });
+  return id;
 }
 
 const TITLES = /\b(mr|mrs|ms|miss|mx|dr|prof|sir|madam|mstr|master)\b\.?/g;

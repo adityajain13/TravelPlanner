@@ -70,7 +70,7 @@ export function TripDialogs({
       )}
       {editingRes && <ReservationForm doc={doc} state={state} initial={editingRes} onClose={() => setEditingRes(null)} />}
       {sharing && tripId && <ShareDialog tripId={tripId} onClose={() => setSharing(false)} />}
-      {showSettings && <SettingsDialog scope={readOnly ? null : settingsScope} onClose={() => setShowSettings(false)} />}
+      {showSettings && <SettingsDialog doc={doc} scope={readOnly ? null : settingsScope} onClose={() => setShowSettings(false)} />}
     </>
   );
 }
