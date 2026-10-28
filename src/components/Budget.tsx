@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { ReceiptButton, ReceiptFlow } from "./ReceiptFlow";
 import { Menu } from "./Menu";
 import { askConfirm } from "./ConfirmDialog";
 import { CurrencySelect } from "./CurrencySelect";
@@ -6,7 +7,7 @@ import { BudgetCharts, CsvButton, exportBudgetCsv } from "./BudgetCharts";
 import { createPortal } from "react-dom";
 import { DateField } from "./DatePicker";
 import type * as Y from "yjs";
-import { ArrowLeft, ArrowRight, BedDouble, Car, ChevronRight, Fuel, Landmark, Pencil, Plane, Plus, Receipt, ShoppingBag, ShoppingCart, Ticket, TrainFront, Trash2, Users, Utensils, Wine, X } from "lucide-react";
+import { ArrowLeft, ArrowRight, BedDouble, Camera, Car, ChevronRight, Fuel, Landmark, Pencil, Plane, Plus, Receipt, ShoppingBag, ShoppingCart, Ticket, TrainFront, Trash2, Users, Utensils, Wine, X } from "lucide-react";
 import { removeExpense, saveExpense, saveReservation, updateItem, updateMeta, type CostSplit, type Expense, type ExpenseCategory, type TripState } from "../lib/trips";
 import { formatMoney, useConverter } from "../lib/fx";
 import { budgetLines, CATEGORIES, CATEGORY_LABEL, settleUp, totals, travelersOf, type Line } from "../lib/budget";
@@ -53,6 +54,10 @@ export function BudgetPanel({ doc, state, readOnly }: { doc: Y.Doc; state: TripS
   const settle = useMemo(() => settleUp(lines, travelers), [lines, travelers]);
   const [editing, setEditing] = useState<Partial<Expense> | null>(null);
   const [linked, setLinked] = useState<Line | null>(null);
+  // Receipts (meals, convenience stores…) are listed on their own, apart from the bigger costs
+  const [receipt, setReceipt] = useState<{ file?: File; expense?: Expense } | null>(null);
+  const receipts = lines.filter((l) => l.expense?.kind === "receipt");
+  const bigLines = lines.filter((l) => l.expense?.kind !== "receipt");
   const [newTraveler, setNewTraveler] = useState("");
   const budget = state.meta.budget;
   const pct = budget ? Math.min(100, (total / budget) * 100) : 0;
@@ -148,6 +153,58 @@ export function BudgetPanel({ doc, state, readOnly }: { doc: Y.Doc; state: TripS
         )}
       </section>
 
+      {/* Receipts */}
+      <section>
+        <div className="mb-2 flex items-center justify-between">
+          <h3 className="font-display text-lg">Receipts</h3>
+          {!readOnly && (
+            <ReceiptButton onFile={(file) => setReceipt({ file })} className="ml-auto flex items-center gap-1.5 rounded-full bg-accent px-3 py-1.5 text-xs font-semibold text-on-accent">
+              <Camera className="size-3.5" /> Scan receipt
+            </ReceiptButton>
+          )}
+        </div>
+        {receipts.length === 0 ? (
+          <p className="rounded-xl border border-dashed border-line p-6 text-center text-sm text-muted">Meals, snacks, convenience stores: snap the receipt and it's itemized, matched to the stop and split.</p>
+        ) : (
+          <ul className="divide-y divide-line overflow-hidden rounded-xl border border-line bg-surface">
+            {receipts.map((l) => {
+              const e = l.expense!;
+              const stop = e.itemId ? state.items.find((i) => i.id === e.itemId) : undefined;
+              const split = e.receipt?.split === "items" ? "by item" : e.receipt?.split === "payer" ? `${l.paidBy} only` : l.splitWith.length < travelers.length ? `split ${l.splitWith.length} ways` : travelers.length > 1 ? "split evenly" : "";
+              return (
+                <li key={l.id} className="group flex items-center gap-3 px-3 py-2.5">
+                  <button onClick={() => !readOnly && setReceipt({ expense: e })} className="flex min-w-0 flex-1 items-center gap-3 text-left">
+                    <span className="grid size-8 shrink-0 place-items-center rounded-full [&>svg]:size-4" style={{ background: `${CAT_COLOR[l.category]}26`, color: CAT_COLOR[l.category] }}>
+                      {CAT_ICON[l.category]}
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-sm font-medium">{l.title}</span>
+                      <span className="block truncate text-xs text-muted">
+                        {[l.date && formatShort(l.date), stop?.name, e.receipt?.items.length ? `${e.receipt.items.length} items` : "", travelers.length > 1 && `${l.paidBy} paid`, split].filter(Boolean).join(" · ")}
+                      </span>
+                    </span>
+                    <span className="text-right">
+                      <span className="block text-sm tabular-nums">{l.converted != null ? formatMoney(l.converted, currency) : "—"}</span>
+                      {l.currency !== currency && <span className="block text-xs text-muted tabular-nums">{formatMoney(l.amount, l.currency)}</span>}
+                    </span>
+                  </button>
+                  {!readOnly && (
+                    <button
+                      onClick={async () => (await askConfirm({ title: `Delete ${l.title}?`, body: "It leaves the budget and the split." })) && removeExpense(doc, l.id)}
+                      className="grid size-7 shrink-0 place-items-center rounded-md text-muted opacity-0 transition-opacity group-hover:opacity-100 hover:text-danger max-md:opacity-100"
+                      title="Delete"
+                    >
+                      <Trash2 className="size-3.5" />
+                    </button>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </section>
+      {receipt && <ReceiptFlow doc={doc} state={state} file={receipt.file} expense={receipt.expense} onClose={() => setReceipt(null)} />}
+
       {/* Expenses */}
       <section>
         <div className="mb-2 flex items-center justify-between">
@@ -164,11 +221,11 @@ export function BudgetPanel({ doc, state, readOnly }: { doc: Y.Doc; state: TripS
           )}
           </div>
         </div>
-        {lines.length === 0 ? (
+        {bigLines.length === 0 ? (
           <p className="rounded-xl border border-dashed border-line p-6 text-center text-sm text-muted">No expenses yet. Reservation costs show up here automatically.</p>
         ) : (
           <ul className="divide-y divide-line overflow-hidden rounded-xl border border-line bg-surface">
-            {lines.map((l) => (
+            {bigLines.map((l) => (
               <li key={l.id} className="group flex items-center gap-3 px-3 py-2.5">
                 <span className="grid size-8 shrink-0 place-items-center rounded-full [&>svg]:size-4" style={{ background: `${CAT_COLOR[l.category]}26`, color: CAT_COLOR[l.category] }}>
                   {CAT_ICON[l.category]}

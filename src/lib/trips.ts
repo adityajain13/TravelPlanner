@@ -188,8 +188,41 @@ export interface Expense {
   paidBy?: string;
   /** Traveler names sharing this cost; empty/missing = everyone. */
   splitWith?: string[];
+  /** Uneven split: each person's part (in `currency`); overrides splitWith when present. */
+  shares?: Record<string, number>;
   notes?: string;
+  /** A scanned receipt (meals, convenience stores…): shown in Budget → Receipts. */
+  kind?: "receipt";
+  receipt?: Receipt;
+  /** The stop it was spent at. */
+  itemId?: string;
   createdAt: number;
+}
+
+export interface ReceiptItem {
+  name: string;
+  /** As printed, when it was translated ("おにぎり"). */
+  original?: string;
+  qty?: number;
+  /** Line total as printed (negative for discounts). */
+  price: number;
+  /** Sales tax applies (receipts where tax is added on top, e.g. Canada/US). */
+  taxable?: boolean;
+  /** Who had it (by-item split); several = shared evenly. */
+  who?: string[];
+}
+
+export interface Receipt {
+  merchant: string;
+  items: ReceiptItem[];
+  subtotal?: number;
+  /** Tax added on top of the item prices (0/absent when prices include it, like Japan or the EU). */
+  tax?: number;
+  tip?: number;
+  /** Prices already include tax. */
+  taxIncluded?: boolean;
+  /** How it's charged: the payer, evenly among splitWith, or by item. */
+  split?: "payer" | "even" | "items";
 }
 
 export interface ListMeta {

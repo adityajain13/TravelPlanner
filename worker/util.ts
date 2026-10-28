@@ -10,6 +10,8 @@ export interface Env {
   SHARE_SECRET: string;
   ANTHROPIC_API_KEY: string;
   EXTRACT_MODEL?: string;
+  /** Model for reading receipt photos (default claude-sonnet-5-5). */
+  RECEIPT_MODEL?: string;
   UNSPLASH_ACCESS_KEY?: string;
   /** optional server-side key for Google Routes; else the app's own key is forwarded */
   GOOGLE_ROUTES_KEY?: string;

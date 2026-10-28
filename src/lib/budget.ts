@@ -39,6 +39,8 @@ export interface Line {
   date?: string;
   paidBy: string;
   splitWith: string[];
+  /** Uneven split (receipts by item): each person's part in `currency`. */
+  shares?: Record<string, number>;
   fromReservation?: Reservation;
   fromItem?: boolean;
   item?: Item;
@@ -63,7 +65,8 @@ export function budgetLines(state: TripState, convert: (a: number, c: string) =>
     converted: convert(e.amount, e.currency),
     date: e.date,
     paidBy: e.paidBy && travelers.includes(e.paidBy) ? e.paidBy : travelers[0],
-    splitWith: e.splitWith?.filter((t) => travelers.includes(t)).length ? e.splitWith.filter((t) => travelers.includes(t)) : travelers,
+    splitWith: e.shares ? Object.keys(e.shares).filter((t) => travelers.includes(t)) : e.splitWith?.filter((t) => travelers.includes(t)).length ? e.splitWith.filter((t) => travelers.includes(t)) : travelers,
+    shares: e.shares,
     expense: e,
   }));
   for (const r of state.reservations) {
@@ -184,14 +187,23 @@ export function totals(lines: Line[]) {
   return { total, byCategory: [...byCategory.entries()].sort((a, b) => b[1] - a[1]), unconverted };
 }
 
+/** One person's part of a line, in trip currency (even split, or their receipt items). */
+export function shareOf(l: Line, t: string): number {
+  if (l.converted == null) return 0;
+  if (l.shares) {
+    const sum = Object.values(l.shares).reduce((a, b) => a + b, 0);
+    return sum ? (l.converted * (l.shares[t] ?? 0)) / sum : 0;
+  }
+  return l.splitWith.includes(t) ? l.converted / l.splitWith.length : 0;
+}
+
 /** Net balance per traveler (+ = is owed) and the fewest transfers to settle up. */
 export function settleUp(lines: Line[], travelers: string[]) {
   const bal = new Map(travelers.map((t) => [t, 0]));
   for (const l of lines) {
     if (l.converted == null || l.splitWith.length === 0) continue;
     bal.set(l.paidBy, (bal.get(l.paidBy) ?? 0) + l.converted);
-    const share = l.converted / l.splitWith.length;
-    for (const t of l.splitWith) bal.set(t, (bal.get(t) ?? 0) - share);
+    for (const t of l.splitWith) bal.set(t, (bal.get(t) ?? 0) - shareOf(l, t));
   }
   const creditors = [...bal].filter(([, v]) => v > 0.005).sort((a, b) => b[1] - a[1]);
   const debtors = [...bal].filter(([, v]) => v < -0.005).sort((a, b) => a[1] - b[1]);

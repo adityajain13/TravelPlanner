@@ -72,6 +72,8 @@ import {
 } from "../lib/trips";
 import { DayCompare, type Bookend } from "../components/DayCompare";
 import { TravelView } from "../components/TravelView";
+import { ReceiptFlow } from "../components/ReceiptFlow";
+import { formatMoney } from "../lib/fx";
 import { useIsPhone, useTravelMode } from "../lib/travelMode";
 import { autoTimes, DEFAULT_DAY_START, DEFAULT_STAY } from "../lib/autoTime";
 import { dayColor, LIST_COLOR } from "../lib/colors";
@@ -158,6 +160,7 @@ export function TripPage() {
       return next;
     });
   const [compareDay, setCompareDay] = useState<string | null>(null);
+  const [receiptFor, setReceiptFor] = useState<{ file: File; itemId: string } | null>(null);
   const [mobileView, setMobileView] = useState<"plan" | "map">("plan");
   const [dragging, setDragging] = useState<Item | null>(null);
   const [sharing, setSharing] = useState(false);
@@ -872,6 +875,14 @@ export function TripPage() {
     }, 40);
   };
   const spent = totals(budgetLines(state, fx.convert)).total;
+  // "¥2,340 · 2 receipts" on a stop's card
+  const receiptsLabel = (itemId: string) => {
+    const rs = state.expenses.filter((e) => e.kind === "receipt" && e.itemId === itemId);
+    if (!rs.length) return undefined;
+    const cur = rs[0].currency;
+    const sum = rs.every((e) => e.currency === cur) ? formatMoney(rs.reduce((a, e) => a + e.amount, 0), cur) : `${rs.length} receipts`;
+    return rs.length > 1 && !sum.endsWith("receipts") ? `${sum} · ${rs.length} receipts` : sum;
+  };
   // ?today=2026-12-03T10:00 previews the overview as on that day (for trying the during/after views)
   const overviewNow = (() => {
     const t = new URLSearchParams(location.search).get("today");
@@ -1239,6 +1250,8 @@ export function TripPage() {
                 chips={s.kind === "day" ? dayChips(state.reservations, s.date!) : []}
                 chipStyle={settings.bookingStyle}
                 people={state.meta.travelers}
+                onReceipt={readOnly ? undefined : (itemId, file) => setReceiptFor({ file, itemId })}
+                receiptsLabel={receiptsLabel}
                 legs={legsBySection.get(s.writeKey ?? s.key)}
                 onLegMode={(legId, m) => {
                   const itemId = legId.replace(/#\d+$/, ""); // a person's own leg into the stop
@@ -1433,6 +1446,7 @@ export function TripPage() {
           holdView={settings.pinClick === "card" && !!selectedId && mapPicked === selectedId}
         />
         </Suspense>
+        {receiptFor && <ReceiptFlow doc={doc} state={state} file={receiptFor.file} stop={state.items.find((i) => i.id === receiptFor.itemId)} onClose={() => setReceiptFor(null)} />}
         {compareDay && (() => {
           const sec = view.sections.find((x) => x.kind === "day" && x.date === compareDay);
           if (!sec) return null;
