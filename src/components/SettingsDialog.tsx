@@ -1,15 +1,16 @@
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
-import { Crosshair, EyeOff, Moon, MoonStar, PanelBottom, PanelLeft, PanelLeftDashed, Plane, RectangleHorizontal, Pill, Clock, Hourglass, Sun, X, Sparkles, Loader2, Check, Luggage } from "lucide-react";
+import { Crosshair, EyeOff, Moon, MoonStar, PanelBottom, PanelLeft, PanelLeftDashed, Plane, RectangleHorizontal, Pill, Clock, Hourglass, Sun, X, Sparkles, Loader2, Check, Luggage, CalendarPlus } from "lucide-react";
 import { useIsPhone, useTravelMode } from "../lib/travelMode";
 import type * as Y from "yjs";
 import { readTrip } from "../lib/trips";
+import { downloadIcs } from "../lib/ics";
 import { withNotes, tidyNotes } from "../lib/tidyNotes";
 import { useTheme, type Theme } from "../lib/theme";
 import { useSettings, type Settings, type SettingsScope } from "../lib/settings";
 
 /** App settings (this device). One section per setting; options as selectable cards. */
-export function SettingsDialog({ onClose, scope }: { onClose: () => void; scope?: SettingsScope | null }) {
+export function SettingsDialog({ onClose, scope, doc }: { onClose: () => void; scope?: SettingsScope | null; doc?: Y.Doc }) {
   const [settings, update, where] = useSettings(scope);
   const [theme, , setTheme] = useTheme();
   const [travel, setTravel] = useTravelMode();
@@ -47,6 +48,12 @@ export function SettingsDialog({ onClose, scope }: { onClose: () => void; scope?
         <BookingStyleRow value={settings.bookingStyle} onPick={(k) => update({ bookingStyle: k })} />
         <div className="my-4 border-t border-line" />
         <TimingRow value={settings.timing} onPick={(k) => update({ timing: k })} />
+        {doc && (
+          <>
+            <div className="my-4 border-t border-line" />
+            <CalendarRow doc={doc} />
+          </>
+        )}
         {scope && <TidyNotesRow doc={scope.doc} />}
         <p className="mt-5 text-[12px] text-muted">
           {where === "trip" ? "Saved to your account for this trip; appearance is saved on this device." : "Settings are saved on this device."}
@@ -146,6 +153,25 @@ function TimingRow({ value, onPick }: { value: Settings["timing"]; onPick: (k: S
       ]}
       onPick={onPick}
     />
+  );
+}
+
+/** Export the trip as a calendar file. View-only people can export too, so no readOnly check. */
+function CalendarRow({ doc }: { doc: Y.Doc }) {
+  return (
+    <div className="flex items-center justify-between gap-4 max-sm:flex-col max-sm:items-stretch">
+      <div className="min-w-0">
+        <p className="text-[15px] font-bold">Calendar</p>
+        <p className="mt-0.5 text-[13px] text-muted">Download an .ics of the days, timed stops and bookings for Google Calendar, Apple Calendar or Outlook.</p>
+      </div>
+      <button
+        onClick={() => downloadIcs(readTrip(doc))}
+        className="flex shrink-0 items-center justify-center gap-1.5 rounded-lg border border-line bg-bg px-3 py-1.5 text-[12px] font-bold tracking-wider text-fg uppercase transition-colors hover:border-accent/60 [&>svg]:size-3.5"
+      >
+        <CalendarPlus className="text-accent" />
+        Download .ics
+      </button>
+    </div>
   );
 }
 

@@ -2,8 +2,8 @@ import { AddSection } from "../AddSection";
 import { Section } from "../Section";
 import { dayChips } from "../Reservations";
 import { receiptsLabel } from "./receiptsLabel";
-import { addPlace, changeItem, setLegMode, setCollapsed, setMetaEntry } from "../../lib/itemActions";
-import { addItem, addList, moveItems, removeItem, renameList, updateItem } from "../../lib/trips";
+import { addPlace, addSection, changeItem, setLegMode, setCollapsed, setMetaEntry } from "../../lib/itemActions";
+import { addItem, moveItems, removeItem, renameList, updateItem } from "../../lib/trips";
 import { dayProps } from "./dayProps";
 import type { PlanContext, PlanSection } from "./types";
 
@@ -37,7 +37,7 @@ export function ItinerarySection({ c, s, si }: { c: PlanContext; s: PlanSection;
   } = c;
   return (
     <>
-      {si === 0 && s.kind !== "list" && !readOnly && <AddSection onAdd={(t) => addList(doc, t)} />}
+      {si === 0 && s.kind !== "list" && !readOnly && <AddSection onAdd={(t) => addSection(doc, t)} />}
       <Section
         info={s}
         focused={focus === s.key}
@@ -82,7 +82,7 @@ export function ItinerarySection({ c, s, si }: { c: PlanContext; s: PlanSection;
         onSubtitle={(t) => setMetaEntry(doc, state, "subtitles", s.key, t)}
         {...dayProps(c, s)}
       />
-      {s.kind === "list" && view.sections[si + 1]?.kind !== "list" && !readOnly && <AddSection onAdd={(t) => addList(doc, t)} />}
+      {s.kind === "list" && view.sections[si + 1]?.kind !== "list" && !readOnly && <AddSection onAdd={(t) => addSection(doc, t)} />}
     </>
   );
 }

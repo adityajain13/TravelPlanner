@@ -4,7 +4,17 @@ import { findPlaceId, getDetails, GOOGLE_KEY, photoUrl } from "./google";
 import { firstPhoto } from "./images";
 import type { PlaceResult } from "./photon";
 import type { TravelMode } from "./routing";
-import { addItem, readTrip, samePlace, setItemImage, updateItem, updateMeta, type Item, type TripState } from "./trips";
+import { addItem, addList, listSection, readTrip, samePlace, setItemImage, updateItem, updateMeta, type Item, type TripState } from "./trips";
+import { nanoid } from "nanoid";
+
+const PACKING = ["Passport / ID", "Phone + charger", "Power adapter", "Medications", "Toiletries", "Clothes", "Travel insurance details", "Cards + some cash"];
+
+/** "+ Add section": a "Packing list" starts with a checklist of the usual things. */
+export function addSection(doc: Y.Doc, title: string) {
+  const id = addList(doc, title);
+  if (title.trim().toLowerCase() === "packing list")
+    addItem(doc, listSection(id), { kind: "checklist", name: "Packing", checks: PACKING.map((text) => ({ id: nanoid(6), text })) });
+}
 
 /** A place picked in the add box: a new stop in the section, with its photo and details looked up. */
 export function addPlace(doc: Y.Doc, sectionKey: string, p: PlaceResult, index: number | undefined, ctx: { destination?: string; near?: [number, number] }): string {

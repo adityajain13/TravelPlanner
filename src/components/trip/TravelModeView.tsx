@@ -57,7 +57,7 @@ export function TravelModeView({
           return { pins: m.pins, routes: m.routes };
         }}
       />
-      {showSettings && <SettingsDialog scope={readOnly ? null : settingsScope} onClose={() => setShowSettings(false)} />}
+      {showSettings && <SettingsDialog doc={doc} scope={readOnly ? null : settingsScope} onClose={() => setShowSettings(false)} />}
     </>
   );
 }
