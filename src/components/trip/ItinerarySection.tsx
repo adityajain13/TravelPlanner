@@ -1,9 +1,11 @@
+import type * as Y from "yjs";
 import { AddSection } from "../AddSection";
+import { askConfirm } from "../ConfirmDialog";
 import { Section } from "../Section";
 import { dayChips } from "../Reservations";
 import { receiptsLabel } from "./receiptsLabel";
 import { addPlace, addSection, changeItem, setLegMode, setCollapsed, setMetaEntry } from "../../lib/itemActions";
-import { addItem, moveItems, removeItem, renameList, updateItem } from "../../lib/trips";
+import { addItem, moveItems, removeItem, removeList, renameList, updateItem } from "../../lib/trips";
 import { dayProps } from "./dayProps";
 import type { PlanContext, PlanSection } from "./types";
 
@@ -58,6 +60,7 @@ export function ItinerarySection({ c, s, si }: { c: PlanContext; s: PlanSection;
         onFocus={() => setFocus((f) => (f === s.key ? null : s.key))}
         onSelect={(itemId) => setSelectedId((cur) => (cur === itemId ? null : itemId))}
         onRename={s.listId ? (t) => renameList(doc, s.listId!, t) : undefined}
+        onDeleteSection={s.listId ? () => void deleteSection(doc, s.listId!, s.title ?? "this section", s.items.length) : undefined}
         onAddPlace={(p, index) => {
           const newId = addPlace(doc, s.writeKey ?? s.key, p, index, { destination: state.meta.destination, near });
           // Lists (Places to visit…) collect ideas: add them closed; a day's new stop opens
@@ -85,4 +88,15 @@ export function ItinerarySection({ c, s, si }: { c: PlanContext; s: PlanSection;
       {s.kind === "list" && view.sections[si + 1]?.kind !== "list" && !readOnly && <AddSection onAdd={(t) => addSection(doc, t)} />}
     </>
   );
+}
+
+/** Asks first (never a native confirm); undo brings it back. */
+async function deleteSection(doc: Y.Doc, listId: string, title: string, count: number) {
+  const ok = await askConfirm({
+    title: `Delete "${title}"?`,
+    body: count ? `Its ${count} ${count === 1 ? "item goes" : "items go"} too. You can undo this.` : "You can undo this.",
+    confirmLabel: "Delete",
+    danger: true,
+  });
+  if (ok) removeList(doc, listId);
 }
