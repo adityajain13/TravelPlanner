@@ -87,12 +87,7 @@ export async function handleTrips(req: Request, env: Env, url: URL): Promise<Res
   const parts = url.pathname.slice(API.length + 1).split("/"); // e.g. ["trips", id, "share"]
 
   // Share-link resolution is public (the token is the credential)
-  if (parts[0] === "share" && parts[1] && req.method === "GET") {
-    const s = await verifyShareToken(env, parts[1]);
-    if (!s) return error(404, "This link is invalid or was reset");
-    const row = await getTrip(env, s.tripId);
-    return json({ tripId: s.tripId, role: s.role, title: row?.title ?? "Shared trip", destination: row?.destination ?? "" });
-  }
+  if (parts[0] === "share" && parts[1] && req.method === "GET") return resolveShareLink(env, parts[1]);
 
   if (parts[0] === "sync" && parts[1]) return handleSync(req, env, url, parts[1]);
 
@@ -100,120 +95,154 @@ export async function handleTrips(req: Request, env: Env, url: URL): Promise<Res
   const session = await getSession(req, env);
   if (!session) return error(401, "Not logged in");
 
-  if (parts.length === 1 && req.method === "GET") {
-    const { results } = await env.DB.prepare(
-      "SELECT id, title, destination, start_date, end_date, updated_at FROM trips WHERE owner = ? AND title IS NOT NULL ORDER BY start_date",
-    )
-      .bind(session.email)
-      .all();
-    const { results: shared } = await env.DB.prepare(
-      "SELECT t.id, t.title, t.destination, t.start_date, t.end_date, t.updated_at, t.owner, m.role FROM trip_members m JOIN trips t ON t.id = m.trip_id WHERE m.email = ? AND t.title IS NOT NULL ORDER BY t.start_date",
-    )
-      .bind(session.email)
-      .all();
-    return json({ trips: [...results, ...shared] });
-  }
+  if (parts.length === 1 && req.method === "GET") return listTrips(env, session);
 
   const id = parts[1];
   if (!id || !isValidTripId(id)) return error(400, "Bad trip id");
 
-  if (parts.length === 2 && req.method === "DELETE") {
-    const row = await getTrip(env, id);
-    if (row && row.owner !== session.email) return error(403, "Not your trip");
-    if (row) {
-      await env.TRIP_ROOM.get(env.TRIP_ROOM.idFromName(id)).fetch("https://room/", { headers: { "X-Action": "destroy" } });
-      await env.DB.batch([
-        env.DB.prepare("DELETE FROM trips WHERE id = ?").bind(id),
-        env.DB.prepare("DELETE FROM trip_senders WHERE trip_id = ?").bind(id),
-        env.DB.prepare("DELETE FROM trip_members WHERE trip_id = ?").bind(id),
-        env.DB.prepare("DELETE FROM invites WHERE trip_id = ?").bind(id),
-      ]);
-    }
-    return json({ ok: true });
-  }
-
-  if (parts[2] === "members") {
-    const target = parts[3] ? decodeURIComponent(parts[3]).toLowerCase() : undefined;
-    // Anyone can remove themselves (leave a shared trip)
-    if (req.method === "DELETE" && target === session.email) {
-      await env.DB.prepare("DELETE FROM trip_members WHERE trip_id = ? AND email = ?").bind(id, target).run();
-      return json({ ok: true });
-    }
-    const row = await ownTrip(env, session, id);
-    if (row instanceof Response) return row;
-    if (req.method === "GET") {
-      const { results } = await env.DB.prepare("SELECT email, role FROM trip_members WHERE trip_id = ? ORDER BY added_at, email").bind(id).all<{ email: string; role: Role }>();
-      return json({ members: results });
-    }
-    if (req.method === "PUT") {
-      const body = (await req.json().catch(() => ({}))) as { email?: string; role?: Role; invite?: boolean };
-      const email = String(body.email ?? "").trim().toLowerCase();
-      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return error(400, "Enter a valid email");
-      if (email === session.email) return error(400, "That's you");
-      if (body.role !== "view" && body.role !== "edit") return error(400, "role must be view or edit");
-      const n = await env.DB.prepare("SELECT count(*) AS n FROM trip_members WHERE trip_id = ?").bind(id).first<{ n: number }>();
-      if ((n?.n ?? 0) >= 20) return error(400, "At most 20 people per trip");
-      await env.DB.prepare(
-        "INSERT INTO trip_members (trip_id, email, role, added_at) VALUES (?, ?, ?, ?) ON CONFLICT (trip_id, email) DO UPDATE SET role = excluded.role",
-      )
-        .bind(id, email, body.role, Date.now())
-        .run();
-      // One-time sign-in link for them (7 days), so they don't depend on login emails arriving
-      let invite: string | undefined;
-      if (body.invite !== false) {
-        const t = randomToken(24);
-        await env.DB.batch([
-          env.DB.prepare("DELETE FROM invites WHERE expires_at < ?").bind(Date.now()),
-          env.DB.prepare("INSERT INTO invites (token_hash, email, trip_id, expires_at) VALUES (?, ?, ?, ?)").bind(await sha256(t), email, id, Date.now() + 7 * 86400000),
-        ]);
-        invite = `${url.origin}/travelplanner/login?invite=${t}`;
-      }
-      return json({ ok: true, invite });
-    }
-    if (req.method === "DELETE" && target) {
-      await env.DB.batch([
-        env.DB.prepare("DELETE FROM trip_members WHERE trip_id = ? AND email = ?").bind(id, target),
-        env.DB.prepare("DELETE FROM invites WHERE trip_id = ? AND email = ?").bind(id, target),
-      ]);
-      return json({ ok: true });
-    }
-  }
-
-  if (parts[2] === "senders") {
-    const row = await ownTrip(env, session, id);
-    if (row instanceof Response) return row;
-    if (req.method === "PUT") {
-      const { emails } = (await req.json().catch(() => ({}))) as { emails?: unknown };
-      if (!Array.isArray(emails)) return error(400, "emails must be a list");
-      const clean = [...new Set(emails.map((e) => String(e).trim().toLowerCase()))].filter((e) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e) && e !== session.email);
-      if (clean.length > 20) return error(400, "At most 20 people");
-      const now = Date.now();
-      await env.DB.batch([
-        env.DB.prepare("DELETE FROM trip_senders WHERE trip_id = ?").bind(id),
-        ...clean.map((e) => env.DB.prepare("INSERT INTO trip_senders (trip_id, email, added_at) VALUES (?, ?, ?)").bind(id, e, now)),
-      ]);
-      return json({ emails: clean });
-    }
-    if (req.method === "GET") {
-      const { results } = await env.DB.prepare("SELECT email FROM trip_senders WHERE trip_id = ? ORDER BY added_at, email").bind(id).all<{ email: string }>();
-      return json({ emails: results.map((r) => r.email) });
-    }
-  }
-
-  if (parts[2] === "share") {
-    const row = await ownTrip(env, session, id);
-    if (row instanceof Response) return row;
-    if (req.method === "POST") {
-      const { role } = (await req.json().catch(() => ({}))) as { role?: Role };
-      if (role !== "view" && role !== "edit") return error(400, "role must be view or edit");
-      return json({ token: await makeShareToken(env, id, role, row.share_version), role });
-    }
-    if (req.method === "DELETE") {
-      await env.DB.prepare("UPDATE trips SET share_version = share_version + 1 WHERE id = ?").bind(id).run();
-      return json({ ok: true });
-    }
-  }
+  if (parts.length === 2 && req.method === "DELETE") return deleteTrip(env, session, id);
+  if (parts[2] === "members") return handleMembers(req, env, url, session, id, parts[3]);
+  if (parts[2] === "senders") return handleSenders(req, env, session, id);
+  if (parts[2] === "share") return handleTripShare(req, env, session, id);
   return error(404, "Not found");
+}
+
+async function resolveShareLink(env: Env, token: string): Promise<Response> {
+  const s = await verifyShareToken(env, token);
+  if (!s) return error(404, "This link is invalid or was reset");
+  const row = await getTrip(env, s.tripId);
+  return json({ tripId: s.tripId, role: s.role, title: row?.title ?? "Shared trip", destination: row?.destination ?? "" });
+}
+
+async function listTrips(env: Env, session: Session): Promise<Response> {
+  const { results } = await env.DB.prepare(
+    "SELECT id, title, destination, start_date, end_date, updated_at FROM trips WHERE owner = ? AND title IS NOT NULL ORDER BY start_date",
+  )
+    .bind(session.email)
+    .all();
+  const { results: shared } = await env.DB.prepare(
+    "SELECT t.id, t.title, t.destination, t.start_date, t.end_date, t.updated_at, t.owner, m.role FROM trip_members m JOIN trips t ON t.id = m.trip_id WHERE m.email = ? AND t.title IS NOT NULL ORDER BY t.start_date",
+  )
+    .bind(session.email)
+    .all();
+  return json({ trips: [...results, ...shared] });
+}
+
+async function deleteTrip(env: Env, session: Session, id: string): Promise<Response> {
+  const row = await getTrip(env, id);
+  if (row && row.owner !== session.email) return error(403, "Not your trip");
+  if (row) {
+    await env.TRIP_ROOM.get(env.TRIP_ROOM.idFromName(id)).fetch("https://room/", { headers: { "X-Action": "destroy" } });
+    await env.DB.batch([
+      env.DB.prepare("DELETE FROM trips WHERE id = ?").bind(id),
+      env.DB.prepare("DELETE FROM trip_senders WHERE trip_id = ?").bind(id),
+      env.DB.prepare("DELETE FROM trip_members WHERE trip_id = ?").bind(id),
+      env.DB.prepare("DELETE FROM invites WHERE trip_id = ?").bind(id),
+    ]);
+  }
+  return json({ ok: true });
+}
+
+async function handleMembers(req: Request, env: Env, url: URL, session: Session, id: string, rawEmail: string | undefined): Promise<Response> {
+  const target = rawEmail ? decodeURIComponent(rawEmail).toLowerCase() : undefined;
+  // Anyone can remove themselves (leave a shared trip)
+  if (req.method === "DELETE" && target === session.email) return leaveTrip(env, id, session.email);
+  const row = await ownTrip(env, session, id);
+  if (row instanceof Response) return row;
+  if (req.method === "GET") return listMembers(env, id);
+  if (req.method === "PUT") return putMember(req, env, url, session, id);
+  if (req.method === "DELETE" && target) return removeMember(env, id, target);
+  return error(404, "Not found");
+}
+
+async function leaveTrip(env: Env, id: string, email: string): Promise<Response> {
+  await env.DB.prepare("DELETE FROM trip_members WHERE trip_id = ? AND email = ?").bind(id, email).run();
+  return json({ ok: true });
+}
+
+async function listMembers(env: Env, id: string): Promise<Response> {
+  const { results } = await env.DB.prepare("SELECT email, role FROM trip_members WHERE trip_id = ? ORDER BY added_at, email").bind(id).all<{ email: string; role: Role }>();
+  return json({ members: results });
+}
+
+async function putMember(req: Request, env: Env, url: URL, session: Session, id: string): Promise<Response> {
+  const body = (await req.json().catch(() => ({}))) as { email?: string; role?: Role; invite?: boolean };
+  const email = String(body.email ?? "").trim().toLowerCase();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return error(400, "Enter a valid email");
+  if (email === session.email) return error(400, "That's you");
+  if (body.role !== "view" && body.role !== "edit") return error(400, "role must be view or edit");
+  const n = await env.DB.prepare("SELECT count(*) AS n FROM trip_members WHERE trip_id = ?").bind(id).first<{ n: number }>();
+  if ((n?.n ?? 0) >= 20) return error(400, "At most 20 people per trip");
+  await env.DB.prepare(
+    "INSERT INTO trip_members (trip_id, email, role, added_at) VALUES (?, ?, ?, ?) ON CONFLICT (trip_id, email) DO UPDATE SET role = excluded.role",
+  )
+    .bind(id, email, body.role, Date.now())
+    .run();
+  const invite = body.invite !== false ? await createInviteLink(env, url, email, id) : undefined;
+  return json({ ok: true, invite });
+}
+
+/** One-time sign-in link for them (7 days), so they don't depend on login emails arriving. */
+async function createInviteLink(env: Env, url: URL, email: string, tripId: string): Promise<string> {
+  const t = randomToken(24);
+  await env.DB.batch([
+    env.DB.prepare("DELETE FROM invites WHERE expires_at < ?").bind(Date.now()),
+    env.DB.prepare("INSERT INTO invites (token_hash, email, trip_id, expires_at) VALUES (?, ?, ?, ?)").bind(await sha256(t), email, tripId, Date.now() + 7 * 86400000),
+  ]);
+  return `${url.origin}/travelplanner/login?invite=${t}`;
+}
+
+async function removeMember(env: Env, id: string, email: string): Promise<Response> {
+  await env.DB.batch([
+    env.DB.prepare("DELETE FROM trip_members WHERE trip_id = ? AND email = ?").bind(id, email),
+    env.DB.prepare("DELETE FROM invites WHERE trip_id = ? AND email = ?").bind(id, email),
+  ]);
+  return json({ ok: true });
+}
+
+async function handleSenders(req: Request, env: Env, session: Session, id: string): Promise<Response> {
+  const row = await ownTrip(env, session, id);
+  if (row instanceof Response) return row;
+  if (req.method === "PUT") return replaceSenders(req, env, session, id);
+  if (req.method === "GET") return listSenders(env, id);
+  return error(404, "Not found");
+}
+
+async function replaceSenders(req: Request, env: Env, session: Session, id: string): Promise<Response> {
+  const { emails } = (await req.json().catch(() => ({}))) as { emails?: unknown };
+  if (!Array.isArray(emails)) return error(400, "emails must be a list");
+  const clean = [...new Set(emails.map((e) => String(e).trim().toLowerCase()))].filter((e) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e) && e !== session.email);
+  if (clean.length > 20) return error(400, "At most 20 people");
+  const now = Date.now();
+  await env.DB.batch([
+    env.DB.prepare("DELETE FROM trip_senders WHERE trip_id = ?").bind(id),
+    ...clean.map((e) => env.DB.prepare("INSERT INTO trip_senders (trip_id, email, added_at) VALUES (?, ?, ?)").bind(id, e, now)),
+  ]);
+  return json({ emails: clean });
+}
+
+async function listSenders(env: Env, id: string): Promise<Response> {
+  const { results } = await env.DB.prepare("SELECT email FROM trip_senders WHERE trip_id = ? ORDER BY added_at, email").bind(id).all<{ email: string }>();
+  return json({ emails: results.map((r) => r.email) });
+}
+
+async function handleTripShare(req: Request, env: Env, session: Session, id: string): Promise<Response> {
+  const row = await ownTrip(env, session, id);
+  if (row instanceof Response) return row;
+  if (req.method === "POST") return createShareLink(req, env, id, row.share_version);
+  if (req.method === "DELETE") return resetShareLinks(env, id);
+  return error(404, "Not found");
+}
+
+async function createShareLink(req: Request, env: Env, id: string, shareVersion: number): Promise<Response> {
+  const { role } = (await req.json().catch(() => ({}))) as { role?: Role };
+  if (role !== "view" && role !== "edit") return error(400, "role must be view or edit");
+  return json({ token: await makeShareToken(env, id, role, shareVersion), role });
+}
+
+async function resetShareLinks(env: Env, id: string): Promise<Response> {
+  await env.DB.prepare("UPDATE trips SET share_version = share_version + 1 WHERE id = ?").bind(id).run();
+  return json({ ok: true });
 }
 
 async function handleSync(req: Request, env: Env, url: URL, id: string): Promise<Response> {
