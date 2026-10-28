@@ -78,6 +78,8 @@ interface Props {
   /** Auto stop times (Settings → Stop times: Auto): per stop how long, and when the day starts. */
   autoTimes?: Map<string, { stay: number; isDefault: boolean; nextDay: boolean }>;
   onStay?: (itemId: string, min: number | undefined) => void;
+  onReceipt?: (itemId: string, f: File) => void;
+  receiptsLabel?: (itemId: string) => string | undefined;
   /** The trip's people, for "who goes here" on a day's stops. */
   people?: string[];
   /** Saved collapsed state (trip-wide) and how to change it. */
@@ -350,6 +352,8 @@ export function Section(p: Props) {
                 onToggleSection={p.onToggleSection ? (k) => p.onToggleSection!(it.id, k) : undefined}
                 onCostDetails={p.onCostDetails ? () => p.onCostDetails!(it.id) : undefined}
                 people={info.kind === "day" ? p.people : undefined}
+                onReceipt={p.onReceipt ? (f) => p.onReceipt!(it.id, f) : undefined}
+                receiptsLabel={p.receiptsLabel?.(it.id)}
               />
               </div>
             ))}

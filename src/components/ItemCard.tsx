@@ -4,7 +4,8 @@ import { useEffect, useState } from "react";
 import { CurrencySelect } from "./CurrencySelect";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { Bookmark, CheckSquare, Clock, Users, ListChecks, Plus, X, ExternalLink, GripVertical, ImagePlus, StickyNote, Trash2, Wallet } from "lucide-react";
+import { ReceiptButton } from "./ReceiptFlow";
+import { ReceiptText, Bookmark, CheckSquare, Clock, Users, ListChecks, Plus, X, ExternalLink, GripVertical, ImagePlus, StickyNote, Trash2, Wallet } from "lucide-react";
 import { ImagePicker } from "./ImagePicker";
 import { Photo } from "./Photo";
 import { PhotoCredit } from "./PhotoCredit";
@@ -45,6 +46,10 @@ interface Props {
   onToggleSection?: (section: string) => void;
   /** Open the budget editor (category, who paid, split) for this stop's cost. */
   onCostDetails?: () => void;
+  /** Snap a receipt for this stop (opens the camera). */
+  onReceipt?: (f: File) => void;
+  /** Receipts spent here, e.g. "¥2,340 · 2 receipts". */
+  receiptsLabel?: string;
   /** The trip's people (days only): pick who goes to this stop. */
   people?: string[];
 }
@@ -111,6 +116,8 @@ function ItemCardView({
   onToggleSection,
   onCostDetails,
   people,
+  onReceipt,
+  receiptsLabel,
   sortable,
   overlay,
 }: Props & { sortable?: ReturnType<typeof useSortable>; overlay?: boolean }) {
@@ -190,6 +197,9 @@ function ItemCardView({
               <NoteBody text={item.name} readOnly={readOnly} onCommit={(name) => (name.trim() ? name !== item.name && onChange({ name }) : onDelete())} />
             )}
             <div className="-mt-1 -mr-1 flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 max-md:opacity-100">
+              {isPlace && onReceipt && !readOnly && (
+                <ReceiptButton onFile={onReceipt} title="Scan a receipt from here" className="grid size-7 place-items-center rounded-md text-muted hover:bg-surface-2 hover:text-fg" />
+              )}
               {isPlace && (
                 <a
                   href={googleMapsLink(item)}
@@ -212,8 +222,13 @@ function ItemCardView({
           {isPlace && subtitle && <p className="mt-0.5 truncate text-sm text-muted">{subtitle}</p>}
           {isPlace && !selected && item.notes && <RichText text={item.notes} className="mt-1.5 line-clamp-3 text-[15px] leading-snug text-muted" />}
 
-          {isPlace && !selected && (auto || item.startTime || item.endTime || item.cost != null || !!item.who?.length) && (
+          {isPlace && !selected && (auto || item.startTime || item.endTime || item.cost != null || !!item.who?.length || !!receiptsLabel) && (
             <div className="mt-2.5 flex flex-wrap gap-1.5 text-[13px] font-semibold">
+              {receiptsLabel && (
+                <span className={chip} title="Receipts linked to this stop (Budget → Receipts)">
+                  <ReceiptText className="size-3.5 text-accent" /> {receiptsLabel}
+                </span>
+              )}
               {!!item.who?.length && (
                 <span className="flex items-center gap-1.5 rounded-full bg-surface-2 px-2.5 py-1 text-muted" title="Only they go here; their route is drawn on its own">
                   <Users className="size-3.5" /> {item.who.join(" & ")}

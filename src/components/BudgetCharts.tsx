@@ -2,7 +2,7 @@ import { dtf } from "../lib/intl";
 import { useMemo, useState } from "react";
 import { Download } from "lucide-react";
 import type { Line } from "../lib/budget";
-import { CATEGORIES, CATEGORY_LABEL, travelersOf } from "../lib/budget";
+import { CATEGORIES, CATEGORY_LABEL, shareOf, travelersOf } from "../lib/budget";
 import { formatMoney } from "../lib/fx";
 import { parseISODate } from "../lib/dates";
 import { dayColor } from "../lib/colors";
@@ -45,8 +45,8 @@ export function BudgetCharts({ lines, state, currency }: { lines: Line[]; state:
       for (const t of travelers) m.set(t, { key: t, label: t, amount: 0, count: 0, parts: new Map() });
       for (const l of counted) {
         paid.set(l.paidBy, (paid.get(l.paidBy) ?? 0) + l.converted!);
-        const share = l.converted! / Math.max(1, l.splitWith.length);
         for (const t of l.splitWith) {
+          const share = shareOf(l, t);
           const r = m.get(t) ?? m.set(t, { key: t, label: t, amount: 0, count: 0, parts: new Map() }).get(t)!;
           r.amount += share;
           r.count++;
