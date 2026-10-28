@@ -1,4 +1,5 @@
 import { inkOn } from "../lib/colors";
+import { memoLatest } from "../lib/memo";
 import { RichEditor, RichField, RichLine, RichText } from "./RichText";
 import { useEffect, useState } from "react";
 import { CurrencySelect } from "./CurrencySelect";
@@ -79,10 +80,17 @@ function AutoTimeChips({ item, auto, onStay, readOnly, chip }: { item: Item; aut
   );
 }
 
+/**
+ * A stop / note / checklist card. The sortable hook re-renders on every drag-state change, so it
+ * lives in this thin wrapper and hands the card only what it draws with; the card itself only
+ * re-renders when its own data changed (see memoLatest).
+ */
 export function ItemCard(props: Props) {
-  const sortable = useSortable({ id: props.item.id, disabled: props.readOnly });
-  return <ItemCardView {...props} sortable={sortable} />;
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: props.item.id, disabled: props.readOnly });
+  return <ItemCardMemo {...props} sortable={{ attributes, listeners, setNodeRef, transform, transition, isDragging }} />;
 }
+
+type SortableBits = Pick<ReturnType<typeof useSortable>, "attributes" | "listeners" | "setNodeRef" | "transform" | "transition" | "isDragging">;
 
 /** The card as it looks while being dragged (rendered in the DragOverlay; no sortable hooks). */
 export function ItemCardDragPreview(props: Pick<Props, "item" | "number" | "color" | "currency">) {
@@ -92,6 +100,8 @@ export function ItemCardDragPreview(props: Pick<Props, "item" | "number" | "colo
     </div>
   );
 }
+
+const ItemCardMemo = memoLatest(ItemCardView, "ItemCard");
 
 function ItemCardView({
   item,
@@ -120,8 +130,8 @@ function ItemCardView({
   receiptsLabel,
   sortable,
   overlay,
-}: Props & { sortable?: ReturnType<typeof useSortable>; overlay?: boolean }) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = sortable ?? ({} as Partial<ReturnType<typeof useSortable>>);
+}: Props & { sortable?: SortableBits; overlay?: boolean }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = sortable ?? ({} as Partial<SortableBits>);
   const style = sortable ? { transform: CSS.Translate.toString(transform ?? null), transition } : undefined;
   const [picking, setPicking] = useState(false);
   const isPlace = item.kind === "place";

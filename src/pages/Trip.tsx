@@ -46,7 +46,6 @@ import {
   removeItem,
   removeItems,
   setReadOnly,
-  samePlace,
   renameList,
   updateItem,
   updateMeta,
@@ -56,6 +55,8 @@ import {
   isDraftSection,
   nextDraftName,
 } from "../lib/trips";
+import { copiesByItem } from "../lib/trips";
+import { daysBetween } from "../lib/dates";
 import { DayCompareHost } from "../components/DayCompareHost";
 import { TravelView } from "../components/TravelView";
 import { ReceiptFlow } from "../components/ReceiptFlow";
@@ -96,6 +97,8 @@ import { askConfirm } from "../components/ConfirmDialog";
 const formatChip = (d: string) =>
   dtf(undefined, { weekday: "short", month: "short", day: "numeric", timeZone: "UTC" }).format(parseISODate(d));
 const LOADING = "loading" as const;
+
+const NO_CHIPS: ReturnType<typeof dayChips> = [];
 
 export function TripPage() {
   const { id } = useParams();
@@ -259,23 +262,13 @@ export function TripPage() {
   }
 
   // Worked out once per change (not per card per render): items grouped by name, then matched
-  const copyGroups = useMemo(() => {
-    const byName = new Map<string, Item[]>();
-    for (const it of state?.items ?? []) {
-      if (it.kind !== "place") continue;
-      const k = it.name.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "");
-      (byName.get(k) ?? byName.set(k, []).get(k)!).push(it);
-    }
-    const out = new Map<string, Item[]>();
-    for (const it of state?.items ?? []) {
-      if (it.kind !== "place") continue;
-      const same = (byName.get(it.name.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "")) ?? []).filter((x) => x.id === it.id || samePlace(it, x));
-      // Same Google/OSM place under another name
-      for (const x of state!.items) if (x.kind === "place" && !same.includes(x) && ((it.googlePlaceId && x.googlePlaceId === it.googlePlaceId) || (it.osmId && x.osmId === it.osmId))) same.push(x);
-      out.set(it.id, same);
-    }
-    return out;
-  }, [state?.items]);
+  const copyGroups = useMemo(() => copiesByItem(state?.items ?? []), [state?.items]);
+  // Each day's booking cards, worked out once per change to the bookings (not per day per render)
+  const chipsByDay = useMemo(() => {
+    const m = new Map<string, ReturnType<typeof dayChips>>();
+    if (state) for (const d of daysBetween(state.meta.startDate, state.meta.endDate)) m.set(d, dayChips(state.reservations, d));
+    return m;
+  }, [state?.reservations, state?.meta.startDate, state?.meta.endDate]);
   if (row !== LOADING && !shareToken && auth === "out") return <Navigate to="/login" replace />;
   if (!ready || row === LOADING) return <div className="grid h-full place-items-center text-muted">Loading…</div>;
   if (!state || !doc || !view) {
@@ -773,7 +766,7 @@ export function TripPage() {
                 currency={state.meta.currency ?? "CAD"}
                 searchContext={state.meta.destination}
                 countryCode={state.meta.countryCode}
-                chips={s.kind === "day" ? dayChips(state.reservations, s.date!) : []}
+                chips={s.kind === "day" ? (chipsByDay.get(s.date!) ?? NO_CHIPS) : NO_CHIPS}
                 chipStyle={settings.bookingStyle}
                 people={state.meta.travelers}
                 onReceipt={readOnly ? undefined : (itemId, file) => setReceiptFor({ file, itemId })}

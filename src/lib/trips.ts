@@ -472,6 +472,32 @@ export function samePlace(a: Item, b: Item) {
   return Math.hypot((a.lat - b.lat) * 111_000, (a.lng - b.lng) * 111_000 * Math.cos((a.lat * Math.PI) / 180)) < 150;
 }
 
+/**
+ * Each stop → every copy of it on the trip (itself included): same name and samePlace(), or the
+ * same Google / OSM place under another name. Indexed by name and id, so it's linear, not every
+ * stop against every other.
+ */
+export function copiesByItem(items: Item[]): Map<string, Item[]> {
+  const key = (it: Item) => it.name.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "");
+  const byName = new Map<string, Item[]>();
+  const byGoogle = new Map<string, Item[]>();
+  const byOsm = new Map<string, Item[]>();
+  const add = (m: Map<string, Item[]>, k: string, it: Item) => (m.get(k) ?? m.set(k, []).get(k)!).push(it);
+  const places = items.filter((it) => it.kind === "place");
+  for (const it of places) {
+    add(byName, key(it), it);
+    if (it.googlePlaceId) add(byGoogle, it.googlePlaceId, it);
+    if (it.osmId) add(byOsm, it.osmId, it);
+  }
+  const out = new Map<string, Item[]>();
+  for (const it of places) {
+    const same = (byName.get(key(it)) ?? []).filter((x) => x.id === it.id || samePlace(it, x));
+    for (const x of [...(it.googlePlaceId ? (byGoogle.get(it.googlePlaceId) ?? []) : []), ...(it.osmId ? (byOsm.get(it.osmId) ?? []) : [])]) if (!same.includes(x)) same.push(x);
+    out.set(it.id, same);
+  }
+  return out;
+}
+
 /** Set (or clear) a stop's photo, and the same photo on every other stop at that place, in one undo step. */
 export function setItemImage(doc: Y.Doc, id: string, image: Item["image"], origin: EditOrigin = ME) {
   const items = doc.getMap<Y.Map<unknown>>("items");
