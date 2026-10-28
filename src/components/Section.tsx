@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { memoLatest } from "../lib/memo";
 import { useDroppable } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { Check, ChevronDown, Columns3, Eye, GitBranch, PenLine, ListChecks, MapPin, Pencil, Plus, StickyNote } from "lucide-react";
@@ -88,7 +89,18 @@ interface Props {
   dayStart?: { value: string; isDefault: boolean; landed?: string; onChange?: (t: string | undefined) => void };
 }
 
+/**
+ * A day or list. The drop target hook re-renders on every drag-state change, so it lives in this
+ * thin wrapper; the day itself only re-renders when its own data changed (see memoLatest).
+ */
 export function Section(p: Props) {
+  const { setNodeRef, isOver } = useDroppable({ id: p.info.key });
+  return <SectionBody {...p} dropRef={setNodeRef} isOver={isOver} />;
+}
+
+const SectionBody = memoLatest(SectionView, "Section");
+
+function SectionView(p: Props & { dropRef: (el: HTMLElement | null) => void; isOver: boolean }) {
   const { info } = p;
   // Collapsed is saved in the trip (everyone sees it collapsed); local only where you can't edit
   const [localOpen, setLocalOpen] = useState(true);
@@ -98,7 +110,7 @@ export function Section(p: Props) {
   const [menuAt, setMenuAt] = useState<number | null>(null);
   const [subEditing, setSubEditing] = useState(false);
   const canInsert = !p.readOnly && info.key !== "orphan";
-  const { setNodeRef, isOver } = useDroppable({ id: info.key });
+  const { dropRef: setNodeRef, isOver } = p;
   const placeCount = info.items.filter((i) => i.kind === "place").length;
   // Day total, like Wanderlog: "2 h 41 min · 182 km" (ground legs only)
   let secs = 0;
