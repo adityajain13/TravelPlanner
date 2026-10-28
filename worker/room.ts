@@ -6,6 +6,7 @@ import * as decoding from "lib0/decoding";
 import type { Env } from "./util";
 import type { Role } from "./trips";
 import { applyOp, snapshot, type Item, type Op, type Snapshot } from "./tripOps";
+import { watchHistory } from "../src/lib/history";
 
 /*
  * One Durable Object per trip. Speaks the y-websocket protocol (0 = sync, 1 = awareness),
@@ -35,6 +36,7 @@ export class TripRoom extends DurableObject<Env> {
     });
 
     this.watch(this.doc);
+    watchHistory(this.doc);
   }
 
   async fetch(req: Request): Promise<Response> {
@@ -44,6 +46,7 @@ export class TripRoom extends DurableObject<Env> {
       await this.ctx.storage.deleteAll();
       this.doc = new Y.Doc();
       this.watch(this.doc);
+      watchHistory(this.doc);
       return new Response(null, { status: 204 });
     }
     const role = (req.headers.get("X-Role") as Role) ?? "view";

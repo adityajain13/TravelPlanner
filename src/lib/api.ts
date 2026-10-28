@@ -1,4 +1,5 @@
 import { createContext, createElement, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
+import { setDefaultHistoryAuthor } from "./history";
 
 export const API = "/travelplanner/api";
 
@@ -54,6 +55,8 @@ const Ctx = createContext<SessionCtx | null>(null);
 export function SessionProvider({ children }: { children: ReactNode }) {
   const [email, setEmailState] = useState<string | null>(read);
   const [status, setStatus] = useState<Status>(read() ? "in" : "loading");
+  // Credit your edits in trip history to this account
+  useEffect(() => setDefaultHistoryAuthor(email?.toLowerCase() ?? undefined), [email]);
 
   const setEmail = useCallback((e: string | null) => {
     write(e);
