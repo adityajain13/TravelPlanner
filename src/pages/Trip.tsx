@@ -70,6 +70,8 @@ import {
   nextDraftName,
 } from "../lib/trips";
 import { DayCompare, type Bookend } from "../components/DayCompare";
+import { TravelView } from "../components/TravelView";
+import { useIsPhone, useTravelMode } from "../lib/travelMode";
 import { autoTimes, DEFAULT_DAY_START, DEFAULT_STAY } from "../lib/autoTime";
 import { dayColor, LIST_COLOR } from "../lib/colors";
 import { RES_GLYPH } from "../lib/pinArt";
@@ -221,6 +223,10 @@ export function TripPage() {
   const { email: myEmail } = useSession();
   const settingsScope = useMemo(() => (doc && myEmail && !readOnly ? { doc, email: myEmail.toLowerCase() } : null), [doc, myEmail, readOnly]);
   const [settings] = useSettings(settingsScope);
+  // Travel mode (phones): the light day view; background lookups (photos, pins, notes) pause
+  const [travelOn, setTravelOn] = useTravelMode();
+  const isPhone = useIsPhone();
+  const lite = travelOn && isPhone;
 
   // Bookings forwarded to trips@ that matched this trip
   const [inbox, setInbox] = useState<InboxItem[]>([]);
@@ -537,7 +543,7 @@ export function TripPage() {
   // ("**Seat:** 12A" lines in a fixed order), so every traveller's copy reads the same
   const tidyTried = useRef(new Set<string>());
   useEffect(() => {
-    if (!doc || !state || readOnly || !navigator.onLine || auth !== "in") return;
+    if (lite || !doc || !state || readOnly || !navigator.onLine || auth !== "in") return;
     const todo = state.reservations.filter((r) => needsTidy(r) && !tidyTried.current.has(r.id));
     if (!todo.length) return;
     todo.forEach((r) => tidyTried.current.add(r.id));
@@ -548,7 +554,7 @@ export function TripPage() {
   // know — get located in the background, so legs to/from the hotel and their pins appear.
   const pinTried = useRef(new Set<string>());
   useEffect(() => {
-    if (!doc || !state || readOnly || !navigator.onLine) return;
+    if (lite || !doc || !state || readOnly || !navigator.onLine) return;
     const todo = state.reservations.filter((r) => (r.type === "lodging" || r.type === "restaurant") && r.lat == null && !pinTried.current.has(r.id));
     if (!todo.length) return;
     todo.forEach((r) => pinTried.current.add(r.id));
@@ -573,7 +579,7 @@ export function TripPage() {
   // when the better match is somewhere else
   const relocTried = useRef(new Set<string>());
   useEffect(() => {
-    if (!doc || !state || readOnly || !navigator.onLine) return;
+    if (lite || !doc || !state || readOnly || !navigator.onLine) return;
     const todo = state.items.filter((i) => i.kind === "place" && i.inboxId && !i.located && !i.googlePlaceId && !relocTried.current.has(i.id));
     if (!todo.length) return;
     todo.forEach((i) => relocTried.current.add(i.id));
@@ -605,7 +611,7 @@ export function TripPage() {
   // named after): swap for the place's own Google photo, else a fresh pick, else none
   const photoChecked = useRef(new Set<string>());
   useEffect(() => {
-    if (!doc || !state || readOnly || !navigator.onLine) return;
+    if (lite || !doc || !state || readOnly || !navigator.onLine) return;
     const bad = state.items.filter((i) => i.image?.source === "wikipedia" && !i.image.manual && i.image.title && !sameSubject(i.name, i.image.title) && !photoChecked.current.has(i.id));
     if (!bad.length) return;
     bad.forEach((i) => photoChecked.current.add(i.id));
@@ -624,7 +630,7 @@ export function TripPage() {
   // so a cross-country ride sorts by real time (saved on the booking; redone if the text changes)
   const endsTried = useRef(new Set<string>());
   useEffect(() => {
-    if (!doc || !state || readOnly || !navigator.onLine) return;
+    if (lite || !doc || !state || readOnly || !navigator.onLine) return;
     const jobs: { id: string; side: "fromAt" | "toAt"; q: string }[] = [];
     for (const r of state.reservations) {
       if (r.type !== "train" && r.type !== "car") continue;
@@ -650,7 +656,7 @@ export function TripPage() {
   useEffect(() => {
     // Older auto-covers could be a namesake article ("Iceland (supermarket)"); treat those as missing
     const badAuto = (c = state?.meta.cover) => c?.source === "wikipedia" && /\(.+\)$/.test(c.title ?? "");
-    if (!doc || !state || readOnly || (state.meta.cover && !badAuto()) || coverTried.current || !navigator.onLine) return;
+    if (lite || !doc || !state || readOnly || (state.meta.cover && !badAuto()) || coverTried.current || !navigator.onLine) return;
     const dest = state.meta.destination || state.meta.title;
     if (!dest) return;
     coverTried.current = true;
@@ -872,6 +878,39 @@ export function TripPage() {
     go,
     subtitles: state.meta.subtitles,
   };
+
+  if (lite)
+    return (
+      <>
+        <TravelView
+          title={state.meta.title}
+          days={timed.sections.filter((s) => s.kind === "day")}
+          legsFor={(d) => legsBySection.get(d.writeKey ?? d.key)}
+          reservations={state.reservations}
+          theme={theme}
+          onExit={() => setTravelOn(false)}
+          onToggleCheck={readOnly ? undefined : (itemId, checkId) => {
+            const it = state.items.find((x) => x.id === itemId);
+            if (it) updateItem(doc, itemId, { checks: (it.checks ?? []).map((c) => (c.id === checkId ? { ...c, done: !c.done } : c)) });
+          }}
+          mapFor={(d) => {
+            const ids = new Set(d.items.map((i) => i.id));
+            const ver = d.writeKey ?? d.key;
+            const dayLegs = view.legs.filter((l) => l.ver === ver && !l.ghost);
+            const ends = dayLegs.flatMap((l) => [l.req.from, l.req.to]);
+            const pins = [...view.pins, ...flights.pins].filter(
+              (x) => ids.has(x.id) || ((x.id.startsWith("res:") || x.id.startsWith("apt:")) && ends.some(([lng, lat]) => Math.abs(lng - x.lng) + Math.abs(lat - x.lat) < 0.002)),
+            );
+            const routes: Route[] = dayLegs.map((l) => {
+              const r = legResults.get(l.req.key);
+              return typeof r === "object" ? { color: l.color, coords: r.coords, style: r.mode === "flight" || r.rough ? "dashed" : r.mode === "walk" ? "dotted" : "solid" } : { color: l.color, coords: [l.req.from, l.req.to], style: "dashed" };
+            });
+            return { pins, routes };
+          }}
+        />
+        {showSettings && <SettingsDialog scope={readOnly ? null : settingsScope} onClose={() => setShowSettings(false)} />}
+      </>
+    );
 
   return (
     <div className="flex h-full flex-col md:flex-row">
