@@ -14,15 +14,15 @@ const TOOL = {
     type: "object",
     properties: {
       readable: { type: "boolean", description: "False if the photo isn't a receipt or can't be read." },
-      merchant: { type: "string", description: "Shop or restaurant name, in English/Latin letters when it's commonly known that way (e.g. \"FamilyMart\", \"Ichiran Shibuya\"); else as printed." },
-      address: { type: "string", description: "Branch / address if printed." },
+      merchant: { type: "string", description: "Shop or restaurant name, in English/Latin letters when it's commonly known that way (e.g. \"FamilyMart\", \"Uotami\", \"Ichiran Shibuya\"); else as printed. Brand plus a short branch at most; the full branch goes in address." },
+      address: { type: "string", description: "This branch's address (or branch name + phone if no street address is printed). Not a head-office address." },
       date: { type: "string", description: "YYYY-MM-DD if printed." },
       time: { type: "string", description: "HH:MM 24h if printed." },
       currency: { type: "string", description: "ISO 4217 code (¥ in Japan = JPY, $ in Canada = CAD)." },
       category: { type: "string", enum: ["food", "drinks", "groceries", "shopping", "transit", "activities", "sightseeing", "gas", "other"], description: "Restaurants/cafés = food; convenience store or supermarket food = groceries; bars = drinks." },
       items: {
         type: "array",
-        description: "Every purchased line, in order. Discounts as their own line with a negative price. Don't include subtotal/tax/tip/total/payment lines.",
+        description: "Every purchased line, in order (a cover / table charge per person counts as a line). Discounts as their own line with a negative price. Don't include subtotal/tax/tip/total/payment lines, and never list a surcharge or service charge here if it goes in tip.",
         items: {
           type: "object",
           properties: {
@@ -38,7 +38,7 @@ const TOOL = {
       subtotal: { type: "number" },
       tax: { type: "number", description: "Sales tax ADDED on top of the item prices (sum of GST/HST/PST/state tax lines). Leave out when prices already include tax (Japan, EU VAT shown \"incl.\")." },
       tax_included: { type: "boolean", description: "True when item prices already include tax (Japan 内税/税込, EU VAT included)." },
-      tip: { type: "number", description: "Tip / gratuity / service charge added." },
+      tip: { type: "number", description: "Tip / gratuity / service charge / surcharge added after the items (e.g. Japan GW料金 holiday surcharge, 10% service). Only here, not also as an item." },
       total: { type: "number", description: "Amount paid." },
     },
     required: ["readable", "items"],
