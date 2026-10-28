@@ -16,6 +16,8 @@ const STATUS: Record<NonNullable<InboxItem["status"]>, { label: string; cls: str
   dismissed: { label: "Dismissed", cls: "bg-surface-2 text-muted" },
 };
 
+const whenLabel = (ms: number) => dtf(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }).format(ms);
+
 /** Wanderlog's "Forward your confirmation" sheet, plus the list of everything forwarded so far. */
 export function ForwardDialog({
   tripId,
@@ -77,8 +79,29 @@ export function ForwardDialog({
 
   // This trip only; unmatched emails are sorted out from the home screen
   const shown = items?.filter((it) => scope === "all" || it.trip_id === tripId);
-  const when = (ms: number) => dtf(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }).format(ms);
 
+  return (
+    <DialogShell onClose={onClose}>
+      {view === "forward" ? (
+        <ForwardPane tripId={tripId} copied={copied} onCopy={copy} onHistory={() => setView("history")} senderTripId={tripId && onDeleteEmail ? tripId : undefined} />
+      ) : (
+        <HistoryPane
+          tripId={tripId}
+          scope={scope}
+          error={error}
+          items={items}
+          shown={shown}
+          deleting={deleting}
+          onBack={initialView === "forward" ? () => setView("forward") : undefined}
+          onDeleteGroup={onDeleteEmail ? remove : undefined}
+        />
+      )}
+    </DialogShell>
+  );
+}
+
+/** Backdrop and the card; a click outside the card closes the sheet. */
+function DialogShell({ onClose, children }: { onClose: () => void; children: React.ReactNode }) {
   return createPortal(
     <div className="fixed inset-0 z-[100] grid grid-cols-[minmax(0,1fr)] place-items-center bg-black/60 p-4 backdrop-blur-sm" onClick={onClose}>
       <div onClick={(e) => e.stopPropagation()} className="relative flex max-h-[85vh] w-full max-w-lg flex-col rounded-3xl border border-line bg-surface p-7 shadow-2xl max-sm:p-5">
@@ -86,100 +109,176 @@ export function ForwardDialog({
           <X className="size-4" />
         </button>
 
-        {view === "forward" ? (
-          <div className="text-center">
-            <Mail className="mx-auto size-8 text-accent" />
-            <h2 className="mt-3 font-display text-[26px]">Forward your confirmation</h2>
-            <p className="mx-auto mt-2 max-w-sm text-[16px] leading-relaxed text-muted">
-              {tripId
-                ? "Forward booking emails from your own address to this trip's address. They land in this trip and wait for you to review."
-                : "Forward booking emails from your own address. They wait for you to review."}
-            </p>
-            <div className="mt-6 flex items-center gap-2 rounded-2xl border border-line bg-bg p-2 pl-4">
-              <span className="min-w-0 flex-1 text-left text-[15px] [overflow-wrap:anywhere] select-all sm:truncate sm:text-[16px]">
-                {/* On phones it wraps at the @ (a <wbr>, so copying the text stays clean) */}
-                {tripAddress(tripId).split("@")[0]}
-                <wbr />@{tripAddress(tripId).split("@")[1]}
-              </span>
-              <button onClick={copy} className="flex items-center gap-1.5 rounded-xl bg-accent px-4 py-2.5 text-[15px] font-bold text-on-accent">
-                {copied ? <Check className="size-4" /> : <Copy className="size-4" />} {copied ? "Copied" : "Copy"}
-              </button>
-            </div>
-            {tripId && onDeleteEmail && <Senders tripId={tripId} />}
-            <button onClick={() => setView("history")} className="mt-5 rounded-full border border-accent/50 px-5 py-2.5 text-[15px] font-bold text-accent hover:bg-accent/10">
-              Check imported emails
-            </button>
-          </div>
-        ) : (
-          <>
-            <div className="flex items-center gap-2 pr-10">
-              {initialView === "forward" && (
-                <button onClick={() => setView("forward")} className="grid size-8 place-items-center rounded-full text-muted hover:bg-surface-2 hover:text-fg" aria-label="Back">
-                  <ArrowLeft className="size-4" />
-                </button>
-              )}
-              <h2 className="font-display text-[24px]">Imported emails</h2>
-            </div>
-            {tripId && <p className="mt-1 text-[13px] text-muted">Emails for this trip. Ones that didn't match a trip are on the home screen.</p>}
-            <div className="-mx-2 mt-4 min-h-0 overflow-y-auto px-2">
-              {error ? (
-                <p className="py-10 text-center text-muted">{error}</p>
-              ) : !items ? (
-                <div className="grid place-items-center py-12 text-muted">
-                  <Loader2 className="size-5 animate-spin" />
-                </div>
-              ) : shown!.length === 0 ? (
-                <p className="py-10 text-center text-muted">
-                  {scope === "trip" && items.length ? "No emails for this trip yet." : "Nothing forwarded yet."} Send confirmations to <span className="break-all text-fg">{tripAddress(scope === "trip" ? tripId : undefined)}</span>.
-                </p>
-              ) : (
-                <ul className="space-y-2.5">
-                  {groupEmails(shown!).map((g) => (
-                    <li key={g.key} className="rounded-2xl border border-line bg-bg p-4">
-                      <div className="flex items-start gap-3">
-                        <Mail className="mt-0.5 size-5 shrink-0 text-muted" />
-                        <div className="min-w-0 flex-1">
-                          <p className="truncate text-[15px] font-bold">{g.subject || "(no subject)"}</p>
-                          <p className="text-[12px] text-muted">Received {when(g.created)}</p>
-                        </div>
-                        {onDeleteEmail && (
-                          <button
-                            disabled={deleting === g.key}
-                            onClick={() => remove(g)}
-                            className="grid size-8 shrink-0 place-items-center rounded-full text-muted hover:bg-surface-2 hover:text-danger disabled:opacity-50"
-                            title="Delete this email and what it added"
-                            aria-label="Delete email"
-                          >
-                            {deleting === g.key ? <Loader2 className="size-4 animate-spin" /> : <Trash2 className="size-4" />}
-                          </button>
-                        )}
-                      </div>
-                      <ul className="mt-2.5 space-y-1.5 border-t border-line pt-2.5">
-                        {g.rows.map((it) => {
-                          const st = STATUS[it.status ?? "pending"];
-                          return (
-                            <li key={it.id} className="flex items-center gap-2.5 text-[14px]">
-                              <span className="text-muted [&>svg]:size-4">{BOOKING_ICON[it.booking.type] ?? BOOKING_ICON.other}</span>
-                              <span className="min-w-0 flex-1 truncate">
-                                {it.booking.title}
-                                {it.booking.traveler && <span className="text-muted"> · {it.booking.traveler}</span>}
-                                {it.booking.forwarded_by && <span className="text-muted"> · from {it.booking.forwarded_by}</span>}
-                              </span>
-                              <span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold ${st.cls}`}>{st.label}</span>
-                            </li>
-                          );
-                        })}
-                      </ul>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
-          </>
-        )}
+        {children}
       </div>
     </div>,
     document.body,
+  );
+}
+
+/** The forward view: the address to copy, and (for the owner) who else can forward to this trip. */
+function ForwardPane({
+  tripId,
+  copied,
+  onCopy,
+  onHistory,
+  senderTripId,
+}: {
+  tripId?: string;
+  copied: boolean;
+  onCopy: () => void;
+  onHistory: () => void;
+  senderTripId?: string;
+}) {
+  return (
+    <div className="text-center">
+      <Mail className="mx-auto size-8 text-accent" />
+      <h2 className="mt-3 font-display text-[26px]">Forward your confirmation</h2>
+      <p className="mx-auto mt-2 max-w-sm text-[16px] leading-relaxed text-muted">
+        {tripId
+          ? "Forward booking emails from your own address to this trip's address. They land in this trip and wait for you to review."
+          : "Forward booking emails from your own address. They wait for you to review."}
+      </p>
+      <div className="mt-6 flex items-center gap-2 rounded-2xl border border-line bg-bg p-2 pl-4">
+        <span className="min-w-0 flex-1 text-left text-[15px] [overflow-wrap:anywhere] select-all sm:truncate sm:text-[16px]">
+          {/* On phones it wraps at the @ (a <wbr>, so copying the text stays clean) */}
+          {tripAddress(tripId).split("@")[0]}
+          <wbr />@{tripAddress(tripId).split("@")[1]}
+        </span>
+        <button onClick={onCopy} className="flex items-center gap-1.5 rounded-xl bg-accent px-4 py-2.5 text-[15px] font-bold text-on-accent">
+          {copied ? <Check className="size-4" /> : <Copy className="size-4" />} {copied ? "Copied" : "Copy"}
+        </button>
+      </div>
+      {senderTripId && <Senders tripId={senderTripId} />}
+      <button onClick={onHistory} className="mt-5 rounded-full border border-accent/50 px-5 py-2.5 text-[15px] font-bold text-accent hover:bg-accent/10">
+        Check imported emails
+      </button>
+    </div>
+  );
+}
+
+/** The history view: everything forwarded so far, grouped by email. */
+function HistoryPane({
+  tripId,
+  scope,
+  error,
+  items,
+  shown,
+  deleting,
+  onBack,
+  onDeleteGroup,
+}: {
+  tripId?: string;
+  scope: "trip" | "all";
+  error: string | null;
+  items: InboxItem[] | null;
+  shown?: InboxItem[];
+  deleting: string | null;
+  onBack?: () => void;
+  onDeleteGroup?: (g: EmailGroup) => void;
+}) {
+  return (
+    <>
+      <div className="flex items-center gap-2 pr-10">
+        {onBack && (
+          <button onClick={onBack} className="grid size-8 place-items-center rounded-full text-muted hover:bg-surface-2 hover:text-fg" aria-label="Back">
+            <ArrowLeft className="size-4" />
+          </button>
+        )}
+        <h2 className="font-display text-[24px]">Imported emails</h2>
+      </div>
+      {tripId && <p className="mt-1 text-[13px] text-muted">Emails for this trip. Ones that didn't match a trip are on the home screen.</p>}
+      <div className="-mx-2 mt-4 min-h-0 overflow-y-auto px-2">
+        <EmailList error={error} items={items} shown={shown} scope={scope} tripId={tripId} deleting={deleting} onDeleteGroup={onDeleteGroup} />
+      </div>
+    </>
+  );
+}
+
+/** Loading, error, empty and list states of the history view. */
+function EmailList({
+  error,
+  items,
+  shown,
+  scope,
+  tripId,
+  deleting,
+  onDeleteGroup,
+}: {
+  error: string | null;
+  items: InboxItem[] | null;
+  shown?: InboxItem[];
+  scope: "trip" | "all";
+  tripId?: string;
+  deleting: string | null;
+  onDeleteGroup?: (g: EmailGroup) => void;
+}) {
+  if (error) return <p className="py-10 text-center text-muted">{error}</p>;
+  if (!items)
+    return (
+      <div className="grid place-items-center py-12 text-muted">
+        <Loader2 className="size-5 animate-spin" />
+      </div>
+    );
+  if (shown!.length === 0)
+    return (
+      <p className="py-10 text-center text-muted">
+        {scope === "trip" && items.length ? "No emails for this trip yet." : "Nothing forwarded yet."} Send confirmations to <span className="break-all text-fg">{tripAddress(scope === "trip" ? tripId : undefined)}</span>.
+      </p>
+    );
+  return (
+    <ul className="space-y-2.5">
+      {groupEmails(shown!).map((g) => (
+        <EmailGroupCard key={g.key} g={g} deleting={deleting === g.key} onDelete={onDeleteGroup && (() => onDeleteGroup(g))} />
+      ))}
+    </ul>
+  );
+}
+
+/** One forwarded email and the bookings it produced. */
+function EmailGroupCard({ g, deleting, onDelete }: { g: EmailGroup; deleting: boolean; onDelete?: () => void }) {
+  return (
+    <li className="rounded-2xl border border-line bg-bg p-4">
+      <div className="flex items-start gap-3">
+        <Mail className="mt-0.5 size-5 shrink-0 text-muted" />
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-[15px] font-bold">{g.subject || "(no subject)"}</p>
+          <p className="text-[12px] text-muted">Received {whenLabel(g.created)}</p>
+        </div>
+        {onDelete && (
+          <button
+            disabled={deleting}
+            onClick={onDelete}
+            className="grid size-8 shrink-0 place-items-center rounded-full text-muted hover:bg-surface-2 hover:text-danger disabled:opacity-50"
+            title="Delete this email and what it added"
+            aria-label="Delete email"
+          >
+            {deleting ? <Loader2 className="size-4 animate-spin" /> : <Trash2 className="size-4" />}
+          </button>
+        )}
+      </div>
+      <ul className="mt-2.5 space-y-1.5 border-t border-line pt-2.5">
+        {g.rows.map((it) => (
+          <BookingRow key={it.id} it={it} />
+        ))}
+      </ul>
+    </li>
+  );
+}
+
+/** One booking from a forwarded email, with its review status. */
+function BookingRow({ it }: { it: InboxItem }) {
+  const st = STATUS[it.status ?? "pending"];
+  return (
+    <li className="flex items-center gap-2.5 text-[14px]">
+      <span className="text-muted [&>svg]:size-4">{BOOKING_ICON[it.booking.type] ?? BOOKING_ICON.other}</span>
+      <span className="min-w-0 flex-1 truncate">
+        {it.booking.title}
+        {it.booking.traveler && <span className="text-muted"> · {it.booking.traveler}</span>}
+        {it.booking.forwarded_by && <span className="text-muted"> · from {it.booking.forwarded_by}</span>}
+      </span>
+      <span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold ${st.cls}`}>{st.label}</span>
+    </li>
   );
 }
 

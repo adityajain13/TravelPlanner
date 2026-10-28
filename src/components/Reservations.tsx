@@ -280,20 +280,14 @@ const sameBooking = (a: Partial<Reservation>, b: Partial<Reservation>) =>
 type Person = { id?: string; traveler?: string; confirmation?: string; cost?: number; costCurrency?: string; notes?: string };
 
 export function ReservationForm({ doc, state, initial, onClose }: { doc: Y.Doc; state: TripState; initial: Partial<Reservation>; onClose: () => void }) {
-  const [r, setR] = useState<Partial<Reservation>>({ costCurrency: state.meta.currency ?? "CAD", ...initial });
+  const currency = state.meta.currency ?? "CAD";
+  const [r, setR] = useState<Partial<Reservation>>({ costCurrency: currency, ...initial });
   // Everyone on this booking: the details are edited once, seats/notes/cost per person
   const [copies0] = useState(() => (initial.id ? state.reservations.filter((o) => o.id === initial.id || sameBooking(o, initial)).sort((a, b) => (a.traveler ?? "").localeCompare(b.traveler ?? "")) : [])); // A–Z, like the cards
-  const asPerson = (o: Partial<Reservation>): Person => ({ id: o.id, traveler: o.traveler, confirmation: o.confirmation, cost: o.cost, costCurrency: o.costCurrency ?? state.meta.currency ?? "CAD", notes: o.notes });
-  const [who, setWho] = useState<Person[]>(() => (copies0.length ? copies0.map(asPerson) : [asPerson(r)]));
+  const [who, setWho] = useState<Person[]>(() => (copies0.length ? copies0.map((o) => asPerson(o, currency)) : [asPerson(r, currency)]));
   const multi = who.length > 1;
   const setPerson = (i: number, patch: Partial<Person>) => setWho((w) => w.map((x, k) => (k === i ? { ...x, ...patch } : x)));
-  const toggle = (t: string | undefined) =>
-    setWho((w) => {
-      if (t === undefined) return [{ ...w[0], traveler: undefined }]; // "Everyone": one booking for all
-      if (w.some((x) => x.traveler === t)) return w.length > 1 ? w.filter((x) => x.traveler !== t) : [{ ...w[0], traveler: undefined }];
-      if (w.length === 1 && !w[0].traveler) return [{ ...w[0], traveler: t }];
-      return [...w, { traveler: t, costCurrency: w[0].costCurrency }];
-    });
+  const toggle = (t: string | undefined) => setWho((w) => toggleTraveler(w, t));
   const [busy, setBusy] = useState(false);
   const type = (r.type ?? "other") as ReservationType;
   const f = FIELDS[type];
@@ -305,52 +299,10 @@ export function ReservationForm({ doc, state, initial, onClose }: { doc: Y.Doc; 
     e.preventDefault();
     if (!r.title?.trim()) return;
     setBusy(true);
-    let geo: Partial<Reservation> = {};
-    const addressChanged = r.address !== initial.address || r.title !== initial.title;
-    // A result picked from the address search is already pinned exactly
-    if (!picked && GEOCODE.includes(type) && (r.address || r.title) && (addressChanged || r.lat == null)) {
-      try {
-        const hit = await locateBooking(r.title, r.address, state.meta.center);
-        if (hit) geo = { lat: hit.lat, lng: hit.lng, address: hit.address };
-      } catch {
-        /* offline: save without a pin */
-      }
-    }
-    // Shared details on every traveller's copy; their own confirmation #, cost and notes on each
-    const { id: _id, createdAt: _c, traveler: _t, confirmation: _cf, cost: _co, costCurrency: _cc, notes: _n, ...shared } = r as Reservation;
-    void _id, _c, _t, _cf, _co, _cc, _n;
-    for (const p of who) {
-      const own = copies0.find((o) => o.id === p.id);
-      saveReservation(doc, { ...shared, ...geo, type, title: r.title.trim(), ...p, createdAt: own?.createdAt });
-    }
-    for (const o of copies0) if (!who.some((p) => p.id === o.id)) removeReservation(doc, o.id);
-    // Printed name ("Mr Vishal Monteiro") set to a trip person: remember it, and fix the trip's
-    // other bookings with that name too
-    const people = state.meta.travelers ?? [];
-    const newName = who.length === 1 ? who[0].traveler : undefined;
-    if (copies0.length <= 1 && initial.traveler && newName && newName !== initial.traveler && !people.includes(initial.traveler) && people.includes(newName)) {
-      const key = travelerKey(initial.traveler);
-      updateMeta(doc, { travelerAliases: { ...(state.meta.travelerAliases ?? {}), [key]: newName } });
-      for (const o of state.reservations) if (o.id !== r.id && o.traveler && travelerKey(o.traveler) === key) saveReservation(doc, { ...o, traveler: newName });
-    }
+    const geo = await locateUnpinned(r, initial, type, picked, state.meta.center);
+    saveBookingCopies({ doc, state, r, title: r.title.trim(), initial, type, who, copies0, geo });
     onClose();
   }
-
-  const date = (label: string, d: "startDate" | "endDate", t: "startTime" | "endTime") => (
-    <div className="block space-y-1">
-      <span className="text-xs text-muted">{label}</span>
-      <div className="flex gap-2">
-        <DateField value={r[d]} onChange={(v) => set({ [d]: v })} min={d === "endDate" ? r.startDate : undefined} clearable placeholder="Date" className={`${inputCls} min-w-0 flex-1`} />
-        <TimeField value={r[t]} onChange={(v) => set({ [t]: v })} near={t === "endTime" ? r.startTime : undefined} placeholder="Time" className={`${inputCls} !w-36 shrink-0`} />
-      </div>
-    </div>
-  );
-  const text = (label: string, k: "title" | "from" | "to" | "address" | "confirmation", required = false) => (
-    <label className="block space-y-1">
-      <span className="text-xs text-muted">{label}</span>
-      <input required={required} value={(r[k] as string) ?? ""} onChange={(e) => set({ [k]: e.target.value })} className={inputCls} />
-    </label>
-  );
 
   return (
     <div className="fixed inset-0 z-50 grid grid-cols-[minmax(0,1fr)] place-items-center bg-black/60 p-4 backdrop-blur-sm" onClick={onClose}>
@@ -364,44 +316,13 @@ export function ReservationForm({ doc, state, initial, onClose }: { doc: Y.Doc; 
             <X className="size-5" />
           </button>
         </div>
-        {f.title && text(f.title, "title", true)}
+        {f.title && <TextRow label={f.title} value={r.title} required onChange={(v) => set({ title: v })} />}
         <div className="block space-y-1">
           <span className="text-xs text-muted">For (pick everyone on it; each gets their own seat, notes and cost)</span>
-          {/* Chips for the trip's people instead of a native suggestion list; type any other name */}
-          <div className="flex flex-wrap items-center gap-1.5">
-            {[undefined, ...new Set([...(state.meta.travelers ?? []), ...who.map((p) => p.traveler).filter((t): t is string => !!t)])].map((t) => {
-              const on = t === undefined ? who.length === 1 && !who[0].traveler : who.some((p) => p.traveler === t);
-              return (
-                <button
-                  key={t ?? "everyone"}
-                  type="button"
-                  onClick={() => toggle(t)}
-                  className={`rounded-full px-3 py-1 text-[13px] font-semibold ${on ? "bg-accent text-on-accent" : "bg-surface-2 text-muted hover:text-fg"}`}
-                >
-                  {t ?? "Everyone"}
-                </button>
-              );
-            })}
-            <input
-              placeholder="Someone else"
-              onKeyDown={(e) => {
-                const v = (e.target as HTMLInputElement).value.trim();
-                if (e.key !== "Enter" || !v) return;
-                e.preventDefault();
-                toggle(v);
-                (e.target as HTMLInputElement).value = "";
-              }}
-              onBlur={(e) => {
-                const v = e.target.value.trim();
-                if (v && !who.some((p) => p.traveler === v)) toggle(v);
-                e.target.value = "";
-              }}
-              className="min-w-0 flex-1 rounded-full bg-transparent px-2 py-1 text-[13px] outline-none placeholder:text-muted/60 focus:bg-surface-2"
-            />
-          </div>
+          <TravelerChips travelers={state.meta.travelers ?? []} who={who} onToggle={toggle} />
         </div>
-        {f.from && text(f.from, "from")}
-        {f.to && text(f.to, "to")}
+        {f.from && <TextRow label={f.from} value={r.from} onChange={(v) => set({ from: v })} />}
+        {f.to && <TextRow label={f.to} value={r.to} onChange={(v) => set({ to: v })} />}
         {f.address && (
           <div className="block space-y-1">
             <span className="text-xs text-muted">{f.address}</span>
@@ -415,39 +336,184 @@ export function ReservationForm({ doc, state, initial, onClose }: { doc: Y.Doc; 
             />
           </div>
         )}
-        {f.start && date(f.start, "startDate", "startTime")}
-        {f.end && date(f.end, "endDate", "endTime")}
+        {f.start && <DateTimeRow label={f.start} date={r.startDate} time={r.startTime} onDateChange={(v) => set({ startDate: v })} onTimeChange={(v) => set({ startTime: v })} />}
+        {f.end && (
+          <DateTimeRow label={f.end} date={r.endDate} time={r.endTime} dateMin={r.startDate} timeNear={r.startTime} onDateChange={(v) => set({ endDate: v })} onTimeChange={(v) => set({ endTime: v })} />
+        )}
         {who.map((p, i) => (
-          <div key={p.id ?? `new-${p.traveler}`} className={multi ? "space-y-3 rounded-xl border border-line p-3" : "space-y-3"}>
-            {multi && <p className="text-[12px] font-bold tracking-wide text-fg/80 uppercase">{p.traveler ?? "Everyone"}</p>}
-            <label className="block space-y-1">
-              <span className="text-xs text-muted">Confirmation #</span>
-              <input value={p.confirmation ?? ""} onChange={(e) => setPerson(i, { confirmation: e.target.value })} className={inputCls} />
-            </label>
-            <label className="block space-y-1">
-              <span className="text-xs text-muted">Cost (counts toward the budget)</span>
-              <div className="flex gap-2">
-                <input
-                  type="number"
-                  step="any"
-                  min="0"
-                  value={p.cost ?? ""}
-                  onChange={(e) => setPerson(i, { cost: e.target.value === "" ? undefined : Number(e.target.value) })}
-                  className={inputCls}
-                />
-                <CurrencySelect value={p.costCurrency ?? "CAD"} onChange={(c) => setPerson(i, { costCurrency: c })} className={`${inputCls} !w-auto`} />
-              </div>
-            </label>
-            <label className="block space-y-1">
-              <span className="text-xs text-muted">{multi ? "Notes (seat, bags…)" : "Notes"}</span>
-              <RichField value={p.notes ?? ""} onCommit={(t) => setPerson(i, { notes: t })} placeholder="Seat, bags, anything else" className={`${inputCls} min-h-[4.5rem] text-[15px] leading-relaxed`} editClassName="focus:border-accent" />
-            </label>
-          </div>
+          <PersonFields key={p.id ?? `new-${p.traveler}`} p={p} multi={multi} onPatch={(patch) => setPerson(i, patch)} />
         ))}
         <button disabled={busy} className="flex w-full items-center justify-center gap-2 rounded-xl bg-accent py-2.5 font-semibold text-on-accent disabled:opacity-60">
           {busy && <Loader2 className="size-4 animate-spin" />} Save
         </button>
       </form>
+    </div>
+  );
+}
+
+/** Everything one traveller's copy of a booking keeps (the shared details live on the booking itself). */
+const asPerson = (o: Partial<Reservation>, currency: string): Person => ({ id: o.id, traveler: o.traveler, confirmation: o.confirmation, cost: o.cost, costCurrency: o.costCurrency ?? currency, notes: o.notes });
+
+/** Who is on the booking after one chip is tapped; "Everyone" (undefined) collapses to a single booking for all. */
+function toggleTraveler(w: Person[], t: string | undefined): Person[] {
+  if (t === undefined) return [{ ...w[0], traveler: undefined }]; // "Everyone": one booking for all
+  if (w.some((x) => x.traveler === t)) return w.length > 1 ? w.filter((x) => x.traveler !== t) : [{ ...w[0], traveler: undefined }];
+  if (w.length === 1 && !w[0].traveler) return [{ ...w[0], traveler: t }];
+  return [...w, { traveler: t, costCurrency: w[0].costCurrency }];
+}
+
+/** A typed place gets looked up for a pin, unless the address search already pinned it exactly. */
+async function locateUnpinned(r: Partial<Reservation>, initial: Partial<Reservation>, type: ReservationType, picked: boolean, center: TripState["meta"]["center"]): Promise<Partial<Reservation>> {
+  let geo: Partial<Reservation> = {};
+  const addressChanged = r.address !== initial.address || r.title !== initial.title;
+  // A result picked from the address search is already pinned exactly
+  if (!picked && GEOCODE.includes(type) && (r.address || r.title) && (addressChanged || r.lat == null)) {
+    try {
+      const hit = await locateBooking(r.title, r.address, center);
+      if (hit) geo = { lat: hit.lat, lng: hit.lng, address: hit.address };
+    } catch {
+      /* offline: save without a pin */
+    }
+  }
+  return geo;
+}
+
+interface BookingSave {
+  doc: Y.Doc;
+  state: TripState;
+  r: Partial<Reservation>;
+  title: string;
+  initial: Partial<Reservation>;
+  type: ReservationType;
+  who: Person[];
+  copies0: Reservation[];
+  geo: Partial<Reservation>;
+}
+
+/** Writes the booking to every traveller's copy, then tidies up travellers that were removed or renamed. */
+function saveBookingCopies({ doc, state, r, title, initial, type, who, copies0, geo }: BookingSave) {
+  // Shared details on every traveller's copy; their own confirmation #, cost and notes on each
+  const { id: _id, createdAt: _c, traveler: _t, confirmation: _cf, cost: _co, costCurrency: _cc, notes: _n, ...shared } = r as Reservation;
+  void _id, _c, _t, _cf, _co, _cc, _n;
+  for (const p of who) {
+    const own = copies0.find((o) => o.id === p.id);
+    saveReservation(doc, { ...shared, ...geo, type, title, ...p, createdAt: own?.createdAt });
+  }
+  for (const o of copies0) if (!who.some((p) => p.id === o.id)) removeReservation(doc, o.id);
+  // Printed name ("Mr Vishal Monteiro") set to a trip person: remember it, and fix the trip's
+  // other bookings with that name too
+  const people = state.meta.travelers ?? [];
+  const newName = who.length === 1 ? who[0].traveler : undefined;
+  if (copies0.length <= 1 && initial.traveler && newName && newName !== initial.traveler && !people.includes(initial.traveler) && people.includes(newName)) {
+    const key = travelerKey(initial.traveler);
+    updateMeta(doc, { travelerAliases: { ...(state.meta.travelerAliases ?? {}), [key]: newName } });
+    for (const o of state.reservations) if (o.id !== r.id && o.traveler && travelerKey(o.traveler) === key) saveReservation(doc, { ...o, traveler: newName });
+  }
+}
+
+function TextRow({ label, value, required = false, onChange }: { label: string; value?: string; required?: boolean; onChange: (v: string) => void }) {
+  return (
+    <label className="block space-y-1">
+      <span className="text-xs text-muted">{label}</span>
+      <input required={required} value={value ?? ""} onChange={(e) => onChange(e.target.value)} className={inputCls} />
+    </label>
+  );
+}
+
+/** A date and a time side by side, for one event on a booking. */
+function DateTimeRow({
+  label,
+  date,
+  time,
+  dateMin,
+  timeNear,
+  onDateChange,
+  onTimeChange,
+}: {
+  label: string;
+  date?: string;
+  time?: string;
+  dateMin?: string;
+  timeNear?: string;
+  onDateChange: (v: string | undefined) => void;
+  onTimeChange: (v: string | undefined) => void;
+}) {
+  return (
+    <div className="block space-y-1">
+      <span className="text-xs text-muted">{label}</span>
+      <div className="flex gap-2">
+        <DateField value={date} onChange={onDateChange} min={dateMin} clearable placeholder="Date" className={`${inputCls} min-w-0 flex-1`} />
+        <TimeField value={time} onChange={onTimeChange} near={timeNear} placeholder="Time" className={`${inputCls} !w-36 shrink-0`} />
+      </div>
+    </div>
+  );
+}
+
+/** Chips for the trip's people (plus "Everyone"); any other name is typed into the box. */
+function TravelerChips({ travelers, who, onToggle }: { travelers: string[]; who: Person[]; onToggle: (t: string | undefined) => void }) {
+  return (
+    <div className="flex flex-wrap items-center gap-1.5">
+      {/* Chips for the trip's people instead of a native suggestion list; type any other name */}
+      {[undefined, ...new Set([...travelers, ...who.map((p) => p.traveler).filter((t): t is string => !!t)])].map((t) => {
+        const on = t === undefined ? who.length === 1 && !who[0].traveler : who.some((p) => p.traveler === t);
+        return (
+          <button
+            key={t ?? "everyone"}
+            type="button"
+            onClick={() => onToggle(t)}
+            className={`rounded-full px-3 py-1 text-[13px] font-semibold ${on ? "bg-accent text-on-accent" : "bg-surface-2 text-muted hover:text-fg"}`}
+          >
+            {t ?? "Everyone"}
+          </button>
+        );
+      })}
+      <input
+        placeholder="Someone else"
+        onKeyDown={(e) => {
+          const v = (e.target as HTMLInputElement).value.trim();
+          if (e.key !== "Enter" || !v) return;
+          e.preventDefault();
+          onToggle(v);
+          (e.target as HTMLInputElement).value = "";
+        }}
+        onBlur={(e) => {
+          const v = e.target.value.trim();
+          if (v && !who.some((p) => p.traveler === v)) onToggle(v);
+          e.target.value = "";
+        }}
+        className="min-w-0 flex-1 rounded-full bg-transparent px-2 py-1 text-[13px] outline-none placeholder:text-muted/60 focus:bg-surface-2"
+      />
+    </div>
+  );
+}
+
+/** One traveller's own fields on a booking: confirmation #, cost and notes. */
+function PersonFields({ p, multi, onPatch }: { p: Person; multi: boolean; onPatch: (patch: Partial<Person>) => void }) {
+  return (
+    <div className={multi ? "space-y-3 rounded-xl border border-line p-3" : "space-y-3"}>
+      {multi && <p className="text-[12px] font-bold tracking-wide text-fg/80 uppercase">{p.traveler ?? "Everyone"}</p>}
+      <label className="block space-y-1">
+        <span className="text-xs text-muted">Confirmation #</span>
+        <input value={p.confirmation ?? ""} onChange={(e) => onPatch({ confirmation: e.target.value })} className={inputCls} />
+      </label>
+      <label className="block space-y-1">
+        <span className="text-xs text-muted">Cost (counts toward the budget)</span>
+        <div className="flex gap-2">
+          <input
+            type="number"
+            step="any"
+            min="0"
+            value={p.cost ?? ""}
+            onChange={(e) => onPatch({ cost: e.target.value === "" ? undefined : Number(e.target.value) })}
+            className={inputCls}
+          />
+          <CurrencySelect value={p.costCurrency ?? "CAD"} onChange={(c) => onPatch({ costCurrency: c })} className={`${inputCls} !w-auto`} />
+        </div>
+      </label>
+      <label className="block space-y-1">
+        <span className="text-xs text-muted">{multi ? "Notes (seat, bags…)" : "Notes"}</span>
+        <RichField value={p.notes ?? ""} onCommit={(t) => onPatch({ notes: t })} placeholder="Seat, bags, anything else" className={`${inputCls} min-h-[4.5rem] text-[15px] leading-relaxed`} editClassName="focus:border-accent" />
+      </label>
     </div>
   );
 }

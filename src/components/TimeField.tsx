@@ -1,5 +1,5 @@
 import { dtf } from "../lib/intl";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type RefObject } from "react";
 import { Clock, Hourglass, X } from "lucide-react";
 import { DEFAULT_STAY, fmtStay, parseStay } from "../lib/autoTime";
 import { Popover } from "./DatePicker";
@@ -127,27 +127,7 @@ export function TimeField({ value, onChange, placeholder = "Add time", disabled,
  * Start + end in one popover (Wanderlog-style): two time boxes on top, a 15-minute list below.
  * Picking a slot fills the active box; after the start it moves on to the end.
  */
-export function TimeRangeField({
-  start,
-  end,
-  onChange,
-  disabled,
-  className = "",
-  children,
-  title,
-  after,
-}: {
-  /** Latest time earlier in the day; with nothing set, the list opens on it (the previous stop's end). */
-  after?: string;
-  start?: string;
-  end?: string;
-  onChange: (start: string | undefined, end: string | undefined) => void;
-  disabled?: boolean;
-  className?: string;
-  /** Trigger contents; defaults to "9:00 AM – 11:00 AM" / "Add time". */
-  children?: React.ReactNode;
-  title?: string;
-}) {
+export function TimeRangeField({ start, end, onChange, disabled, className = "", children, title, after }: RangeFieldProps) {
   const btn = useRef<HTMLButtonElement>(null);
   const list = useRef<HTMLUListElement>(null);
   const [open, setOpen] = useState(false);
@@ -165,12 +145,6 @@ export function TimeRangeField({
   }, [open, start, end]);
 
   // Keep the list scrolled to the active value
-  const nextSlot = (t?: string) => {
-    if (!t || !/^\d{1,2}:\d{2}/.test(t)) return undefined;
-    const [h, m] = t.split(":").map(Number);
-    const n = Math.min(95, Math.ceil((h * 60 + m) / 15)); // that slot (1 pm → 1:00 pm), or the next one
-    return `${String(Math.floor(n / 4)).padStart(2, "0")}:${String((n % 4) * 15).padStart(2, "0")}`;
-  };
   const focusVal = (active === "start" ? s : (e ?? s)) ?? nextSlot(after) ?? "09:00";
   useEffect(() => {
     if (!open) return;
@@ -201,49 +175,31 @@ export function TimeRangeField({
     onChange(s, e); // either can be set on its own
     setOpen(false);
   };
+  const clearAll = () => (onChange(undefined, undefined), setOpen(false));
+  // Typed text is read back on blur; a valid time sticks, an empty box clears its side
+  const commitText = (k: "start" | "end", raw: string) => {
+    const v = parseTime(raw);
+    if (v) (k === "start" ? setS : setE)(v), setText((t) => ({ ...t, [k]: fmtTime(v) }));
+    else if (!raw.trim()) (k === "start" ? setS : setE)(undefined);
+  };
 
   const box = (k: "start" | "end", label: string) => (
-    <label className={`flex-1 rounded-xl border px-3 py-2 ${active === k ? "border-accent bg-accent/5" : "border-line bg-bg"}`}>
-      <span className="block text-[11px] font-bold tracking-wide text-muted uppercase">{label}</span>
-      <input
-        value={text[k]}
-        onFocus={() => setActive(k)}
-        onChange={(ev) => setText((t) => ({ ...t, [k]: ev.target.value }))}
-        onBlur={(ev) => {
-          const v = parseTime(ev.target.value);
-          if (v) (k === "start" ? setS : setE)(v), setText((t) => ({ ...t, [k]: fmtTime(v) }));
-          else if (!ev.target.value.trim()) (k === "start" ? setS : setE)(undefined);
-        }}
-        onKeyDown={(ev) => ev.key === "Enter" && (ev.preventDefault(), (ev.target as HTMLInputElement).blur(), k === "end" && save())}
-        placeholder="--:--"
-        className="w-full bg-transparent text-[16px] font-semibold outline-none placeholder:text-muted/50"
-      />
-    </label>
+    <RangeBox
+      label={label}
+      active={active === k}
+      text={text[k]}
+      onFocus={() => setActive(k)}
+      onType={(v) => setText((t) => ({ ...t, [k]: v }))}
+      onCommitText={(raw) => commitText(k, raw)}
+      onEnter={() => k === "end" && save()}
+    />
   );
 
   return (
     <>
-      <button
-        ref={btn}
-        type="button"
-        disabled={disabled}
-        title={title}
-        onClick={(ev) => (ev.stopPropagation(), setOpen((o) => !o))}
-        className={`flex items-center gap-1.5 whitespace-nowrap disabled:cursor-default ${className}`}
-      >
-        {children ?? (
-          <>
-            <Clock className="size-3.5 shrink-0 opacity-70" />
-            {start ? (
-              `${fmtTime(start)}${end ? ` – ${fmtTime(end)}` : ""}`
-            ) : end ? (
-              `Until ${fmtTime(end)}`
-            ) : (
-              <span className="text-muted/70">Add time</span>
-            )}
-          </>
-        )}
-      </button>
+      <RangeTrigger btnRef={btn} disabled={disabled} title={title} className={className} start={start} end={end} onToggle={(ev) => (ev.stopPropagation(), setOpen((o) => !o))}>
+        {children}
+      </RangeTrigger>
       {open && btn.current && (
         <Popover anchor={btn.current} onClose={() => setOpen(false)}>
           <div className="w-72 p-3">
@@ -252,39 +208,158 @@ export function TimeRangeField({
               <span className="text-muted">–</span>
               {box("end", "End")}
             </div>
-            <ul ref={list} className="mt-3 h-56 overflow-y-auto rounded-xl border border-line bg-bg p-1 [scrollbar-width:thin]">
-              {SLOTS.map((v) => {
-                const cur = active === "start" ? s : e;
-                const inRange = s && e && v > s && v < e;
-                return (
-                  <li key={v}>
-                    <button
-                      type="button"
-                      onClick={() => choose(v)}
-                      className={`w-full rounded-lg px-3 py-1.5 text-left text-[14px] ${
-                        v === cur ? "bg-accent font-bold text-on-accent" : v === s || v === e ? "bg-accent/20 text-fg" : inRange ? "bg-accent/5 text-fg" : v.endsWith(":00") ? "text-fg hover:bg-surface-2" : "text-muted hover:bg-surface-2 hover:text-fg"
-                      }`}
-                    >
-                      {fmtTime(v)}
-                    </button>
-                  </li>
-                );
-              })}
-            </ul>
-            <div className="mt-3 flex justify-end gap-2">
-              {(start || end) && (
-                <button type="button" onClick={() => (onChange(undefined, undefined), setOpen(false))} className="rounded-full border border-line px-4 py-1.5 text-[14px] font-semibold text-muted hover:text-fg">
-                  Clear
-                </button>
-              )}
-              <button type="button" onClick={save} className="rounded-full bg-accent px-5 py-1.5 text-[14px] font-bold text-on-accent">
-                Save
-              </button>
-            </div>
+            <RangeSlotList listRef={list} start={s} end={e} active={active} onChoose={choose} />
+            <RangeFooter showClear={!!(start || end)} onClear={clearAll} onSave={save} />
           </div>
         </Popover>
       )}
     </>
+  );
+}
+
+interface RangeFieldProps {
+  /** Latest time earlier in the day; with nothing set, the list opens on it (the previous stop's end). */
+  after?: string;
+  start?: string;
+  end?: string;
+  onChange: (start: string | undefined, end: string | undefined) => void;
+  disabled?: boolean;
+  className?: string;
+  /** Trigger contents; defaults to "9:00 AM – 11:00 AM" / "Add time". */
+  children?: React.ReactNode;
+  title?: string;
+}
+
+/** The 15-minute slot at or after a time ("1:00" → "13:00"), for opening the list there. */
+function nextSlot(t?: string) {
+  if (!t || !/^\d{1,2}:\d{2}/.test(t)) return undefined;
+  const [h, m] = t.split(":").map(Number);
+  const n = Math.min(95, Math.ceil((h * 60 + m) / 15)); // that slot (1 pm → 1:00 pm), or the next one
+  return `${String(Math.floor(n / 4)).padStart(2, "0")}:${String((n % 4) * 15).padStart(2, "0")}`;
+}
+
+/** The button that opens the range popover: its contents, or the start–end summary. */
+function RangeTrigger({
+  btnRef,
+  disabled,
+  title,
+  className,
+  start,
+  end,
+  children,
+  onToggle,
+}: {
+  btnRef: RefObject<HTMLButtonElement | null>;
+  disabled?: boolean;
+  title?: string;
+  className: string;
+  start?: string;
+  end?: string;
+  children?: React.ReactNode;
+  onToggle: (ev: React.MouseEvent<HTMLButtonElement>) => void;
+}) {
+  return (
+    <button ref={btnRef} type="button" disabled={disabled} title={title} onClick={onToggle} className={`flex items-center gap-1.5 whitespace-nowrap disabled:cursor-default ${className}`}>
+      {children ?? (
+        <>
+          <Clock className="size-3.5 shrink-0 opacity-70" />
+          {start ? (
+            `${fmtTime(start)}${end ? ` – ${fmtTime(end)}` : ""}`
+          ) : end ? (
+            `Until ${fmtTime(end)}`
+          ) : (
+            <span className="text-muted/70">Add time</span>
+          )}
+        </>
+      )}
+    </button>
+  );
+}
+
+/** One of the two time boxes at the top of the range popover. */
+function RangeBox({
+  label,
+  active,
+  text,
+  onFocus,
+  onType,
+  onCommitText,
+  onEnter,
+}: {
+  label: string;
+  active: boolean;
+  text: string;
+  onFocus: () => void;
+  onType: (v: string) => void;
+  onCommitText: (raw: string) => void;
+  onEnter: () => void;
+}) {
+  return (
+    <label className={`flex-1 rounded-xl border px-3 py-2 ${active ? "border-accent bg-accent/5" : "border-line bg-bg"}`}>
+      <span className="block text-[11px] font-bold tracking-wide text-muted uppercase">{label}</span>
+      <input
+        value={text}
+        onFocus={onFocus}
+        onChange={(ev) => onType(ev.target.value)}
+        onBlur={(ev) => onCommitText(ev.target.value)}
+        onKeyDown={(ev) => ev.key === "Enter" && (ev.preventDefault(), (ev.target as HTMLInputElement).blur(), onEnter())}
+        placeholder="--:--"
+        className="w-full bg-transparent text-[16px] font-semibold outline-none placeholder:text-muted/50"
+      />
+    </label>
+  );
+}
+
+/** The 15-minute list; the active box's value and the chosen range are highlighted. */
+function RangeSlotList({
+  listRef,
+  start,
+  end,
+  active,
+  onChoose,
+}: {
+  listRef: RefObject<HTMLUListElement | null>;
+  start?: string;
+  end?: string;
+  active: "start" | "end";
+  onChoose: (v: string) => void;
+}) {
+  return (
+    <ul ref={listRef} className="mt-3 h-56 overflow-y-auto rounded-xl border border-line bg-bg p-1 [scrollbar-width:thin]">
+      {SLOTS.map((v) => {
+        const cur = active === "start" ? start : end;
+        const inRange = start && end && v > start && v < end;
+        return (
+          <li key={v}>
+            <button
+              type="button"
+              onClick={() => onChoose(v)}
+              className={`w-full rounded-lg px-3 py-1.5 text-left text-[14px] ${
+                v === cur ? "bg-accent font-bold text-on-accent" : v === start || v === end ? "bg-accent/20 text-fg" : inRange ? "bg-accent/5 text-fg" : v.endsWith(":00") ? "text-fg hover:bg-surface-2" : "text-muted hover:bg-surface-2 hover:text-fg"
+              }`}
+            >
+              {fmtTime(v)}
+            </button>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
+/** Clear (when anything is set) and Save. */
+function RangeFooter({ showClear, onClear, onSave }: { showClear: boolean; onClear: () => void; onSave: () => void }) {
+  return (
+    <div className="mt-3 flex justify-end gap-2">
+      {showClear && (
+        <button type="button" onClick={onClear} className="rounded-full border border-line px-4 py-1.5 text-[14px] font-semibold text-muted hover:text-fg">
+          Clear
+        </button>
+      )}
+      <button type="button" onClick={onSave} className="rounded-full bg-accent px-5 py-1.5 text-[14px] font-bold text-on-accent">
+        Save
+      </button>
+    </div>
   );
 }
 

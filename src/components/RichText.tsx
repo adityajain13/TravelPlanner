@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { Fragment, useEffect, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import { Bold, IndentDecrease, IndentIncrease, Italic, List, ListOrdered, Strikethrough, Underline } from "lucide-react";
 import { fromDom, parse, toHtml, type Block, type Inline, type ListBlock } from "../lib/richtext";
@@ -68,6 +68,85 @@ interface EditorProps {
   onBlur?: (text: string) => void;
 }
 
+/** Everything the key handler needs from the editor. */
+interface KeyContext {
+  p: EditorProps;
+  ref: RefObject<HTMLDivElement | null>;
+  last: RefObject<string>;
+  read: () => string;
+  run: (cmd: string) => void;
+  inList: () => boolean;
+}
+
+/** Keyboard handling: formatting shortcuts, Escape, Enter / Backspace for checklist rows, Tab and "- " lists. */
+function handleEditorKey(e: React.KeyboardEvent<HTMLDivElement>, { p, ref, last, read, run, inList }: KeyContext) {
+  const mod = e.metaKey || e.ctrlKey;
+  if (mod && e.shiftKey && (e.key === "x" || e.key === "X")) return e.preventDefault(), run("strikeThrough");
+  if (mod && (e.key === "u" || e.key === "U")) return e.preventDefault(), run("underline");
+  if (e.key === "Escape") return e.preventDefault(), p.onEscape ? p.onEscape() : ref.current?.blur();
+  if (p.singleLine) {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      if (!p.onEnter) return ref.current?.blur();
+      const t = read();
+      last.current = t; // handed over here; the blur that follows mustn't write it again
+      return p.onEnter(t);
+    }
+    if (e.key === "Backspace" && !ref.current?.textContent && p.onBackspaceEmpty) return e.preventDefault(), p.onBackspaceEmpty();
+    return;
+  }
+  if (e.key === "Tab") {
+    e.preventDefault();
+    if (inList()) run(e.shiftKey ? "outdent" : "indent");
+    else if (!e.shiftKey) document.execCommand("insertText", false, "\t");
+    return;
+  }
+  // "- " or "1. " at the start of a line starts a list
+  if (e.key === " ") {
+    const sel = getSelection();
+    const node = sel?.anchorNode;
+    if (!sel || !node || node.nodeType !== Node.TEXT_NODE || inList()) return;
+    const before = (node.textContent ?? "").slice(0, sel.anchorOffset);
+    if (!/^(-|\*|1\.)$/.test(before) || node.previousSibling) return;
+    e.preventDefault();
+    const r = document.createRange();
+    r.setStart(node, 0);
+    r.setEnd(node, sel.anchorOffset);
+    sel.removeAllRanges();
+    sel.addRange(r);
+    document.execCommand("delete");
+    run(before === "1." ? "insertOrderedList" : "insertUnorderedList");
+  }
+}
+
+/** Paste as plain text (no fonts/colours from the source); single-line fields also lose their line breaks. */
+function pasteAsPlainText(e: React.ClipboardEvent<HTMLDivElement>, singleLine?: boolean) {
+  e.preventDefault();
+  const t = e.clipboardData.getData("text/plain");
+  document.execCommand("insertText", false, singleLine ? t.replace(/\s*\n\s*/g, " ") : t);
+}
+
+/** Where editing starts: at the screen point the reader clicked (when it lands inside the editor), else at the end. */
+function startRange(el: HTMLElement, caretAt?: { x: number; y: number } | null): Range {
+  let range: Range | null = null;
+  if (caretAt) {
+    const d = document as Document & { caretPositionFromPoint?: (x: number, y: number) => { offsetNode: Node; offset: number } | null };
+    if (d.caretPositionFromPoint) {
+      const pos = d.caretPositionFromPoint(caretAt.x, caretAt.y);
+      if (pos && el.contains(pos.offsetNode)) (range = document.createRange()), range.setStart(pos.offsetNode, pos.offset);
+    } else if (document.caretRangeFromPoint) {
+      const r = document.caretRangeFromPoint(caretAt.x, caretAt.y);
+      if (r && el.contains(r.startContainer)) range = r;
+    }
+  }
+  if (!range) {
+    range = document.createRange();
+    range.selectNodeContents(el);
+    range.collapse(false);
+  }
+  return range;
+}
+
 /**
  * contenteditable with a formatting bar that pops up over selected text. Writes back on blur
  * (like the plain fields did), so a remote edit never jumps the cursor mid-typing.
@@ -91,24 +170,8 @@ export function RichEditor(p: EditorProps) {
     if (!el || !p.autoFocus) return;
     el.focus();
     const sel = getSelection();
-    let range: Range | null = null;
-    if (p.caretAt) {
-      const d = document as Document & { caretPositionFromPoint?: (x: number, y: number) => { offsetNode: Node; offset: number } | null };
-      if (d.caretPositionFromPoint) {
-        const pos = d.caretPositionFromPoint(p.caretAt.x, p.caretAt.y);
-        if (pos && el.contains(pos.offsetNode)) (range = document.createRange()), range.setStart(pos.offsetNode, pos.offset);
-      } else if (document.caretRangeFromPoint) {
-        const r = document.caretRangeFromPoint(p.caretAt.x, p.caretAt.y);
-        if (r && el.contains(r.startContainer)) range = r;
-      }
-    }
-    if (!range) {
-      range = document.createRange();
-      range.selectNodeContents(el);
-      range.collapse(false);
-    }
     sel?.removeAllRanges();
-    sel?.addRange(range);
+    sel?.addRange(startRange(el, p.caretAt));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -145,14 +208,11 @@ export function RichEditor(p: EditorProps) {
 
   return (
     <>
-      <div
-        ref={ref}
-        contentEditable
-        suppressContentEditableWarning
-        role="textbox"
-        aria-multiline={!p.singleLine}
-        data-placeholder={p.placeholder}
-        onClick={(e) => e.stopPropagation()}
+      <EditSurface
+        surfaceRef={ref}
+        multiline={!p.singleLine}
+        placeholder={p.placeholder}
+        className={p.className ?? ""}
         onBlur={() => {
           commit();
           setBar(null);
@@ -163,55 +223,49 @@ export function RichEditor(p: EditorProps) {
           // Fully cleared: drop the stray <br> so the placeholder shows
           if (el && !el.textContent && !el.querySelector("li")) el.innerHTML = "";
         }}
-        onPaste={(e) => {
-          // Paste as plain text (no fonts/colours from the source)
-          e.preventDefault();
-          const t = e.clipboardData.getData("text/plain");
-          document.execCommand("insertText", false, p.singleLine ? t.replace(/\s*\n\s*/g, " ") : t);
-        }}
-        onKeyDown={(e) => {
-          const mod = e.metaKey || e.ctrlKey;
-          if (mod && e.shiftKey && (e.key === "x" || e.key === "X")) return e.preventDefault(), run("strikeThrough");
-          if (mod && (e.key === "u" || e.key === "U")) return e.preventDefault(), run("underline");
-          if (e.key === "Escape") return e.preventDefault(), p.onEscape ? p.onEscape() : ref.current?.blur();
-          if (p.singleLine) {
-            if (e.key === "Enter") {
-              e.preventDefault();
-              if (!p.onEnter) return ref.current?.blur();
-              const t = read();
-              last.current = t; // handed over here; the blur that follows mustn't write it again
-              return p.onEnter(t);
-            }
-            if (e.key === "Backspace" && !ref.current?.textContent && p.onBackspaceEmpty) return e.preventDefault(), p.onBackspaceEmpty();
-            return;
-          }
-          if (e.key === "Tab") {
-            e.preventDefault();
-            if (inList()) run(e.shiftKey ? "outdent" : "indent");
-            else if (!e.shiftKey) document.execCommand("insertText", false, "\t");
-            return;
-          }
-          // "- " or "1. " at the start of a line starts a list
-          if (e.key === " ") {
-            const sel = getSelection();
-            const node = sel?.anchorNode;
-            if (!sel || !node || node.nodeType !== Node.TEXT_NODE || inList()) return;
-            const before = (node.textContent ?? "").slice(0, sel.anchorOffset);
-            if (!/^(-|\*|1\.)$/.test(before) || node.previousSibling) return;
-            e.preventDefault();
-            const r = document.createRange();
-            r.setStart(node, 0);
-            r.setEnd(node, sel.anchorOffset);
-            sel.removeAllRanges();
-            sel.addRange(r);
-            document.execCommand("delete");
-            run(before === "1." ? "insertOrderedList" : "insertUnorderedList");
-          }
-        }}
-        className={`min-w-0 outline-none empty:before:pointer-events-none empty:before:text-muted/60 empty:before:content-[attr(data-placeholder)] [overflow-wrap:anywhere] [tab-size:4] whitespace-pre-wrap [&_ol]:list-decimal [&_ol]:pl-5 [&_ul]:list-disc [&_ul]:pl-5 [&_ul_ul]:list-[circle] [&_ol_ol]:list-[lower-alpha] [&_li]:pl-0.5 [&_ol]:my-0.5 [&_ul]:my-0.5 [&_b]:font-bold [&_b]:text-fg ${p.className ?? ""}`}
+        onPaste={(e) => pasteAsPlainText(e, p.singleLine)}
+        onKeyDown={(e) => handleEditorKey(e, { p, ref, last, read, run, inList })}
       />
       {bar && <Toolbar at={bar} lists={!p.singleLine} run={run} inList={inList()} />}
     </>
+  );
+}
+
+/** The contenteditable box; its event handlers come from the editor. */
+function EditSurface({
+  surfaceRef,
+  multiline,
+  placeholder,
+  className,
+  onBlur,
+  onInput,
+  onPaste,
+  onKeyDown,
+}: {
+  surfaceRef: RefObject<HTMLDivElement | null>;
+  multiline: boolean;
+  placeholder?: string;
+  className: string;
+  onBlur: () => void;
+  onInput: () => void;
+  onPaste: (e: React.ClipboardEvent<HTMLDivElement>) => void;
+  onKeyDown: (e: React.KeyboardEvent<HTMLDivElement>) => void;
+}) {
+  return (
+    <div
+      ref={surfaceRef}
+      contentEditable
+      suppressContentEditableWarning
+      role="textbox"
+      aria-multiline={multiline}
+      data-placeholder={placeholder}
+      onClick={(e) => e.stopPropagation()}
+      onBlur={onBlur}
+      onInput={onInput}
+      onPaste={onPaste}
+      onKeyDown={onKeyDown}
+      className={`min-w-0 outline-none empty:before:pointer-events-none empty:before:text-muted/60 empty:before:content-[attr(data-placeholder)] [overflow-wrap:anywhere] [tab-size:4] whitespace-pre-wrap [&_ol]:list-decimal [&_ol]:pl-5 [&_ul]:list-disc [&_ul]:pl-5 [&_ul_ul]:list-[circle] [&_ol_ol]:list-[lower-alpha] [&_li]:pl-0.5 [&_ol]:my-0.5 [&_ul]:my-0.5 [&_b]:font-bold [&_b]:text-fg ${className}`}
+    />
   );
 }
 
