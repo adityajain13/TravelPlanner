@@ -908,14 +908,34 @@ const END_LINES: Record<string, string[]> = {
 };
 
 /** Where a booking at time t goes among the stops (index of the stop it sits before; items.length = after all). */
+const toMin = (t: string) => +t.slice(0, 2) * 60 + +t.slice(3, 5);
+/**
+ * Each stop's time in minutes from the day's midnight, carrying on past midnight: a stop at 00:30
+ * after one at 21:25 is the next morning (24:30), not the start of the day. A drop of over 6 hours
+ * counts as rolling over; smaller ones are just stops typed out of order.
+ */
+function dayClock(items: Item[]): (number | null)[] {
+  let last: number | null = null;
+  let carry = 0;
+  return items.map((it) => {
+    const t = stopTime(it);
+    if (!t) return null;
+    let m = toMin(t) + carry;
+    if (last != null && last - m > 6 * 60) (carry += 1440), (m += 1440);
+    last = m;
+    return m;
+  });
+}
+
 export function slotFor(items: Item[], t: string): number {
   const at = hhmm(t);
   if (!at) return 0;
-  const times = items.map(stopTime);
+  const times = dayClock(items);
+  const atMin = toMin(at);
   let i = 0;
-  times.forEach((x, k) => x && x <= at && (i = k + 1));
+  times.forEach((x, k) => x != null && x <= atMin && (i = k + 1));
   if (i === 0) {
-    const next = times.findIndex((x) => x && x > at);
+    const next = times.findIndex((x) => x != null && x > atMin);
     i = next < 0 ? items.length : next;
     // Notes and checklists belong with the stop after them (a link about it, what to bring), so the
     // booking goes above them, as it already does after a timed stop
