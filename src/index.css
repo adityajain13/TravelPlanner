@@ -137,6 +137,25 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   font: 600 13px/1.3 var(--font-sans);
 }
 
+/* Briefly outlines a booking card jumped to from the map */
+@keyframes res-flash {
+  0%,
+  60% {
+    box-shadow: 0 0 0 2px var(--accent);
+  }
+  100% {
+    box-shadow: 0 0 0 2px transparent;
+  }
+}
+.res-flash {
+  animation: res-flash 1.6s ease-out;
+}
+@media (prefers-reduced-motion: reduce) {
+  .res-flash {
+    animation-duration: 0.01s;
+  }
+}
+
 /* Tailwind v4 dropped pointer cursors on buttons; bring them back */
 @layer base {
   button:not(:disabled),

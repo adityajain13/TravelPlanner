@@ -307,6 +307,7 @@ function BookingRows({
             <div className="flex items-start gap-2 py-1">
               <div className="w-7 shrink-0" />
               <button
+                data-res={(c.copies ?? [c.r]).map((x) => x.id).join(" ")}
                 onClick={() => onChipClick?.(c.r)}
                 className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 rounded-xl border border-line bg-surface/60 px-3 py-2 text-left transition-colors hover:border-muted/50 hover:bg-surface"
               >
@@ -337,7 +338,7 @@ function BookingRows({
                 <LegChips legs={legs} id={depKey} readOnly={readOnly} onLegMode={onLegMode} />
               </div>
             )}
-            <button onClick={() => onChipClick?.(c.r)} className="flex items-center gap-1.5 rounded-full bg-surface-2 px-2.5 py-1 text-xs text-muted hover:text-fg">
+            <button data-res={(c.copies ?? [c.r]).map((x) => x.id).join(" ")} onClick={() => onChipClick?.(c.r)} className="flex items-center gap-1.5 rounded-full bg-surface-2 px-2.5 py-1 text-xs text-muted hover:text-fg">
               <span className="[&>svg]:size-3.5">{RES_ICON[c.r.type]}</span>
               {c.label}
             </button>
