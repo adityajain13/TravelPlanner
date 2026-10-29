@@ -177,12 +177,27 @@ function SectionView(p: Props & { dropRef: (el: HTMLElement | null) => void; isO
               />
             ))}
           </SortableContext>
-          {p.legs?.has("end") && <LegChips legs={p.legs} id="end" readOnly={p.readOnly} onLegMode={p.onLegMode} />}
-          {chipsAt.get(info.items.length) && info.items.length > 0 && (
-            <div className={card ? "pt-1" : "py-1.5"}>
-              <BookingRows chips={chipsAt.get(info.items.length)!} card={card} date={info.date} legs={p.legs} readOnly={p.readOnly} onLegMode={p.onLegMode} onChipClick={p.onChipClick} />
-            </div>
-          )}
+          {/* After the last stop: the other bookings, then the way to tonight's hotel, then the hotel check-in */}
+          {(() => {
+            const last = info.items.length > 0 ? chipsAt.get(info.items.length) : undefined;
+            const endLeg = p.legs?.has("end") && <LegChips legs={p.legs} id="end" readOnly={p.readOnly} onLegMode={p.onLegMode} />;
+            const rows = (chips: NonNullable<typeof last>) => (
+              <div className={card ? "pt-1" : "py-1.5"}>
+                <BookingRows chips={chips} card={card} date={info.date} legs={p.legs} readOnly={p.readOnly} onLegMode={p.onLegMode} onChipClick={p.onChipClick} />
+              </div>
+            );
+            if (!last)
+              return endLeg;
+            const rest = last.filter((c) => c.r.type !== "lodging");
+            const hotel = last.filter((c) => c.r.type === "lodging");
+            return (
+              <>
+                {rest.length > 0 && rows(rest)}
+                {endLeg}
+                {hotel.length > 0 && rows(hotel)}
+              </>
+            );
+          })()}
           {info.key !== "orphan" && !p.readOnly && <AddRow near={p.near} countryCode={p.countryCode} onAddPlace={p.onAddPlace} onAddNote={p.onAddNote} onAddChecklist={p.onAddChecklist} />}
         </div>
       )}
@@ -271,9 +286,13 @@ function legKeysFor(legs: Props["legs"], key: string) {
   return legs ? [...legs.keys()].filter((k) => k === key || k.startsWith(`${key}#`)).sort() : [];
 }
 
-/** The leg into a booking that sits between two stops (its id is `res:<id>` for the first copy). */
-function viaKeyOf(c: { r: Reservation; copies?: Reservation[] }, legs: Props["legs"]) {
-  return (c.copies ?? [c.r]).map((x) => `res:${x.id}`).find((k) => legs?.has(k));
+/**
+ * The leg into a booking that sits between two stops (`res:<id>` for the first copy; a car's
+ * drop-off chip is `res:<id>:drop`, its leg out of the drop-off point).
+ */
+function viaKeyOf(c: { r: Reservation; copies?: Reservation[]; verb?: string }, legs: Props["legs"]) {
+  const suffix = c.verb === "Drop off" ? ":drop" : "";
+  return (c.copies ?? [c.r]).map((x) => `res:${x.id}${suffix}`).find((k) => legs?.has(k));
 }
 
 function LegChips({ legs, id, readOnly, onLegMode }: { legs: Props["legs"]; id: string; readOnly?: boolean; onLegMode?: Props["onLegMode"] }) {

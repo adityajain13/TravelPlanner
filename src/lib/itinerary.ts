@@ -379,9 +379,55 @@ const isPinned = (it: Item) => it.kind === "place" && it.lat != null && it.lng !
 const hm = (t?: string) => timeOf(t)?.slice(0, 5);
 
 /**
- * Bookings with a pin and a time that sit between two pinned stops (from the times in `sections`):
- * the leg from the stop before into the booking, and from the booking on to the stop after, which
- * replaces the direct leg into that stop. Bookings in a row chain: stop → booking 1 → booking 2 → stop.
+ * A booking as a point on a day's route: `pid` is the leg id (`res:<pid>`), `at` the time it's
+ * reached, `end` the time it's left. A restaurant / other sits at its pin; a car's pick-up is at
+ * where it's collected (`fromAt`), its drop-off at where it's returned (`toAt`, pid `<id>:drop`).
+ */
+export interface BookingPoint {
+  pid: string;
+  r: Reservation;
+  at: string;
+  end?: string;
+  lat: number;
+  lng: number;
+  title: string;
+}
+
+/**
+ * The day's booking points, sorted by time. Per-traveller copies are one point (the first copy's
+ * id; the place of any copy that has one). Car drop-offs need a different day from the pick-up,
+ * as the chips do.
+ */
+export function bookingPoints(reservations: Reservation[], date: string): BookingPoint[] {
+  type Cand = Omit<BookingPoint, "lat" | "lng"> & { kind: string; lat?: number; lng?: number };
+  const cands: Cand[] = [];
+  for (const r of reservations) {
+    if (r.type === "car") {
+      if (r.startDate === date && hm(r.startTime))
+        cands.push({ pid: r.id, r, at: hm(r.startTime)!, title: `Pick up ${r.title}`, kind: "pick", lat: r.fromAt?.lat, lng: r.fromAt?.lng });
+      if (r.endDate === date && r.endDate !== r.startDate && hm(r.endTime))
+        cands.push({ pid: `${r.id}:drop`, r, at: hm(r.endTime)!, title: `Drop off ${r.title}`, kind: "drop", lat: r.toAt?.lat, lng: r.toAt?.lng });
+    } else if ((r.type === "restaurant" || r.type === "other") && r.startDate === date && hm(r.startTime)) {
+      cands.push({ pid: r.id, r, at: hm(r.startTime)!, end: hm(r.endTime), title: r.title, kind: "", lat: r.lat, lng: r.lng });
+    }
+  }
+  const groups = new Map<string, Cand>();
+  for (const c of cands) {
+    const key = `${c.r.type}|${c.r.title}|${c.at}|${c.kind}`;
+    const g = groups.get(key);
+    if (!g) groups.set(key, c);
+    else if (g.lat == null && c.lat != null) groups.set(key, { ...g, lat: c.lat, lng: c.lng });
+  }
+  return [...groups.values()]
+    .filter((c): c is Cand & { lat: number; lng: number } => c.lat != null && c.lng != null)
+    .map(({ kind: _kind, ...p }) => p)
+    .sort((a, b) => a.at.localeCompare(b.at));
+}
+
+/**
+ * Booking points that sit between two pinned stops (from the times in `sections`):
+ * the leg from the stop before into the point, and from the point on to the stop after, which
+ * replaces the direct leg into that stop. Points in a row chain: stop → point 1 → point 2 → stop.
  */
 export function viaLegs(sections: SectionInfo[], state: TripState, direct: Itinerary["legs"] = []): ViaResult {
   const out: ViaResult = { legs: [], replaces: new Set(), slots: new Map() };
@@ -390,27 +436,17 @@ export function viaLegs(sections: SectionInfo[], state: TripState, direct: Itine
     if (s.kind !== "day" || !s.date || s.items.some((i) => i.kind === "place" && i.who?.length)) continue;
     const ver = s.writeKey ?? s.key;
     const add = legAdder(s, out.legs, false, undefined);
-    // One per booking: the first copy's id (as fixedBlocks picks it), the pin of any copy that has one
-    const groups = new Map<string, Reservation>();
-    for (const r of state.reservations) {
-      if (r.startDate !== s.date || !hm(r.startTime) || (r.type !== "restaurant" && r.type !== "other")) continue;
-      const key = `${r.type}|${r.title}|${r.startTime}`;
-      const g = groups.get(key);
-      if (!g) groups.set(key, r);
-      else if (g.lat == null && r.lat != null) groups.set(key, { ...g, lat: r.lat, lng: r.lng });
-    }
-    const bookings = [...groups.values()].filter((r) => r.lat != null && r.lng != null);
-    bookings.sort((a, b) => hm(a.startTime)!.localeCompare(hm(b.startTime)!));
-    // Each booking's stop before and after, by where the slot falls among the day's stops
-    const chains = new Map<string, { after?: Item; list: { b: Reservation; before?: Item }[] }>();
+    const points = bookingPoints(state.reservations, s.date);
+    // Each point's stop before and after, by where the slot falls among the day's stops
+    const chains = new Map<string, { after?: Item; list: { p: BookingPoint; before?: Item }[] }>();
     const slotMap = new Map<string, string>();
-    for (const b of bookings) {
-      const i = slotFor(s.items, b.startTime!);
+    for (const p of points) {
+      const i = slotFor(s.items, p.at);
       const before = s.items.slice(0, i).filter(isPinned).at(-1);
       const after = s.items.slice(i).find(isPinned);
       const key = after?.id ?? "";
       const chain = chains.get(key) ?? { after, list: [] };
-      chain.list.push({ b, before });
+      chain.list.push({ p, before });
       chains.set(key, chain);
     }
     for (const { after, list } of chains.values()) {
@@ -420,14 +456,14 @@ export function viaLegs(sections: SectionInfo[], state: TripState, direct: Itine
       let from: { ll: [number, number]; at?: string; label?: string } | undefined = first.before
         ? { ll: [first.before.lng!, first.before.lat!], at: first.before.endTime ?? first.before.startTime }
         : opening && { ll: opening.req.from, label: opening.label };
-      for (const { b } of list) {
-        const to: [number, number] = [b.lng!, b.lat!];
+      for (const { p } of list) {
+        const to: [number, number] = [p.lng, p.lat];
         if (from) {
-          const mode = (state.meta.hotelLegModes?.[`${s.key}|res:${b.id}`] ?? defaultMode) as TravelMode;
-          add(`res:${b.id}`, from.ll, to, { mode, at: from.at ?? b.startTime, label: from.label ?? `To ${b.title}`, skipSamePoint: true });
+          const mode = (state.meta.hotelLegModes?.[`${s.key}|res:${p.pid}`] ?? defaultMode) as TravelMode;
+          add(`res:${p.pid}`, from.ll, to, { mode, at: from.at ?? p.at, label: from.label ?? `To ${p.r.title}`, skipSamePoint: true });
         }
-        if (after) slotMap.set(b.id, after.id);
-        from = { ll: to, at: b.endTime ?? b.startTime };
+        if (after) slotMap.set(p.pid, after.id);
+        from = { ll: to, at: p.end ?? p.at };
       }
       if (after && from) {
         out.replaces.add(`${ver}|${after.id}`);

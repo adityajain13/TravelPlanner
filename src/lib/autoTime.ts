@@ -91,20 +91,36 @@ export interface FixedBlock {
 
 const BLOCK_DEFAULT: Partial<Record<Reservation["type"], number>> = { restaurant: 90, other: 60, train: 60 };
 
-/** The day's timed bookings as blocks (minutes from midnight). One per booking: per-traveller copies are merged. */
+/** A car pick-up or drop-off takes a short block at its time. */
+const CAR_BLOCK = 15;
+
+/**
+ * The day's timed bookings as blocks (minutes from midnight). One per booking: per-traveller copies are merged.
+ * A car's pick-up is a block on its start day (id = the booking's id); its drop-off on its end day
+ * (id `<id>:drop`, as bookingPoints names it), when that is a different day from the pick-up.
+ */
 export function fixedBlocks(reservations: Reservation[], date: string): FixedBlock[] {
   const merged = new Map<string, { start: number; end: number; who: Set<string>; everyone: boolean; id: string }>();
   for (const r of reservations) {
-    const dflt = BLOCK_DEFAULT[r.type];
-    if (dflt == null || r.startDate !== date || !r.startTime) continue;
-    const start = toMin(r.startTime);
-    const end = r.endTime && toMin(r.endTime) > start ? toMin(r.endTime) : start + dflt;
-    const key = `${r.type}|${r.title}|${r.startTime}`;
-    const m = merged.get(key) ?? { start, end, who: new Set<string>(), everyone: false, id: r.id };
-    m.end = Math.max(m.end, end);
-    if (r.traveler) m.who.add(r.traveler);
-    else m.everyone = true;
-    merged.set(key, m);
+    const pts: { kind: string; id: string; start: number; end: number }[] = [];
+    if (r.type === "car") {
+      if (r.startDate === date && r.startTime) pts.push({ kind: "pick", id: r.id, start: toMin(r.startTime), end: toMin(r.startTime) + CAR_BLOCK });
+      if (r.endDate === date && r.endDate !== r.startDate && r.endTime) pts.push({ kind: "drop", id: `${r.id}:drop`, start: toMin(r.endTime), end: toMin(r.endTime) + CAR_BLOCK });
+    } else {
+      const dflt = BLOCK_DEFAULT[r.type];
+      if (dflt == null || r.startDate !== date || !r.startTime) continue;
+      const start = toMin(r.startTime);
+      const end = r.endTime && toMin(r.endTime) > start ? toMin(r.endTime) : start + dflt;
+      pts.push({ kind: "", id: r.id, start, end });
+    }
+    for (const p of pts) {
+      const key = `${r.type}|${r.title}|${p.kind}|${p.start}`;
+      const m = merged.get(key) ?? { start: p.start, end: p.end, who: new Set<string>(), everyone: false, id: p.id };
+      m.end = Math.max(m.end, p.end);
+      if (r.traveler) m.who.add(r.traveler);
+      else m.everyone = true;
+      merged.set(key, m);
+    }
   }
   return [...merged.values()]
     .map((m) => ({ start: m.start, end: m.end, id: m.id, ...(!m.everyone && m.who.size ? { who: [...m.who] } : {}) }))
