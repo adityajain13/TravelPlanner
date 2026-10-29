@@ -120,7 +120,11 @@ export function PlaceSearch({ near, countryCode, onPick, onNote, autoFocus, onCa
   }, []);
 
   const reset = () => (setQ(""), setResults([]), setGoogle([]), setOpen(false));
-  const pick = (p: PlaceResult) => (onPick(p), reset());
+  // Touch screens: put the keyboard away once a place is picked (desktop keeps focus for the next search)
+  const dropKeyboard = () => {
+    if (matchMedia("(pointer: coarse)").matches) wrap.current?.querySelector("input")?.blur();
+  };
+  const pick = (p: PlaceResult) => (onPick(p), reset(), dropKeyboard());
   const pickGoogle = async (s: GoogleSuggestion) => {
     setResolving(s.placeId);
     try {
