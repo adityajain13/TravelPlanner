@@ -167,6 +167,7 @@ function ReservationCard({ r, currency, readOnly, onEdit, onDelete }: { r: Reser
   const twoStep = r.type === "car" || r.type === "flight" || r.type === "train";
   return (
     <li
+      data-res={r.id}
       onClick={readOnly ? undefined : onEdit}
       className={`group relative flex gap-5 rounded-2xl border border-line/70 bg-surface p-5 transition-colors max-sm:flex-col max-sm:gap-3 ${readOnly ? "" : "cursor-pointer hover:border-line hover:bg-surface-2/60"}`}
     >

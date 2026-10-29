@@ -8,6 +8,7 @@ import { budgetLines, totals } from "../lib/budget";
 import { setShareToken } from "../lib/shareToken";
 import { copiesByItem, copyItems, isDraftSection, removeItems, setReadOnly, type Item, type Reservation } from "../lib/trips";
 import { setHistoryAuthor } from "../lib/history";
+import { setCollapsed } from "../lib/itemActions";
 import { daysBetween } from "../lib/dates";
 import { scrollToEl, scrollToId } from "../lib/scroll";
 import { useUndo } from "../lib/undo";
@@ -165,11 +166,50 @@ export function TripPage() {
     removeItems(doc, there.map((x) => x.id));
     if (selectedId && there.some((x) => x.id === selectedId)) setSelectedId(copies.find((x) => x.section !== key)!.id);
   };
+  // Scrolls to a booking card in the open tab and flashes it; false if it isn't rendered
+  const flashBooking = (resId: string): boolean => {
+    const box = scrollRef.current;
+    const el = box?.querySelector<HTMLElement>(`[data-res~="${resId}"]`);
+    if (!box || !el) return false;
+    const go = () => {
+      scrollToEl(box, el, "center");
+      el.classList.remove("res-flash");
+      void el.offsetWidth; // restart the animation if it's already running
+      el.classList.add("res-flash");
+      setTimeout(() => el.classList.remove("res-flash"), 1700);
+    };
+    // Phones on the map view: the plan is hidden, so show it first and scroll once it's laid out
+    if (mobileView === "map") (setMobileView("plan"), setTimeout(go, 60));
+    else go();
+    return true;
+  };
   const selectFromMap = (itemId: string) => {
-    if (itemId.startsWith("res:") || itemId.startsWith("apt:")) {
+    if (itemId.startsWith("apt:")) {
       setTab("bookings");
       setMobileView("plan");
       return;
+    }
+    if (itemId.startsWith("res:")) {
+      const resId = itemId.split(":")[1];
+      const toBookings = () => {
+        setTab("bookings");
+        setMobileView("plan");
+        setTimeout(() => flashBooking(resId), 60); // let the Bookings tab render first
+      };
+      if (tab !== "plan") return toBookings();
+      if (flashBooking(resId)) return;
+      // Card is inside a collapsed day: open that day, then retry
+      const r = state.reservations.find((x) => x.id === resId);
+      const day = r && view.sections.find((s) => s.kind === "day" && s.date === r.startDate);
+      if (day && (state.meta.collapsed ?? []).includes(day.key)) {
+        setCollapsed(doc, state, day.key, false);
+        setMobileView("plan");
+        setTimeout(() => {
+          if (!flashBooking(resId)) toBookings();
+        }, 60);
+        return;
+      }
+      return toBookings();
     }
     setMapPicked(itemId);
     setSelectedId(itemId);
