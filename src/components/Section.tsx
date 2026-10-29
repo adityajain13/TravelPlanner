@@ -917,6 +917,9 @@ export function slotFor(items: Item[], t: string): number {
   if (i === 0) {
     const next = times.findIndex((x) => x && x > at);
     i = next < 0 ? items.length : next;
+    // Notes and checklists belong with the stop after them (a link about it, what to bring), so the
+    // booking goes above them, as it already does after a timed stop
+    while (i > 0 && items[i - 1].kind !== "place") i--;
   }
   return i;
 }
