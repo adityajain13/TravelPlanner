@@ -165,7 +165,7 @@ function SectionView(p: Props & { dropRef: (el: HTMLElement | null) => void; isO
                 {...wiring}
                 item={it}
                 idx={idx}
-                number={it.kind === "place" ? ++n : undefined}
+                number={it.kind === "place" && !it.waypoint ? ++n : undefined}
                 info={info}
                 chipsBefore={chipsAt.get(idx)}
                 card={card}

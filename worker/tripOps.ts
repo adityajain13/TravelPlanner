@@ -17,6 +17,8 @@ export interface Item {
   order: string;
   name: string;
   notes?: string;
+  /** Only a point to route through: no time, no number. */
+  waypoint?: boolean;
   startTime?: string;
   endTime?: string;
   lat?: number;
@@ -198,7 +200,7 @@ export function render(snap: Snapshot, role: string): string {
         ? `${n}. [note] ${it.name}`
         : it.kind === "checklist"
           ? `${n}. [checklist] ${it.name || "Checklist"}: ${(it.checks ?? []).map((c) => `${c.done ? "☑" : "☐"} ${c.text}`).join("; ")}`
-          : `${n}. ${it.name}`,
+          : `${n}. ${it.name}${it.waypoint ? " (navigation point)" : ""}`,
       it.startTime ? `@ ${it.startTime}${it.endTime ? `–${it.endTime}` : ""}` : "",
       it.category ? `(${it.category})` : "",
     ].filter(Boolean);

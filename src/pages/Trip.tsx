@@ -241,7 +241,7 @@ export function TripPage() {
   // Place panel over the map for the open card
   const openSection = selectedId ? timed.sections.find((s) => s.items.some((i) => i.id === selectedId)) : undefined;
   const openItem = openSection?.items.find((i) => i.id === selectedId && i.kind === "place");
-  const openPlaces = openSection?.items.filter((i) => i.kind === "place") ?? [];
+  const openPlaces = openSection?.items.filter((i) => i.kind === "place" && !i.waypoint) ?? [];
   const openIdx = openItem ? openPlaces.findIndex((i) => i.id === openItem.id) : -1;
   // After adding a stop: scroll so the leg into the stop above it sits at the top, i.e.
   // route → previous stop → route → new stop (the add box stays just below)

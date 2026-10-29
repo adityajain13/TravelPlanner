@@ -148,7 +148,7 @@ export function useFixWikiPhotos(a: UpkeepArgs) {
   const photoChecked = useRef(new Set<string>());
   useEffect(() => {
     if (lite || !doc || !state || readOnly || !navigator.onLine) return;
-    const bad = state.items.filter((i) => i.image?.source === "wikipedia" && !i.image.manual && i.image.title && !sameSubject(i.name, i.image.title) && !photoChecked.current.has(i.id));
+    const bad = state.items.filter((i) => !i.waypoint && i.image?.source === "wikipedia" && !i.image.manual && i.image.title && !sameSubject(i.name, i.image.title) && !photoChecked.current.has(i.id));
     if (!bad.length) return;
     bad.forEach((i) => photoChecked.current.add(i.id));
     (async () => {

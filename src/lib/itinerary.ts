@@ -233,9 +233,10 @@ function stopPins(s: SectionInfo, focus: string | null): Pin[] {
   let n = 0;
   for (const it of s.items) {
     if (it.kind !== "place") continue;
-    n++;
+    // Navigation points are pinned but not numbered
+    if (!it.waypoint) n++;
     if (it.lat != null && it.lng != null && (!focus || s.key === focus))
-      pins.push({ id: it.id, lat: it.lat, lng: it.lng, color: s.color, label: String(n), name: it.name, image: it.image?.thumb, unsplash: it.image?.source === "unsplash" ? { name: it.image.authorName ?? "Unknown", author: it.image.author } : undefined });
+      pins.push({ id: it.id, lat: it.lat, lng: it.lng, color: s.color, label: it.waypoint ? "" : String(n), glyph: it.waypoint ? "waypoint" : undefined, name: it.name, image: it.image?.thumb, unsplash: it.image?.source === "unsplash" ? { name: it.image.authorName ?? "Unknown", author: it.image.author } : undefined });
   }
   return pins;
 }
@@ -356,7 +357,7 @@ export function withAutoTimes(view: Itinerary | null, state: TripState | null, a
       items: s.items.map((it) => {
         const x = t.get(it.id);
         if (!x) return it;
-        info.set(it.id, { stay: it.stay ?? DEFAULT_STAY, isDefault: it.stay == null, nextDay: x.nextDay });
+        info.set(it.id, it.waypoint ? { stay: 0, isDefault: false, nextDay: x.nextDay } : { stay: it.stay ?? DEFAULT_STAY, isDefault: it.stay == null, nextDay: x.nextDay });
         return { ...it, startTime: x.start, endTime: x.end };
       }),
     };
@@ -466,8 +467,8 @@ export function planMapData(view: Itinerary, extraPins: Pin[], legResults: Map<s
     let n = 0;
     for (const it of items) {
       if (it.kind !== "place") continue;
-      n++;
-      if (it.lat != null && it.lng != null) pins.push({ id: it.id, lat: it.lat, lng: it.lng, color, label: String(n), name: it.name });
+      if (!it.waypoint) n++;
+      if (it.lat != null && it.lng != null) pins.push({ id: it.id, lat: it.lat, lng: it.lng, color, label: it.waypoint ? "" : String(n), glyph: it.waypoint ? "waypoint" : undefined, name: it.name });
     }
     for (const x of [...view.pins, ...extraPins]) if (atEnd(x) && !pins.some((q) => q.id === x.id)) pins.push(x);
   } else {

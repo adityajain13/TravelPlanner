@@ -37,6 +37,22 @@ export function drawPin(color: string, label = "", glyph = "", scale = 2): Image
   const g = c.getContext("2d")!;
   g.scale(scale, scale);
   const cx = PIN.w / 2;
+  if (glyph === "waypoint") {
+    // A navigation point: just a dot on the spot (no teardrop, no number), same canvas and tip so anchoring holds
+    g.save();
+    g.shadowColor = "rgba(0,0,0,0.35)";
+    g.shadowBlur = 3;
+    g.shadowOffsetY = 1;
+    g.beginPath();
+    g.arc(cx, PIN.tipY, 4, 0, Math.PI * 2); // fits the 5px below the tip, rim included
+    g.fillStyle = color;
+    g.fill();
+    g.restore();
+    g.lineWidth = 1.5;
+    g.strokeStyle = "#ffffff";
+    g.stroke();
+    return g.getImageData(0, 0, c.width, c.height);
+  }
   const cy = 17; // head centre
   const r = 14; // head radius
   // Very light colours (hotels, airports) get a dark body so the white badge still reads

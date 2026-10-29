@@ -52,7 +52,7 @@ export function ItineraryDays({
             color={sectionOf(dragging.id)?.color ?? "#888"}
             number={(() => {
               const sec = sectionOf(dragging.id);
-              const i = sec?.items.filter((x) => x.kind === "place").findIndex((x) => x.id === dragging.id) ?? -1;
+              const i = sec?.items.filter((x) => x.kind === "place" && !x.waypoint).findIndex((x) => x.id === dragging.id) ?? -1;
               return dragging.kind === "place" && i >= 0 ? i + 1 : undefined;
             })()}
             currency={state.meta.currency ?? "CAD"}

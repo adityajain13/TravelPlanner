@@ -6,7 +6,7 @@ import { CurrencySelect } from "./CurrencySelect";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { ReceiptButton } from "./ReceiptFlow";
-import { ReceiptText, Bookmark, CheckSquare, Clock, Users, ListChecks, Plus, X, ExternalLink, GripVertical, ImagePlus, StickyNote, Trash2, Wallet } from "lucide-react";
+import { ReceiptText, Bookmark, CheckSquare, Clock, Users, ListChecks, Plus, X, ExternalLink, GripVertical, ImagePlus, Milestone, StickyNote, Trash2, Wallet } from "lucide-react";
 import { ImagePicker } from "./ImagePicker";
 import { Photo } from "./Photo";
 import { PhotoCredit } from "./PhotoCredit";
@@ -122,6 +122,9 @@ function ItemCardView({
     >
       <CardGutter item={item} color={color} number={number} readOnly={readOnly} sortable={sortable} onCheck={onCheck} selecting={selecting} checked={checked} />
 
+      {item.waypoint ? (
+        <WaypointRow item={item} selected={selected} readOnly={readOnly} onSelect={onSelect} onChange={onChange} onDelete={onDelete} targets={targets} onMoveTo={onMoveTo} onToggleSection={onToggleSection} sections={sections} onCheck={onCheck} checked={checked} currency={currency} />
+      ) : (
       <div
         onClick={isPlace ? onSelect : undefined}
         className={`flex min-w-0 flex-1 gap-3 rounded-xl border p-3 transition-colors ${isPlace ? "cursor-pointer" : ""} ${
@@ -137,7 +140,7 @@ function ItemCardView({
         <div className="min-w-0 flex-1">
           <div className="flex items-start justify-between gap-2">
             <CardTitle item={item} readOnly={readOnly} onChange={onChange} onDelete={onDelete} />
-            <CardActions item={item} readOnly={readOnly} onReceipt={onReceipt} onDelete={onDelete} />
+            <CardActions item={item} readOnly={readOnly} onReceipt={onReceipt} onChange={onChange} onDelete={onDelete} />
           </div>
           {isPlace && subtitle && <p className="mt-0.5 truncate text-sm text-muted">{subtitle}</p>}
           {isPlace && !selected && item.notes && <RichText text={item.notes} className="mt-1.5 line-clamp-3 text-[15px] leading-snug text-muted" />}
@@ -156,6 +159,7 @@ function ItemCardView({
 
         {isPlace && (item.image || (selected && !readOnly)) && <PhotoSlot item={item} selected={selected} readOnly={readOnly} onOpenPicker={() => setPicking(true)} />}
       </div>
+      )}
 
       {picking && (
         <ImagePicker
@@ -169,6 +173,26 @@ function ItemCardView({
           onClose={() => setPicking(false)}
         />
       )}
+    </div>
+  );
+}
+
+/** A navigation point: a slim row with its name and one muted line. No photo, times, cost or Google details. */
+function WaypointRow(p: Pick<Props, "item" | "readOnly" | "onChange" | "onDelete" | "targets" | "onMoveTo" | "onToggleSection" | "sections" | "onCheck" | "checked"> & { selected: boolean; onSelect: () => void; currency: string }) {
+  const { item, selected, readOnly, onSelect, onChange, onDelete } = p;
+  return (
+    <div
+      onClick={onSelect}
+      className={`flex min-w-0 flex-1 cursor-pointer items-start gap-3 rounded-xl border px-3 py-2 transition-colors ${selected ? "border-accent/60 bg-surface-2" : "border-line/70 bg-surface hover:border-line hover:bg-surface-2/60"}`}
+    >
+      <div className="min-w-0 flex-1">
+        <div className="flex items-start justify-between gap-2">
+          <CardTitle item={item} readOnly={readOnly} onChange={onChange} onDelete={onDelete} />
+          <CardActions item={item} readOnly={readOnly} onChange={onChange} onDelete={onDelete} />
+        </div>
+        <p className="mt-0.5 truncate text-sm text-muted">Navigation point{item.address ? ` · ${item.address}` : ""}</p>
+        {selected && <OpenDetails {...p} />}
+      </div>
     </div>
   );
 }
@@ -201,7 +225,9 @@ function CardGutter({
       <div className="relative mt-2.5 w-7 shrink-0">
         {/* Hovering swaps the pin for a checkbox (multi-select); while selecting, every row shows one */}
         <div className={onCheck && (selecting || checked) ? "invisible" : onCheck ? "md:group-hover:invisible" : ""}>
-          {item.kind === "place" ? (
+          {item.waypoint ? (
+            <span className="mx-auto mt-1.5 block size-3 rounded-full ring-2 ring-bg" style={{ background: color }} />
+          ) : item.kind === "place" ? (
             <PinMarker color={color} label={number} />
           ) : item.kind === "checklist" ? (
             <ListChecks className="mx-auto mt-0.5 size-5 text-muted" />
@@ -241,12 +267,12 @@ function CardTitle({ item, readOnly, onChange, onDelete }: Pick<Props, "item" | 
   );
 }
 
-/** The icon buttons at the card's top right: scan a receipt from the stop, open it in Google Maps, remove it. */
-function CardActions({ item, readOnly, onReceipt, onDelete }: Pick<Props, "item" | "readOnly" | "onReceipt" | "onDelete">) {
+/** The icon buttons at the card's top right: scan a receipt from the stop, open it in Google Maps, make it a navigation point, remove it. */
+function CardActions({ item, readOnly, onReceipt, onChange, onDelete }: Pick<Props, "item" | "readOnly" | "onReceipt" | "onChange" | "onDelete">) {
   const isPlace = item.kind === "place";
   return (
     <div className="-mt-1 -mr-1 flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 max-md:opacity-100">
-      {isPlace && onReceipt && !readOnly && (
+      {isPlace && onReceipt && !readOnly && !item.waypoint && (
         <ReceiptButton onFile={onReceipt} title="Scan a receipt from here" className="grid size-7 place-items-center rounded-md text-muted hover:bg-surface-2 hover:text-fg" />
       )}
       {isPlace && (
@@ -260,6 +286,16 @@ function CardActions({ item, readOnly, onReceipt, onDelete }: Pick<Props, "item"
         >
           <ExternalLink className="size-3.5" />
         </a>
+      )}
+      {isPlace && !readOnly && (
+        <button
+          onClick={(e) => (e.stopPropagation(), onChange({ waypoint: item.waypoint ? undefined : true }))}
+          className="grid size-7 place-items-center rounded-md text-muted hover:bg-surface-2 hover:text-fg"
+          title={item.waypoint ? "Make it a stop again" : "Just route through here (no time, no number)"}
+          aria-label={item.waypoint ? "Make it a stop again" : "Just route through here (no time, no number)"}
+        >
+          <Milestone className="size-3.5" />
+        </button>
       )}
       {!readOnly && (
         <button onClick={(e) => (e.stopPropagation(), onDelete())} className="grid size-7 place-items-center rounded-md text-muted hover:bg-surface-2 hover:text-danger" title="Remove">
@@ -342,15 +378,17 @@ function OpenDetails({
   currency,
   onCostDetails,
 }: Pick<Props, "item" | "auto" | "onStay" | "readOnly" | "timeBefore" | "targets" | "onMoveTo" | "onToggleSection" | "sections" | "onCheck" | "checked" | "people" | "onChange" | "onCostDetails"> & { currency: string }) {
+  // A navigation point has no time, cost, people or Google details: only where it sits and notes
+  const point = !!item.waypoint;
   return (
     <div className="mt-3 space-y-2" onClick={(e) => e.stopPropagation()}>
       {!readOnly && (targets?.length || onCheck) && (
         <SectionRow item={item} targets={targets} onMoveTo={onMoveTo} onToggleSection={onToggleSection} sections={sections} onCheck={onCheck} checked={checked} />
       )}
-      {people && people.length > 1 && !readOnly && <WhoPicker item={item} people={people} onChange={onChange} />}
-      <TimeRow item={item} auto={auto} onStay={onStay} readOnly={readOnly} timeBefore={timeBefore} onChange={onChange} />
-      {(item.cost != null || !readOnly) && <CostRow item={item} readOnly={readOnly} currency={currency} onChange={onChange} onCostDetails={onCostDetails} />}
-      <GoogleDetails item={item} onLink={(googlePlaceId) => onChange({ googlePlaceId })} onSnapshot={(d) => onChange({ google: { ...d, fetchedAt: Date.now() } })} />
+      {!point && people && people.length > 1 && !readOnly && <WhoPicker item={item} people={people} onChange={onChange} />}
+      {!point && <TimeRow item={item} auto={auto} onStay={onStay} readOnly={readOnly} timeBefore={timeBefore} onChange={onChange} />}
+      {!point && (item.cost != null || !readOnly) && <CostRow item={item} readOnly={readOnly} currency={currency} onChange={onChange} onCostDetails={onCostDetails} />}
+      {!point && <GoogleDetails item={item} onLink={(googlePlaceId) => onChange({ googlePlaceId })} onSnapshot={(d) => onChange({ google: { ...d, fetchedAt: Date.now() } })} />}
       {(item.notes || !readOnly) && <NotesInput disabled={readOnly} value={item.notes ?? ""} onCommit={(v) => onChange({ notes: v })} />}
     </div>
   );

@@ -60,13 +60,15 @@ export function TravelView(p: Props) {
 
   if (!day) return <div className="grid h-full place-items-center p-6 text-muted">No days in this trip yet.</div>;
 
+  // Navigation points have no time and no number: they're passed through, not stops
   const places = day.items.filter((i) => i.kind === "place");
+  const stops = places.filter((i) => !i.waypoint);
   const nowMin = now.getHours() * 60 + now.getMinutes();
-  const current = isToday ? places.find((i) => (toMin(i.startTime) ?? 1e9) <= nowMin && nowMin < (toMin(i.endTime) ?? (toMin(i.startTime) ?? 0) + 60)) : undefined;
-  const next = isToday ? places.find((i) => (toMin(i.startTime) ?? -1) > nowMin) : undefined;
+  const current = isToday ? stops.find((i) => (toMin(i.startTime) ?? 1e9) <= nowMin && nowMin < (toMin(i.endTime) ?? (toMin(i.startTime) ?? 0) + 60)) : undefined;
+  const next = isToday ? stops.find((i) => (toMin(i.startTime) ?? -1) > nowMin) : undefined;
   const tonight = p.reservations.find((r) => r.type === "lodging" && r.startDate && r.startDate <= day.date! && (r.endDate ?? r.startDate) > day.date!);
   let n = 0;
-  const numberOf = new Map(places.map((i) => [i.id, ++n]));
+  const numberOf = new Map(stops.map((i) => [i.id, ++n]));
   const toggleStop = (id: string) => setOpen((o) => (o === id ? null : id));
   const prevDay = () => (setIdx((i) => i - 1), setOpen(null));
   const nextDay = () => (setIdx((i) => i + 1), setOpen(null));
@@ -258,7 +260,9 @@ function DayItems({
       {day.items.map((it) => (
         <li key={it.id}>
           {it.kind === "place" && legLine(legs, it.id)}
-          {it.kind === "place" ? (
+          {it.kind === "place" && it.waypoint ? (
+            <ViaRow it={it} />
+          ) : it.kind === "place" ? (
             <StopRow it={it} n={numberOf.get(it.id)!} color={day.color} open={open === it.id} onToggle={() => onToggle(it.id)} mode={legs?.get(it.id)?.mode} current={currentId === it.id} weekday={new Date(`${day.date}T12:00`).getDay()} />
           ) : it.kind === "checklist" ? (
             <ChecklistCard it={it} onToggleCheck={onToggleCheck} />
@@ -334,6 +338,20 @@ function DayMapOverlay({ data, theme, fitKey, onClose }: { data: { pins: Pin[]; 
       <button onClick={onClose} className="absolute top-[max(env(safe-area-inset-top),0.75rem)] left-3 grid size-11 place-items-center rounded-full border border-line bg-surface shadow-lg" aria-label="Close map">
         <X className="size-5" />
       </button>
+    </div>
+  );
+}
+
+/** A navigation point: one muted line, with directions when it has a pin. */
+function ViaRow({ it }: { it: Item }) {
+  return (
+    <div className="mx-3 flex items-center gap-3 py-1.5 pl-[4.25rem] text-[14px] text-muted">
+      <span className="min-w-0 flex-1 truncate">Via {it.name}</span>
+      {it.lat != null && it.lng != null && (
+        <a href={dirUrl(it.lat, it.lng, undefined, it.googlePlaceId)} target="_blank" rel="noreferrer" className="grid size-9 shrink-0 place-items-center rounded-full border border-line active:bg-surface-2" aria-label={`Directions via ${it.name}`}>
+          <Navigation className="size-3.5" />
+        </a>
+      )}
     </div>
   );
 }

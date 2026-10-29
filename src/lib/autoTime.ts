@@ -69,7 +69,9 @@ export function autoTimes(
       wait(blocks[k]);
       arrive = arriveAt();
     }
-    const end = arrive + (it.stay ?? DEFAULT_STAY);
+    // A navigation point is passed through, not stayed at: no time, no number
+    const stay = it.waypoint ? 0 : it.stay ?? DEFAULT_STAY;
+    const end = arrive + stay;
     out.set(it.id, { start: toHHMM(arrive), end: toHHMM(end), nextDay: end >= 1440 });
     for (const p of going) clock.set(p, end);
   }

@@ -96,7 +96,7 @@ export function tripToIcs(state: TripState): string {
     const section = daySection(date);
     const dayItems = items.filter((it) => it.section === section);
     if (!dayItems.length) return;
-    const stops = dayItems.filter((it) => it.kind === "place");
+    const stops = dayItems.filter((it) => it.kind === "place" && !it.waypoint);
     const sub = meta.subtitles?.[section];
     const list = stops.map((it, n) => `${n + 1}. ${it.startTime ? `${it.startTime} ` : ""}${it.name}`).join("\n");
     event(`day-${date}@atlas-journeys`, [...allDay(date), "TRANSP:TRANSPARENT"], [`SUMMARY:${esc(`Day ${i + 1}${sub ? ` · ${sub}` : ""}`)}`, ...(list ? [`DESCRIPTION:${esc(list)}`] : [])]);
@@ -105,7 +105,7 @@ export function tripToIcs(state: TripState): string {
   // 2. Each timed place stop
   for (const it of items as Item[]) {
     const date = dayOf.get(it.section);
-    if (!date || it.kind !== "place" || !it.startTime) continue;
+    if (!date || it.kind !== "place" || it.waypoint || !it.startTime) continue;
     const start: When = { date, time: it.startTime };
     const end = it.endTime ? { date, time: it.endTime } : undefined;
     event(`stop-${it.id}@atlas-journeys`, timed(span(start, end, it.stay ?? 60)), [

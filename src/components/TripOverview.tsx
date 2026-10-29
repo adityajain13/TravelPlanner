@@ -57,7 +57,8 @@ const persistOpen = (o: boolean) => {
   return !o;
 };
 
-const placesOf = (s: SectionInfo) => s.items.filter((i) => i.kind === "place");
+// Navigation points (waypoints) aren't stops: they don't count or show up in the day's plan
+const placesOf = (s: SectionInfo) => s.items.filter((i) => i.kind === "place" && !i.waypoint);
 
 export function TripOverview(p: Props) {
   const [open, setOpen] = useState(readOpen);
@@ -118,7 +119,7 @@ export function TripOverview(p: Props) {
           {phase === "before" && firstDay && (
             <FirstDayCard firstDay={firstDay} subtitle={meta.subtitles?.[firstDay.key]} reservations={reservations} onGo={p.onGo} />
           )}
-          {phase === "after" && <RecapCard days={days.length} stops={items.filter((i) => i.kind === "place").length} spent={p.spent} currency={currency} />}
+          {phase === "after" && <RecapCard days={days.length} stops={items.filter((i) => i.kind === "place" && !i.waypoint).length} spent={p.spent} currency={currency} />}
 
           {/* Readiness */}
           {phase !== "after" && <ReadinessCard readiness={readiness} />}

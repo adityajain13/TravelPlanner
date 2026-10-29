@@ -43,6 +43,8 @@ export interface Item extends CostSplit {
   endTime?: string;
   /** How long you'll be here, in minutes (Settings → Stop times: Auto works times out from it). */
   stay?: number;
+  /** Only a point to route through (a viewpoint on the drive, a pass): no time, no number. */
+  waypoint?: boolean;
   lat?: number;
   lng?: number;
   address?: string;
