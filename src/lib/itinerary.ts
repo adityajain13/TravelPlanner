@@ -1,6 +1,6 @@
 import type { Bookend } from "../components/DayCompare";
 import type { Pin, Route } from "../components/TripMap";
-import { stopTime, type SectionInfo } from "../components/Section";
+import { slotFor, stopTime, type SectionInfo } from "../components/Section";
 import { dayColor, LIST_COLOR } from "./colors";
 import { daysBetween } from "./dates";
 import { flightAirports, flightArc, flightInstant, type Airport, type AirportDb } from "./airports";
@@ -338,13 +338,19 @@ export function legsByPlan(legs: Itinerary["legs"], legResults: Map<string, LegS
 
 export type PlanLegs = ReturnType<typeof legsByPlan>;
 
-export function withAutoTimes(view: Itinerary | null, state: TripState | null, autoOn: boolean, legsBySection: PlanLegs) {
+/**
+ * `slots`: per plan, the bookings that sit between two stops (booking id → the stop it precedes).
+ * Those blocks are applied right before that stop instead of by the time rule.
+ */
+export function withAutoTimes(view: Itinerary | null, state: TripState | null, autoOn: boolean, legsBySection: PlanLegs, slots?: Map<string, Map<string, string>>) {
   const info = new Map<string, { stay: number; isDefault: boolean; nextDay: boolean }>();
   if (!view || !state || !autoOn) return { sections: view?.sections ?? [], info };
   const sections = view.sections.map((s) => {
     if (s.kind !== "day") return s;
     const ver = s.writeKey ?? s.key;
-    const t = autoTimes(s.items, legsBySection.get(ver), state.meta.dayStarts?.[s.date!] ?? DEFAULT_DAY_START, view.landings.get(ver), state.meta.travelers, fixedBlocks(state.reservations, s.date!));
+    const between = slots?.get(ver);
+    const blocks = fixedBlocks(state.reservations, s.date!).map((b) => (b.id && between?.has(b.id) ? { ...b, beforeId: between.get(b.id) } : b));
+    const t = autoTimes(s.items, legsBySection.get(ver), state.meta.dayStarts?.[s.date!] ?? DEFAULT_DAY_START, view.landings.get(ver), state.meta.travelers, blocks);
     return {
       ...s,
       items: s.items.map((it) => {
@@ -356,6 +362,91 @@ export function withAutoTimes(view: Itinerary | null, state: TripState | null, a
     };
   });
   return { sections, info };
+}
+
+export interface ViaResult {
+  legs: Itinerary["legs"];
+  /** `<plan>|<stop id>` of direct legs that a via route now replaces. */
+  replaces: Set<string>;
+  /** Per plan: booking id → the stop it sits before. */
+  slots: Map<string, Map<string, string>>;
+}
+
+export const NO_VIA: ViaResult = { legs: [], replaces: new Set(), slots: new Map() };
+
+const isPinned = (it: Item) => it.kind === "place" && it.lat != null && it.lng != null;
+const hm = (t?: string) => timeOf(t)?.slice(0, 5);
+
+/**
+ * Bookings with a pin and a time that sit between two pinned stops (from the times in `sections`):
+ * the leg from the stop before into the booking, and from the booking on to the stop after, which
+ * replaces the direct leg into that stop. Bookings in a row chain: stop → booking 1 → booking 2 → stop.
+ */
+export function viaLegs(sections: SectionInfo[], state: TripState, direct: Itinerary["legs"] = []): ViaResult {
+  const out: ViaResult = { legs: [], replaces: new Set(), slots: new Map() };
+  const defaultMode = (state.meta.travelMode ?? "drive") as TravelMode;
+  for (const s of sections) {
+    if (s.kind !== "day" || !s.date || s.items.some((i) => i.kind === "place" && i.who?.length)) continue;
+    const ver = s.writeKey ?? s.key;
+    const add = legAdder(s, out.legs, false, undefined);
+    // One per booking: the first copy's id (as fixedBlocks picks it), the pin of any copy that has one
+    const groups = new Map<string, Reservation>();
+    for (const r of state.reservations) {
+      if (r.startDate !== s.date || !hm(r.startTime) || (r.type !== "restaurant" && r.type !== "other")) continue;
+      const key = `${r.type}|${r.title}|${r.startTime}`;
+      const g = groups.get(key);
+      if (!g) groups.set(key, r);
+      else if (g.lat == null && r.lat != null) groups.set(key, { ...g, lat: r.lat, lng: r.lng });
+    }
+    const bookings = [...groups.values()].filter((r) => r.lat != null && r.lng != null);
+    bookings.sort((a, b) => hm(a.startTime)!.localeCompare(hm(b.startTime)!));
+    // Each booking's stop before and after, by where the slot falls among the day's stops
+    const chains = new Map<string, { after?: Item; list: { b: Reservation; before?: Item }[] }>();
+    const slotMap = new Map<string, string>();
+    for (const b of bookings) {
+      const i = slotFor(s.items, b.startTime!);
+      const before = s.items.slice(0, i).filter(isPinned).at(-1);
+      const after = s.items.slice(i).find(isPinned);
+      const key = after?.id ?? "";
+      const chain = chains.get(key) ?? { after, list: [] };
+      chain.list.push({ b, before });
+      chains.set(key, chain);
+    }
+    for (const { after, list } of chains.values()) {
+      const first = list[0];
+      // Before the first stop: from where the day starts (the hotel / arrival airport leg it takes over)
+      const opening = !first.before && after ? direct.find((l) => l.ver === ver && l.toId === after.id && !l.who) : undefined;
+      let from: { ll: [number, number]; at?: string; label?: string } | undefined = first.before
+        ? { ll: [first.before.lng!, first.before.lat!], at: first.before.endTime ?? first.before.startTime }
+        : opening && { ll: opening.req.from, label: opening.label };
+      for (const { b } of list) {
+        const to: [number, number] = [b.lng!, b.lat!];
+        if (from) {
+          const mode = (state.meta.hotelLegModes?.[`${s.key}|res:${b.id}`] ?? defaultMode) as TravelMode;
+          add(`res:${b.id}`, from.ll, to, { mode, at: from.at ?? b.startTime, label: from.label ?? `To ${b.title}`, skipSamePoint: true });
+        }
+        if (after) slotMap.set(b.id, after.id);
+        from = { ll: to, at: b.endTime ?? b.startTime };
+      }
+      if (after && from) {
+        out.replaces.add(`${ver}|${after.id}`);
+        add(after.id, from.ll, ll({ lat: after.lat!, lng: after.lng! }), { mode: after.travelMode ?? defaultMode, at: from.at, skipSamePoint: true });
+      }
+      // After the last stop: the way back to the hotel starts at the booking instead
+      const evening = !after && from ? direct.find((l) => l.ver === ver && l.toId === "end" && !l.who) : undefined;
+      if (evening && from) {
+        out.replaces.add(`${ver}|end`);
+        add("end", from.ll, evening.req.to, { mode: evening.req.mode, at: from.at, label: evening.label, skipSamePoint: true });
+      }
+    }
+    if (slotMap.size) out.slots.set(ver, slotMap);
+  }
+  return out;
+}
+
+/** The direct legs without the ones a via route replaces (people's own legs are kept), plus the via legs. */
+export function mergeLegs(direct: Itinerary["legs"], via: ViaResult): Itinerary["legs"] {
+  return [...direct.filter((l) => l.who || !via.replaces.has(`${l.ver}|${l.toId}`)), ...via.legs];
 }
 
 /** Pins (numbered stops + the hotel/airport its legs touch) and routes for one plan of a day. */

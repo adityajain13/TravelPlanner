@@ -271,6 +271,11 @@ function legKeysFor(legs: Props["legs"], key: string) {
   return legs ? [...legs.keys()].filter((k) => k === key || k.startsWith(`${key}#`)).sort() : [];
 }
 
+/** The leg into a booking that sits between two stops (its id is `res:<id>` for the first copy). */
+function viaKeyOf(c: { r: Reservation; copies?: Reservation[] }, legs: Props["legs"]) {
+  return (c.copies ?? [c.r]).map((x) => `res:${x.id}`).find((k) => legs?.has(k));
+}
+
 function LegChips({ legs, id, readOnly, onLegMode }: { legs: Props["legs"]; id: string; readOnly?: boolean; onLegMode?: Props["onLegMode"] }) {
   return legKeysFor(legs, id).map((k) => {
     const l = legs!.get(k)!;
@@ -300,9 +305,11 @@ function BookingRows({
     <div className="space-y-0.5">
       {chips.map((c, i) => {
         const depKey = c.r.type === "flight" && c.r.startDate === date ? `dep:${c.r.title}|${c.r.startDate}` : "";
+        const viaKey = viaKeyOf(c, legs);
         return (
           <div key={`${c.r.id}-${i}`}>
             {depKey && <LegChips legs={legs} id={depKey} readOnly={readOnly} onLegMode={onLegMode} />}
+            {viaKey && <LegChips legs={legs} id={viaKey} readOnly={readOnly} onLegMode={onLegMode} />}
             {/* Same columns as a stop: empty pin column, then the card */}
             <div className="flex items-start gap-2 py-1">
               <div className="w-7 shrink-0" />
@@ -331,11 +338,17 @@ function BookingRows({
       {chips.map((c, i) => {
         // The trip to the airport sits right before the flight it's for
         const depKey = c.r.type === "flight" && c.r.startDate === date ? `dep:${c.r.title}|${c.r.startDate}` : "";
+        const viaKey = viaKeyOf(c, legs);
         return (
           <div key={`${c.r.id}-${i}`} className="flex flex-col items-start gap-1.5">
             {depKey && legKeysFor(legs, depKey).length > 0 && (
               <div className="-ml-6">
                 <LegChips legs={legs} id={depKey} readOnly={readOnly} onLegMode={onLegMode} />
+              </div>
+            )}
+            {viaKey && legKeysFor(legs, viaKey).length > 0 && (
+              <div className="-ml-6">
+                <LegChips legs={legs} id={viaKey} readOnly={readOnly} onLegMode={onLegMode} />
               </div>
             )}
             <button data-res={(c.copies ?? [c.r]).map((x) => x.id).join(" ")} onClick={() => onChipClick?.(c.r)} className="flex items-center gap-1.5 rounded-full bg-surface-2 px-2.5 py-1 text-xs text-muted hover:text-fg">
@@ -875,24 +888,29 @@ const END_LINES: Record<string, string[]> = {
   Arrives: ["Terminal", "Baggage"],
 };
 
+/** Where a booking at time t goes among the stops (index of the stop it sits before; items.length = after all). */
+export function slotFor(items: Item[], t: string): number {
+  const at = hhmm(t);
+  if (!at) return 0;
+  const times = items.map(stopTime);
+  let i = 0;
+  times.forEach((x, k) => x && x <= at && (i = k + 1));
+  if (i === 0) {
+    const next = times.findIndex((x) => x && x > at);
+    i = next < 0 ? items.length : next;
+  }
+  return i;
+}
+
 export function placeChips(chips: NonNullable<Props["chips"]>, items: Item[]) {
   const at = new Map<number, NonNullable<Props["chips"]>>();
   const add = (i: number, c: NonNullable<Props["chips"]>[number]) => at.set(i, [...(at.get(i) ?? []), c]);
-  const times = items.map(stopTime);
-  const anyTimed = times.some(Boolean);
+  const anyTimed = items.some((it) => stopTime(it));
   for (const c of chips) {
     const t = hhmm(c.time);
     if (c.at?.startsWith("~") && items.length) add(items.length, c);
     else if (!t || !anyTimed || c.at?.startsWith("!")) add(0, c);
-    else {
-      let i = 0;
-      times.forEach((x, k) => x && x <= t && (i = k + 1));
-      if (i === 0) {
-        const next = times.findIndex((x) => x && x > t);
-        i = next < 0 ? items.length : next;
-      }
-      add(i, c);
-    }
+    else add(slotFor(items, t), c);
   }
   return at;
 }

@@ -64,6 +64,7 @@ export function setLegMode(doc: Y.Doc, state: TripState, sectionKey: string, leg
   const itemId = legId.replace(/#\d+$/, ""); // a person's own leg into the stop
   if (itemId === "end" || itemId.startsWith("dep:"))
     updateMeta(doc, { hotelLegModes: { ...(state.meta.hotelLegModes ?? {}), [itemId === "end" ? sectionKey : `${sectionKey}|dep`]: m } });
+  else if (itemId.startsWith("res:")) updateMeta(doc, { hotelLegModes: { ...(state.meta.hotelLegModes ?? {}), [`${sectionKey}|${itemId}`]: m } });
   else updateItem(doc, itemId, { travelMode: m === (state.meta.travelMode ?? "drive") ? undefined : m });
 }
 
