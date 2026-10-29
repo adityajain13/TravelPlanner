@@ -136,7 +136,7 @@ function Column({ v, box, ...p }: Props & { v: Version; box: Box }) {
         <Sketch items={places} box={box} color={p.color} />
       )}
 
-      <ColumnStats v={v} places={places} p={p} />
+      <ColumnStats v={v} places={places.filter((i) => !i.waypoint)} p={p} />
       <StopList v={v} places={places} color={p.color} />
       <ColumnActions v={v} p={p} isShown={isShown} />
     </div>
@@ -199,13 +199,20 @@ function StopList({ v, places, color }: { v: Version; places: Item[]; color: str
     <ol className="mt-3 min-h-0 flex-1 space-y-1 overflow-y-auto px-3 pb-2 [scrollbar-width:thin]">
       {v.start && <End e={v.start} label="Start" />}
       {places.length === 0 && <li className="px-1 py-6 text-center text-[13px] text-muted">Nothing planned yet</li>}
-      {places.map((i) => (
-        <li key={i.id} className="flex items-center gap-2 rounded-lg px-1 py-1">
-          <PinMarker color={color} label={++n} size={20} />
-          <span className="min-w-0 flex-1 truncate text-[14px]">{i.name}</span>
-          {i.startTime && <span className="shrink-0 text-[12px] text-muted tabular-nums">{fmtTime(i.startTime)}</span>}
-        </li>
-      ))}
+      {places.map((i) =>
+        // A navigation point is passed through: a muted line, no number
+        i.waypoint ? (
+          <li key={i.id} className="truncate px-1 py-0.5 pl-[1.75rem] text-[13px] text-muted">
+            Via {i.name}
+          </li>
+        ) : (
+          <li key={i.id} className="flex items-center gap-2 rounded-lg px-1 py-1">
+            <PinMarker color={color} label={++n} size={20} />
+            <span className="min-w-0 flex-1 truncate text-[14px]">{i.name}</span>
+            {i.startTime && <span className="shrink-0 text-[12px] text-muted tabular-nums">{fmtTime(i.startTime)}</span>}
+          </li>
+        ),
+      )}
       {v.end && <End e={v.end} label="End" />}
     </ol>
   );
@@ -294,12 +301,14 @@ function Sketch({ items, box, color }: { items: Item[]; box: Box; color: string 
   const ox = (W - spanX * k) / 2;
   const oy = (H - spanY * k) / 2;
   const xy = (i: Item) => [ox + (i.lng! - box.minX) * Math.cos(midLat) * k, H - oy - (i.lat! - box.minY) * k] as const;
-  const order = items.filter((i) => i.kind === "place");
+  const order = items.filter((i) => i.kind === "place" && !i.waypoint);
   return (
     <svg viewBox={`0 0 ${W} ${H}`} className="mx-4 my-3 h-[150px] w-[calc(100%-2rem)] rounded-xl bg-surface-2/40" aria-hidden>
       <polyline points={pinned.map((i) => xy(i).join(",")).join(" ")} fill="none" stroke={color} strokeOpacity=".7" strokeWidth="2" strokeLinejoin="round" strokeDasharray="5 4" />
       {pinned.map((i) => {
         const [x, y] = xy(i);
+        // A navigation point is a plain dot, not a numbered stop
+        if (i.waypoint) return <circle key={i.id} cx={x} cy={y} r="3.5" fill={color} stroke="rgb(0 0 0 / .4)" />;
         return (
           <g key={i.id}>
             <circle cx={x} cy={y} r="8" fill={color} stroke="rgb(0 0 0 / .4)" />

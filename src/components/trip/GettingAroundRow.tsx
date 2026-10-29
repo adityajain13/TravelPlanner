@@ -24,7 +24,7 @@ export function GettingAroundRow({
 }) {
   async function autofillPhotos() {
     // Generic stops ("Parking lot", "Rest stop") would just get a random photo
-    const todo = state.items.filter((i) => i.kind === "place" && !i.image && !GENERIC_PLACE.test(i.name.trim()));
+    const todo = state.items.filter((i) => i.kind === "place" && !i.waypoint && !i.image && !GENERIC_PLACE.test(i.name.trim()));
     setPhotoFill({ done: 0, total: todo.length, added: 0 });
     let added = 0;
     for (const [n, it] of todo.entries()) {

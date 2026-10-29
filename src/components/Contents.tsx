@@ -81,7 +81,7 @@ export function Contents(p: Props) {
           "overview",
           "Overview",
           <>
-            {lists.map((s) => row(`sec-${s.key}`, "plan", s.title, undefined, undefined, s.items.filter((i) => i.kind === "place").length || undefined))}
+            {lists.map((s) => row(`sec-${s.key}`, "plan", s.title, undefined, undefined, s.items.filter((i) => i.kind === "place" && !i.waypoint).length || undefined))}
             {resTypes.length === 0
               ? row("res-top", "bookings", "Reservations")
               : resTypes.map((t) => row(`res-${t}`, "bookings", RES_LABEL[t], undefined, RES_ICON[t], p.reservations.filter((r) => r.type === t).length))}
@@ -102,7 +102,7 @@ export function Contents(p: Props) {
                 // The day's subheading ("Land in Osaka") when it has one, else its stops
                 p.subtitles?.[s.key] ||
                   s.items
-                    .filter((i) => i.kind === "place")
+                    .filter((i) => i.kind === "place" && !i.waypoint)
                     .map((i) => i.name)
                     .join(" • ") ||
                   undefined,
@@ -165,7 +165,7 @@ export function ContentsThin(p: Omit<Props, "variant" | "subtitles">) {
             <button
               key={s.key}
               onClick={() => p.go("plan", id)}
-              title={`${dayLabel(s.date!)}${s.items.length ? ` · ${s.items.filter((i) => i.kind === "place").map((i) => i.name).join(" • ")}` : ""}`}
+              title={`${dayLabel(s.date!)}${s.items.length ? ` · ${s.items.filter((i) => i.kind === "place" && !i.waypoint).map((i) => i.name).join(" • ")}` : ""}`}
               className={`flex w-full shrink-0 flex-col items-center rounded-xl py-1.5 transition-colors ${on ? "bg-surface-2 text-fg" : "text-muted hover:bg-surface-2/60 hover:text-fg"}`}
             >
               <span className="text-[10px] font-semibold tracking-wide uppercase">{dtf(undefined, { weekday: "short", timeZone: "UTC" }).format(d)}</span>

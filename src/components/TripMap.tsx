@@ -20,8 +20,8 @@ export interface Pin {
   name?: string;
   image?: string; // thumbnail URL for the popup
   unsplash?: { name: string; author?: string }; // photographer credit for Unsplash photos
-  /** Draw an icon on the pin's head instead of the label text. */
-  glyph?: Glyph;
+  /** Draw an icon on the pin's head instead of the label text; "waypoint" is a plain dot (navigation point). */
+  glyph?: Glyph | "waypoint";
 }
 
 export interface Route {
