@@ -49,19 +49,24 @@ export function autoTimes(
     }
     return 0;
   };
-  const blocks = [...fixed].sort((a, b) => a.start - b.start);
+  // A booking between two stops waits for that stop (beforeId); the rest follow the time rule
+  const stopBlocks = fixed.filter((b) => b.beforeId != null);
+  const blocks = fixed.filter((b) => b.beforeId == null).sort((a, b) => a.start - b.start);
   let k = 0; // blocks are consumed in start order; each one is used once
   const blockLanes = (b: FixedBlock) => (split && b.who?.length ? b.who.filter((p) => clock.has(p)) : lanes);
+  const wait = (b: FixedBlock) => {
+    for (const p of blockLanes(b)) clock.set(p, Math.max(clock.get(p)!, b.end));
+  };
   for (const it of items) {
     if (it.kind !== "place") continue;
+    for (const b of stopBlocks) if (b.beforeId === it.id) wait(b);
     const own = split && it.who?.length ? it.who.filter((p) => clock.has(p)) : [];
     const going = own.length ? own : lanes;
     const arriveAt = () => up5(Math.max(...going.map((p) => clock.get(p)! + legMin(it.id, p))));
     let arrive = arriveAt();
     // Bookings that begin before we'd get here happen first: wait until each one ends
     for (; k < blocks.length && blocks[k].start <= arrive; k++) {
-      const b = blocks[k];
-      for (const p of blockLanes(b)) clock.set(p, Math.max(clock.get(p)!, b.end));
+      wait(blocks[k]);
       arrive = arriveAt();
     }
     const end = arrive + (it.stay ?? DEFAULT_STAY);
@@ -72,27 +77,35 @@ export function autoTimes(
 }
 
 /** A booking with a set time that day (ticket, restaurant, train): auto times wait for it to end. */
-export interface FixedBlock { start: number; end: number; who?: string[] }
+export interface FixedBlock {
+  start: number;
+  end: number;
+  who?: string[];
+  /** The booking's id (the first copy's, for shared bookings). */
+  id?: string;
+  /** A booking between two stops: applied right before the stop with this id, not by the time rule. */
+  beforeId?: string;
+}
 
 const BLOCK_DEFAULT: Partial<Record<Reservation["type"], number>> = { restaurant: 90, other: 60, train: 60 };
 
 /** The day's timed bookings as blocks (minutes from midnight). One per booking: per-traveller copies are merged. */
 export function fixedBlocks(reservations: Reservation[], date: string): FixedBlock[] {
-  const merged = new Map<string, { start: number; end: number; who: Set<string>; everyone: boolean }>();
+  const merged = new Map<string, { start: number; end: number; who: Set<string>; everyone: boolean; id: string }>();
   for (const r of reservations) {
     const dflt = BLOCK_DEFAULT[r.type];
     if (dflt == null || r.startDate !== date || !r.startTime) continue;
     const start = toMin(r.startTime);
     const end = r.endTime && toMin(r.endTime) > start ? toMin(r.endTime) : start + dflt;
     const key = `${r.type}|${r.title}|${r.startTime}`;
-    const m = merged.get(key) ?? { start, end, who: new Set<string>(), everyone: false };
+    const m = merged.get(key) ?? { start, end, who: new Set<string>(), everyone: false, id: r.id };
     m.end = Math.max(m.end, end);
     if (r.traveler) m.who.add(r.traveler);
     else m.everyone = true;
     merged.set(key, m);
   }
   return [...merged.values()]
-    .map((m) => ({ start: m.start, end: m.end, ...(!m.everyone && m.who.size ? { who: [...m.who] } : {}) }))
+    .map((m) => ({ start: m.start, end: m.end, id: m.id, ...(!m.everyone && m.who.size ? { who: [...m.who] } : {}) }))
     .sort((a, b) => a.start - b.start);
 }
 
