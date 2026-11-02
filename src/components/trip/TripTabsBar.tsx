@@ -23,6 +23,7 @@ export function TripTabsBar({
   setFocus,
   checked,
   checkedIds,
+  here,
   clearChecked,
   targets,
   writeOf,
@@ -42,6 +43,8 @@ export function TripTabsBar({
   setFocus: Dispatch<SetStateAction<string | null>>;
   checked: Set<string>;
   checkedIds: string[];
+  /** Days/lists the ticked stops are on now */
+  here: string[];
   clearChecked: () => void;
   targets: SectionTarget[];
   writeOf: (key: string) => string;
@@ -57,6 +60,7 @@ export function TripTabsBar({
           doc={doc}
           checked={checked}
           checkedIds={checkedIds}
+          here={here}
           targets={targets}
           writeOf={writeOf}
           selectedId={selectedId}

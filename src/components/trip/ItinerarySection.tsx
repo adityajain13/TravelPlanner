@@ -75,7 +75,7 @@ export function ItinerarySection({ c, s, si }: { c: PlanContext; s: PlanSection;
         onCheck={readOnly ? undefined : onCheck}
         targets={readOnly ? undefined : targets}
         onMoveTo={readOnly ? undefined : (itemId, k) => moveItems(doc, [itemId], writeOf(k))}
-        sectionsOf={sectionsOf}
+        placedIn={new Map(s.items.map((it) => [it.id, sectionsOf(it.id)]))}
         onToggleSection={readOnly ? undefined : toggleSection}
         onCostDetails={readOnly ? undefined : setCostFor}
         subtitle={state.meta.subtitles?.[s.key]}

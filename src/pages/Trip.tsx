@@ -154,7 +154,8 @@ export function TripPage() {
   const writeOf = (key: string) => view.sections.find((s) => s.key === key)?.writeKey ?? key;
   const shownKey = (section: string) => (isDraftSection(section) ? (view.sections.find((s) => s.writeKey === section)?.key ?? section) : section);
   // A place can sit on several days/lists (as copies); the day menu ticks and toggles them
-  const copiesOf = (itemId: string) => copyGroups.get(itemId) ?? [];
+  // Notes and checklists aren't in copyGroups: each is its own only copy
+  const copiesOf = (itemId: string) => copyGroups.get(itemId) ?? state.items.filter((x) => x.id === itemId);
   const sectionsOf = (itemId: string) => [...new Set(copiesOf(itemId).map((x) => shownKey(x.section)))];
   const toggleSection = (itemId: string, shown: string) => {
     if (!doc) return;
@@ -237,6 +238,8 @@ export function TripPage() {
   };
   const clearChecked = () => (setChecked(new Set()), (lastChecked.current = null));
   const checkedIds = flatIds.filter((x) => checked.has(x));
+  // Days/lists the ticked stops are on now (the selection bar's menus mark them)
+  const checkedHere = [...new Set(checkedIds.map((id) => state.items.find((x) => x.id === id)).filter(Boolean).map((x) => shownKey(x!.section)))];
 
   // Place panel over the map for the open card
   const openSection = selectedId ? timed.sections.find((s) => s.items.some((i) => i.id === selectedId)) : undefined;
@@ -379,6 +382,7 @@ export function TripPage() {
             setFocus={setFocus}
             checked={checked}
             checkedIds={checkedIds}
+            here={checkedHere}
             clearChecked={clearChecked}
             targets={targets}
             writeOf={writeOf}
