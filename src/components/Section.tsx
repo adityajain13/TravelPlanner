@@ -66,7 +66,8 @@ interface Props {
   onCheck?: (id: string, checked: boolean, shift: boolean) => void;
   targets?: SectionTarget[];
   onMoveTo?: (id: string, section: string) => void;
-  sectionsOf?: (id: string) => string[];
+  /** Days/lists each stop is on (copies included), by item id. Data, not a function, so a day redraws when its stops' copies change elsewhere. */
+  placedIn?: Map<string, string[]>;
   onToggleSection?: (id: string, section: string) => void;
   onCostDetails?: (id: string) => void;
   subtitle?: string;
@@ -238,7 +239,7 @@ type ItemWiring = Pick<
   | "onCheck"
   | "targets"
   | "onMoveTo"
-  | "sectionsOf"
+  | "placedIn"
   | "onToggleSection"
   | "onCostDetails"
   | "people"
@@ -269,7 +270,7 @@ function itemWiring(p: Props): ItemWiring {
     onCheck: p.onCheck,
     targets: p.targets,
     onMoveTo: p.onMoveTo,
-    sectionsOf: p.sectionsOf,
+    placedIn: p.placedIn,
     onToggleSection: p.onToggleSection,
     onCostDetails: p.onCostDetails,
     people: p.people,
@@ -675,7 +676,7 @@ function StopRow({ item, idx, number, info, chipsBefore, card, canInsert, insert
         onCheck={p.onCheck && info.key !== "orphan" ? (c, shift) => p.onCheck!(item.id, c, shift) : undefined}
         targets={p.targets}
         onMoveTo={p.onMoveTo ? (k) => p.onMoveTo!(item.id, k) : undefined}
-        sections={p.sectionsOf?.(item.id)}
+        sections={p.placedIn?.get(item.id)}
         onToggleSection={p.onToggleSection ? (k) => p.onToggleSection!(item.id, k) : undefined}
         onCostDetails={p.onCostDetails ? () => p.onCostDetails!(item.id) : undefined}
         people={info.kind === "day" ? p.people : undefined}

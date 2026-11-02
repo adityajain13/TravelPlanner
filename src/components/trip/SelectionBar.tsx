@@ -11,6 +11,7 @@ export function SelectionBar({
   doc,
   checked,
   checkedIds,
+  here,
   targets,
   writeOf,
   selectedId,
@@ -20,6 +21,7 @@ export function SelectionBar({
   doc: Y.Doc;
   checked: Set<string>;
   checkedIds: string[];
+  here: string[];
   targets: SectionTarget[];
   writeOf: (key: string) => string;
   selectedId: string | null;
@@ -32,10 +34,17 @@ export function SelectionBar({
         <X className="size-4" />
       </button>
       <span className="mr-auto tabular-nums">{checked.size} selected</span>
-      <SectionPicker targets={targets} onPick={(k) => (copyItems(doc, checkedIds, writeOf(k)), onClear())} align="right" className="rounded-full px-2.5 py-1.5 text-muted hover:bg-surface-2 hover:text-fg">
+      <SectionPicker targets={targets} here={here} onPick={(k) => (copyItems(doc, checkedIds, writeOf(k)), onClear())} align="right" className="rounded-full px-2.5 py-1.5 text-muted hover:bg-surface-2 hover:text-fg">
         <Copy className="size-4" /> Copy to
       </SectionPicker>
-      <SectionPicker targets={targets} onPick={(k) => (moveItems(doc, checkedIds, writeOf(k)), onClear())} align="right" className="rounded-full px-2.5 py-1.5 text-muted hover:bg-surface-2 hover:text-fg">
+      {/* Already all on that one day or list: picking it just clears the selection */}
+      <SectionPicker
+        targets={targets}
+        here={here}
+        onPick={(k) => ((here.length === 1 && here[0] === k) || moveItems(doc, checkedIds, writeOf(k)), onClear())}
+        align="right"
+        className="rounded-full px-2.5 py-1.5 text-muted hover:bg-surface-2 hover:text-fg"
+      >
         <FolderInput className="size-4" /> Move to
       </SectionPicker>
       <button
