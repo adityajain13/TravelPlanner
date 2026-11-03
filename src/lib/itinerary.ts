@@ -97,6 +97,11 @@ function dayFlights(ctx: Ctx, s: SectionInfo) {
   const leaving = todayOut
     .filter((o) => !todayIn.some((f) => connects(f, o)))
     .sort((a, b) => (flightInstant(a.r, "dep") ?? 0) - (flightInstant(b.r, "dep") ?? 0))[0];
+  // Flying home (or on): every stop that day is nearer the airport you leave from than the one you
+  // land at, so they come before the flight and the landing ends the day instead of starting it
+  const pinned = s.items.filter((i) => i.kind === "place" && i.lat != null && i.lng != null);
+  const d2 = (i: Item, a: Airport) => (i.lat! - a.lat) ** 2 + (i.lng! - a.lng) ** 2;
+  if (landing && leaving && pinned.length && pinned.every((i) => d2(i, leaving.dep) < d2(i, landing.arr))) return { landing: undefined, leaving, landed: undefined };
   return { landing, leaving, landed: landing ? timeOf(landing.r.endTime) : undefined };
 }
 type DayFlights = ReturnType<typeof dayFlights>;
