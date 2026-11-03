@@ -23,6 +23,10 @@ export interface GeoOpts {
   /** Only used by searchPlaces for ordering. */
   countryCode?: string;
   near?: [number, number]; // [lng, lat]
+  /** Map zoom for Photon's location bias (with near): a zoomed-in city biases to the city. */
+  zoom?: number;
+  /** Distance scale in km for ordering (default 25). Setting it also weights distance fully. */
+  scaleKm?: number;
   limit?: number;
   signal?: AbortSignal;
 }
@@ -95,6 +99,7 @@ export async function reversePlaces(at: [number, number], radiusKm = 0.15, signa
 async function photon(q: string, o: GeoOpts): Promise<GeoHit[]> {
   const params = new URLSearchParams({ q, limit: String(o.limit ?? 8), lang: "en" });
   if (o.near) params.set("lon", String(o.near[0])), params.set("lat", String(o.near[1])), params.set("location_bias_scale", "0.3");
+  if (o.near && o.zoom != null) params.set("zoom", String(Math.min(18, Math.max(3, Math.round(o.zoom)))));
   const res = await fetch(`https://photon.komoot.io/api/?${params}`, { signal: o.signal });
   if (!res.ok) throw new Error(`Photon ${res.status}`);
   const json = (await res.json()) as { features: PhotonFeature[] };
@@ -201,8 +206,11 @@ export async function searchPlaces(q: string, o: GeoOpts = {}): Promise<GeoHit[]
     return seen.has(k) ? false : (seen.add(k), true);
   });
   const cc = o.countryCode?.toLowerCase();
+  // Near the map (scaleKm set), distance counts fully so same-name branches sort nearest first
+  const dw = o.scaleKm != null ? 1 : 0.5;
+  const scale = o.scaleKm ?? 25;
   const score = (h: GeoHit) =>
-    textScore(q, h) * 3 + (o.near ? -0.5 * Math.log10(1 + distanceKm(o.near, [h.lng, h.lat]) / 25) : 0) + (cc && h.countryCode === cc ? 0.3 : 0);
+    textScore(q, h) * 3 + (o.near ? -dw * Math.log10(1 + distanceKm(o.near, [h.lng, h.lat]) / scale) : 0) + (cc && h.countryCode === cc ? 0.3 : 0);
   return hits
     .map((h, i) => ({ h, s: score(h) - i * 0.01 }))
     .sort((a, b) => b.s - a.s)

@@ -126,27 +126,39 @@ export interface GoogleSuggestion {
   placeId: string;
   main: string;
   secondary?: string;
+  /** Straight-line metres from the search origin (only when one was sent). */
+  distanceM?: number;
 }
 
 let session: string | null = null;
 const newSession = () => (session = crypto.randomUUID());
 
-export async function autocomplete(input: string, near?: [number, number], signal?: AbortSignal): Promise<GoogleSuggestion[]> {
+export async function autocomplete(input: string, near?: [number, number], signal?: AbortSignal, radiusM?: number): Promise<GoogleSuggestion[]> {
   if (!GOOGLE_KEY || input.trim().length < 3) return [];
   if (!session) newSession();
   const body: Record<string, unknown> = { input, sessionToken: session, languageCode: "en" };
-  if (near) body.locationBias = { circle: { center: { latitude: near[1], longitude: near[0] }, radius: 50000 } };
-  type R = { suggestions?: { placePrediction?: { placeId: string; structuredFormat?: { mainText?: { text: string }; secondaryText?: { text: string } }; text?: { text: string } } }[] };
+  // Bias radius follows the map view when searching near it (Google accepts 1 km to 50 km)
+  if (near) {
+    body.locationBias = { circle: { center: { latitude: near[1], longitude: near[0] }, radius: Math.round(Math.min(50000, Math.max(1000, radiusM ?? 50000))) } };
+    body.origin = { latitude: near[1], longitude: near[0] };
+  }
+  type P = { placeId: string; structuredFormat?: { mainText?: { text: string }; secondaryText?: { text: string } }; text?: { text: string }; distanceMeters?: number };
+  type R = { suggestions?: { placePrediction?: P }[] };
   const json = await call<R>(
     `${API}/places:autocomplete`,
     { method: "POST", body: JSON.stringify(body), signal },
-    "suggestions.placePrediction.placeId,suggestions.placePrediction.structuredFormat,suggestions.placePrediction.text",
+    "suggestions.placePrediction.placeId,suggestions.placePrediction.structuredFormat,suggestions.placePrediction.text,suggestions.placePrediction.distanceMeters",
   );
   return (json.suggestions ?? [])
     .map((s) => s.placePrediction)
-    .filter((p): p is NonNullable<typeof p> => !!p)
+    .filter((p): p is P => !!p)
     .slice(0, 5)
-    .map((p) => ({ placeId: p.placeId, main: p.structuredFormat?.mainText?.text ?? p.text?.text ?? "", secondary: p.structuredFormat?.secondaryText?.text }));
+    .map((p) => ({
+      placeId: p.placeId,
+      main: p.structuredFormat?.mainText?.text ?? p.text?.text ?? "",
+      secondary: p.structuredFormat?.secondaryText?.text,
+      distanceM: p.distanceMeters,
+    }));
 }
 
 /** Google's own data for a picked suggestion (ends the autocomplete session). Saved on the stop. */
