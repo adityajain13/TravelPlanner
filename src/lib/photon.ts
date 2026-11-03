@@ -18,8 +18,14 @@ export interface PlaceResult {
 }
 
 /** Photon search with a Nominatim fallback (see geocode.ts); results in the trip's country first. */
-export async function searchPlaces(q: string, near?: [number, number], signal?: AbortSignal, countryCode?: string): Promise<PlaceResult[]> {
-  const hits = await search(q, { near, signal, countryCode });
+export async function searchPlaces(
+  q: string,
+  near?: [number, number],
+  signal?: AbortSignal,
+  countryCode?: string,
+  opts?: { zoom?: number; scaleKm?: number },
+): Promise<PlaceResult[]> {
+  const hits = await search(q, { near, signal, countryCode, ...opts });
   const seen = new Set<string>();
   return hits
     .map((h) => ({

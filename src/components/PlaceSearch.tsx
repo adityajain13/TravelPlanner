@@ -4,6 +4,20 @@ import { searchPlaces, type PlaceResult } from "../lib/photon";
 import { textScore } from "../lib/geocode";
 import { isMapsLink, placeFromSuggestion, placesFromLink } from "../lib/gmaps";
 import { autocomplete, GOOGLE_KEY, type GoogleSuggestion } from "../lib/google";
+import { getMapView } from "../lib/mapView";
+import { distanceKm } from "../lib/geocode";
+
+/** Where a search ran from: the map's centre when the map was seen, else the trip centre. */
+type Origin = { at?: [number, number]; viaMap: boolean };
+
+/** Row distance: metres under 1 km (to 10 m), then km with one decimal under 10 km. */
+const fmtDistance = (km: number) => {
+  const m = Math.round((km * 1000) / 10) * 10;
+  if (m < 1000) return `${m} m`;
+  return km < 10 ? `${km.toFixed(1)} km` : `${Math.round(km)} km`;
+};
+const DistanceLabel = ({ km }: { km?: number }) =>
+  km == null ? null : <span className="ml-auto shrink-0 pl-2 text-[12px] text-muted tabular-nums">{fmtDistance(km)}</span>;
 
 interface Props {
   near?: [number, number];
@@ -76,6 +90,7 @@ export function PlaceSearch({ near, countryCode, onPick, onNote, autoFocus, onCa
   const [error, setError] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(0);
+  const [origin, setOrigin] = useState<Origin>({ viaMap: false });
   const wrap = useRef<HTMLDivElement>(null);
   const isLink = isMapsLink(q);
 
@@ -90,6 +105,10 @@ export function PlaceSearch({ near, countryCode, onPick, onNote, autoFocus, onCa
     const t = setTimeout(async () => {
       setLoading(true);
       setError(null);
+      // Read the map view at query time: nearest the map first, the trip's centre if the map was never shown
+      const mv = getMapView();
+      const centre = mv?.center ?? near;
+      setOrigin({ at: centre, viaMap: !!mv });
       if (isMapsLink(term)) {
         setGoogle([]);
         try {
@@ -98,7 +117,10 @@ export function PlaceSearch({ near, countryCode, onPick, onNote, autoFocus, onCa
           if (!ctrl.signal.aborted) setError((e as Error).message);
         }
       } else {
-        const [osm, g] = await Promise.allSettled([searchPlaces(term, near, ctrl.signal, countryCode), autocomplete(term, near, ctrl.signal)]);
+        const [osm, g] = await Promise.allSettled([
+          searchPlaces(term, centre, ctrl.signal, countryCode, mv ? { zoom: mv.zoom, scaleKm: Math.max(1, mv.radiusKm) } : undefined),
+          autocomplete(term, centre, ctrl.signal, mv ? mv.radiusKm * 1000 * 1.5 : undefined),
+        ]);
         if (ctrl.signal.aborted) return;
         setResults(osm.status === "fulfilled" ? osm.value.slice(0, 6) : []);
         setGoogle(g.status === "fulfilled" ? g.value : []);
@@ -155,7 +177,7 @@ export function PlaceSearch({ near, countryCode, onPick, onNote, autoFocus, onCa
       {open && q.trim().length >= 2 && (
         <SuggestionMenu
           rows={rows} active={active} resolving={resolving} isLink={isLink} loading={loading} error={error} q={q} googleCount={google.length}
-          onHover={setActive} onOsm={pick} onGoogle={pickGoogle} onNote={note}
+          origin={origin} onHover={setActive} onOsm={pick} onGoogle={pickGoogle} onNote={note}
         />
       )}
     </div>
@@ -172,6 +194,7 @@ function SuggestionMenu({
   error,
   q,
   googleCount,
+  origin,
   onHover,
   onOsm,
   onGoogle,
@@ -185,6 +208,7 @@ function SuggestionMenu({
   error: string | null;
   q: string;
   googleCount: number;
+  origin: Origin;
   onHover: (i: number) => void;
   onOsm: (r: PlaceResult) => void;
   onGoogle: (s: GoogleSuggestion) => void;
@@ -194,16 +218,16 @@ function SuggestionMenu({
     <ul data-popover className="absolute inset-x-0 top-full z-30 mt-1 max-h-[22rem] overflow-y-auto rounded-xl border border-line bg-surface py-1 shadow-2xl">
       {rows.map((row, i) =>
         row.kind === "osm" ? (
-          <OsmRow key={`o-${row.r.osmId}`} r={row.r} on={i === active} onPick={() => onOsm(row.r)} onHover={() => onHover(i)} />
+          <OsmRow key={`o-${row.r.osmId}`} r={row.r} km={origin.at && distanceKm(origin.at, [row.r.lng, row.r.lat])} on={i === active} onPick={() => onOsm(row.r)} onHover={() => onHover(i)} />
         ) : row.kind === "google" ? (
-          <GoogleRow key={`g-${row.s.placeId}`} s={row.s} on={i === active} resolving={resolving} onPick={() => onGoogle(row.s)} onHover={() => onHover(i)} />
+          <GoogleRow key={`g-${row.s.placeId}`} s={row.s} km={row.s.distanceM != null ? row.s.distanceM / 1000 : undefined} on={i === active} resolving={resolving} onPick={() => onGoogle(row.s)} onHover={() => onHover(i)} />
         ) : null,
       )}
       {isLink && loading && <li className="px-3 py-2 text-xs text-muted">Opening Google Maps link…</li>}
       {error && <li className="px-3 py-2 text-xs text-muted">{error}</li>}
       {!isLink && <NoteRow q={q} on={active === rows.length - 1} onNote={onNote} onHover={() => onHover(rows.length - 1)} />}
       <li className="px-3 pt-1 pb-1.5 text-[10px] text-muted/70">
-        Search © OpenStreetMap contributors · Photon{GOOGLE_KEY && googleCount > 0 ? " · Places by Google" : ""}
+        {origin.viaMap && "Nearest to the map view · "}Search © OpenStreetMap contributors · Photon{GOOGLE_KEY && googleCount > 0 ? " · Places by Google" : ""}
       </li>
     </ul>
   );
@@ -245,7 +269,7 @@ function SearchBox({
   );
 }
 
-function OsmRow({ r, on, onPick, onHover }: { r: PlaceResult; on: boolean; onPick: () => void; onHover: () => void }) {
+function OsmRow({ r, km, on, onPick, onHover }: { r: PlaceResult; km?: number; on: boolean; onPick: () => void; onHover: () => void }) {
   return (
     <li>
       <button onMouseDown={(e) => e.preventDefault()} onClick={onPick} onMouseEnter={onHover} className={rowCls(on)}>
@@ -254,12 +278,13 @@ function OsmRow({ r, on, onPick, onHover }: { r: PlaceResult; on: boolean; onPic
           <span className="block truncate text-[15px]">{r.name}</span>
           <span className="block truncate text-xs text-muted">{[r.category && r.category[0].toUpperCase() + r.category.slice(1), r.address].filter(Boolean).join(" · ")}</span>
         </span>
+        <DistanceLabel km={km} />
       </button>
     </li>
   );
 }
 
-function GoogleRow({ s, on, resolving, onPick, onHover }: { s: GoogleSuggestion; on: boolean; resolving: string | null; onPick: () => void; onHover: () => void }) {
+function GoogleRow({ s, km, on, resolving, onPick, onHover }: { s: GoogleSuggestion; km?: number; on: boolean; resolving: string | null; onPick: () => void; onHover: () => void }) {
   return (
     <li>
       <button disabled={!!resolving} onMouseDown={(e) => e.preventDefault()} onClick={onPick} onMouseEnter={onHover} className={rowCls(on)}>
@@ -268,6 +293,7 @@ function GoogleRow({ s, on, resolving, onPick, onHover }: { s: GoogleSuggestion;
           <span className="block truncate text-[15px]">{s.main}</span>
           {s.secondary && <span className="block truncate text-xs text-muted">{s.secondary}</span>}
         </span>
+        <DistanceLabel km={km} />
       </button>
     </li>
   );

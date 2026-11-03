@@ -10,6 +10,8 @@ import { Layers, Map as MapIcon, Satellite } from "lucide-react";
 import { buildStyle, MAPTILER_KEY, PROTOMAPS_KEY, type MapMode } from "../lib/mapStyle";
 import type { Theme } from "../lib/theme";
 import { drawPin, PIN, type Glyph } from "../lib/pinArt";
+import { distanceKm } from "../lib/geocode";
+import { setMapView } from "../lib/mapView";
 
 export interface Pin {
   id: string;
@@ -184,12 +186,20 @@ function useMapInstance({
       const attrib = container.current?.querySelector(".maplibregl-ctrl-attrib.maplibregl-compact-show");
       attrib?.querySelector<HTMLButtonElement>(".maplibregl-ctrl-attrib-button")?.click();
     });
+    // What the map shows, for "Add a place" searches nearest the view (not for the mini maps)
+    const report = () => {
+      const c = map.getCenter();
+      const b = map.getBounds();
+      setMapView({ center: [c.lng, c.lat], zoom: map.getZoom(), radiusKm: distanceKm([c.lng, c.lat], [b.getEast(), b.getNorth()]) });
+    };
     map.once("load", () => {
       map.resize();
 
       const b = bounds();
       if (b && !latest.current.selectedId) map.fitBounds(b, { ...fit, duration: 0 });
+      if (!mini) report();
     });
+    if (!mini) map.on("moveend", report);
     onMissingImage(map);
     map.on("style.load", () => {
       addOverlay(map);
@@ -208,6 +218,7 @@ function useMapInstance({
     return () => {
       ro.disconnect();
       map.remove();
+      if (!mini) setMapView(null); // leaving the trip: the next one searches near its own centre until its map reports
       mapRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
