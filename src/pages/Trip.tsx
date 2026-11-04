@@ -9,7 +9,7 @@ import { setShareToken } from "../lib/shareToken";
 import { copiesByItem, copyItems, isDraftSection, removeItems, setReadOnly, type Item, type Reservation } from "../lib/trips";
 import { setHistoryAuthor } from "../lib/history";
 import { setCollapsed } from "../lib/itemActions";
-import { daysBetween } from "../lib/dates";
+import { daysBetween, todayISO } from "../lib/dates";
 import { scrollToEl, scrollToId } from "../lib/scroll";
 import { useUndo } from "../lib/undo";
 import { db } from "../lib/db";
@@ -26,7 +26,10 @@ import { useTripUpkeep } from "../hooks/useTripUpkeep";
 import { useTripViewState } from "../hooks/useTripViewState";
 import { dayChips, ReservationsPanel } from "../components/Reservations";
 import { BudgetPanel } from "../components/Budget";
-import { TripOverview } from "../components/TripOverview";
+import { OverviewButton } from "../components/overview/OverviewButton";
+import { OverviewScreen } from "../components/overview/OverviewScreen";
+import { OverviewContent } from "../components/overview/OverviewContent";
+import { localISO, overviewOf, type OverviewTarget } from "../lib/overview";
 import type { Tab } from "../components/Contents";
 import type { SectionTarget } from "../components/SectionPicker";
 import { ContentsColumn, ContentsDrawer } from "../components/trip/ContentsColumn";
@@ -72,6 +75,7 @@ export function TripPage() {
   const [showHistory, setShowHistory] = useState(false);
   const [mapPicked, setMapPicked] = useState<string | null>(null);
   const [dayFrame, setDayFrame] = useState<DayFrame | null>(null);
+  const [showOverview, setShowOverview] = useState(false);
   const headerRef = useRef<HTMLElement>(null);
   const fx = useConverter(state?.meta.currency ?? "CAD");
   const [editingRes, setEditingRes] = useState<Partial<Reservation> | null>(null);
@@ -271,13 +275,24 @@ export function TripPage() {
       if (!(targetId && scrollToId(scrollRef.current, targetId))) scrollRef.current?.scrollTo({ top: headerRef.current?.offsetHeight ?? 0, behavior: "smooth" });
     }, 40);
   };
-  const spent = totals(budgetLines(state, fx.convert)).total;
+  const lines = budgetLines(state, fx.convert);
+  const spent = totals(lines).total;
   // ?today=2026-12-03T10:00 previews the overview as on that day (for trying the during/after views)
   const overviewNow = (() => {
     const t = new URLSearchParams(location.search).get("today");
     const d = t ? new Date(t.length <= 10 ? `${t}T12:00` : t) : null;
     return d && !Number.isNaN(d.getTime()) ? d : undefined;
   })();
+  const today = overviewNow ? localISO(overviewNow) : todayISO();
+  const overviewSections = view.sections.filter((s) => s.key !== ORPHAN);
+  const overview = overviewOf(state, overviewSections, today);
+  const onOverviewGo = (t: OverviewTarget) => {
+    setShowOverview(false);
+    if (t.kind === "addRes") return void (!readOnly && setEditingRes(t.res));
+    if (t.kind === "section") return go("plan", `sec-${t.key}`);
+    if (t.kind === "item") return (setSelectedId(t.id), requestAnimationFrame(() => scrollToId(scrollRef.current, `item-${t.id}`, "center")));
+    go(t.tab);
+  };
   const contentsProps = {
     sections: view.sections.filter((s) => s.key !== ORPHAN),
     reservations: state.reservations,
@@ -394,17 +409,7 @@ export function TripPage() {
             {tab === "bookings" && <ReservationsPanel doc={doc} state={state} readOnly={readOnly} tripId={id} canForward={canReview} />}
             {tab === "budget" && <BudgetPanel doc={doc} state={state} readOnly={readOnly} />}
             {tab === "plan" && (<>
-            <TripOverview
-              state={state}
-              sections={view.sections.filter((s) => s.key !== ORPHAN)}
-              spent={spent}
-              legs={legsBySection}
-              readOnly={readOnly}
-              now={overviewNow}
-              onSelect={(itemId) => (setSelectedId(itemId), requestAnimationFrame(() => scrollToId(scrollRef.current, `item-${itemId}`, "center")))}
-              onOpenRes={(r) => !readOnly && setEditingRes(r)}
-              onGo={(t) => (typeof t === "string" ? go(t) : go("plan", `sec-${t.section}`))}
-            />
+            <OverviewButton countdown={overview.countdown} attention={overview.attention} onOpen={() => setShowOverview(true)} />
             <PlanTools
               doc={doc}
               state={state}
@@ -504,6 +509,11 @@ export function TripPage() {
         setShowSettings={setShowSettings}
         settingsScope={settingsScope}
       />
+      {showOverview && (
+        <OverviewScreen onClose={() => setShowOverview(false)}>
+          <OverviewContent state={state} sections={overviewSections} legs={legsBySection} lines={lines} spent={spent} today={today} readOnly={!!readOnly} onGo={onOverviewGo} />
+        </OverviewScreen>
+      )}
       {showHistory && <HistoryDialog doc={doc} state={state} readOnly={readOnly} myEmail={myEmail ?? undefined} onClose={() => setShowHistory(false)} />}
       <MobileViewSwitch mobileView={mobileView} setMobileView={setMobileView} />
     </div>
