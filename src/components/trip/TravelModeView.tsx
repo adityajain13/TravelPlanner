@@ -23,6 +23,7 @@ export function TravelModeView({
   showSettings,
   setShowSettings,
   settingsScope,
+  onOverview,
 }: {
   doc: Y.Doc;
   state: TripState;
@@ -37,6 +38,7 @@ export function TravelModeView({
   showSettings: boolean;
   setShowSettings: Dispatch<SetStateAction<boolean>>;
   settingsScope: SettingsScope | null;
+  onOverview?: () => void;
 }) {
   return (
     <>
@@ -47,6 +49,7 @@ export function TravelModeView({
         reservations={state.reservations}
         theme={theme}
         onExit={onExit}
+        onOverview={onOverview}
         onToggleCheck={readOnly ? undefined : (itemId, checkId) => {
           const it = state.items.find((x) => x.id === itemId);
           if (it) updateItem(doc, itemId, { checks: (it.checks ?? []).map((c) => (c.id === checkId ? { ...c, done: !c.done } : c)) });

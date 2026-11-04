@@ -2,6 +2,7 @@ import { Plus } from "lucide-react";
 import type { SectionInfo } from "../Section";
 import { dayCardOf, distanceText, formatDayShort, type OverviewTarget } from "../../lib/overview";
 import type { LegState, TravelMode } from "../../lib/routing";
+import type { MiniMap } from "../../lib/miniMaps";
 import { RouteSketch } from "./RouteSketch";
 
 /** One day in "Your days": sketch, title, stop count and route length. Clicking anywhere goes to the day. */
@@ -9,11 +10,14 @@ export function DayCard({
   section,
   legs,
   subtitle,
+  mini,
   onGo,
 }: {
   section: SectionInfo;
   legs?: Map<string, { mode: TravelMode; state?: LegState }>;
   subtitle?: string;
+  /** A snapshot of the day's map, when one is ready */
+  mini?: MiniMap;
   onGo: (t: OverviewTarget) => void;
 }) {
   const c = dayCardOf(section, legs, subtitle);
@@ -30,7 +34,7 @@ export function DayCard({
           </span>
         </div>
       ) : (
-        <RouteSketch points={c.points} color={section.color} />
+        <RouteSketch points={c.points} color={section.color} mini={mini} />
       )}
       <p className="mt-3 text-[12px] text-muted">
         Day {section.dayNumber} · {formatDayShort(section.date!)}

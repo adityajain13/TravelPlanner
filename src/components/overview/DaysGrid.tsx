@@ -1,8 +1,10 @@
 import type { SectionInfo } from "../Section";
-import { placesOf, type OverviewTarget } from "../../lib/overview";
+import { dayCardOf, placesOf, type OverviewTarget } from "../../lib/overview";
 import type { LegState, TravelMode } from "../../lib/routing";
+import { useTheme } from "../../lib/theme";
 import { Card } from "./Card";
 import { DayCard } from "./DayCard";
+import { useMiniMaps } from "./useMiniMaps";
 
 type Legs = Map<string, Map<string, { mode: TravelMode; state?: LegState }>>;
 
@@ -10,13 +12,19 @@ type Legs = Map<string, Map<string, { mode: TravelMode; state?: LegState }>>;
 export function DaysGrid({ sections, legs, subtitles, onGo }: { sections: SectionInfo[]; legs: Legs; subtitles?: Record<string, string>; onGo: (t: OverviewTarget) => void }) {
   const days = sections.filter((s) => s.kind === "day");
   const stops = days.reduce((n, s) => n + placesOf(s).length, 0);
+  const [theme] = useTheme();
+  const maps = useMiniMaps(
+    days.map((s) => ({ key: s.key, points: dayCardOf(s, undefined).points })),
+    theme,
+  );
   return (
     <Card title="Your days" aside={`${stops} stops · ${days.length} days`} className="order-4">
       <div className="-mx-4 flex snap-x snap-mandatory scroll-px-4 gap-3 overflow-x-auto px-4 pb-1 sm:mx-0 sm:grid sm:grid-cols-2 sm:overflow-visible sm:px-0 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
         {days.map((s) => (
-          <DayCard key={s.key} section={s} legs={legs.get(s.key)} subtitle={subtitles?.[s.key]} onGo={onGo} />
+          <DayCard key={s.key} section={s} legs={legs.get(s.key)} subtitle={subtitles?.[s.key]} mini={maps.get(s.key)} onGo={onGo} />
         ))}
       </div>
+      {maps.size > 0 && <p className="mt-2 text-[10px] text-muted/70">Maps © OpenStreetMap contributors · Protomaps</p>}
     </Card>
   );
 }

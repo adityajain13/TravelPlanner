@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useMemo, useState } from "react";
-import { ArrowLeft, BedDouble, ChevronLeft, ChevronRight, Copy, Globe, Map as MapIcon, Navigation, Phone, X } from "lucide-react";
+import { ArrowLeft, BedDouble, ChevronLeft, ChevronRight, Copy, Globe, LayoutDashboard, Map as MapIcon, Navigation, Phone, X } from "lucide-react";
 import type { Item, Reservation } from "../lib/trips";
 import type { LegState, TravelMode } from "../lib/routing";
 import { formatDistance, formatDuration } from "../lib/routing";
@@ -26,6 +26,8 @@ interface Props {
   mapFor: (day: SectionInfo) => { pins: Pin[]; routes: Route[] };
   onToggleCheck?: (itemId: string, checkId: string) => void;
   onExit: () => void;
+  /** Opens the trip overview over the travel view (phones) */
+  onOverview?: () => void;
 }
 
 const localDate = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -75,7 +77,7 @@ export function TravelView(p: Props) {
 
   return (
     <div className="flex h-full flex-col bg-bg">
-      <TravelHeader title={p.title} onExit={p.onExit} onMap={() => setMap(true)} />
+      <TravelHeader title={p.title} onExit={p.onExit} onMap={() => setMap(true)} onOverview={p.onOverview} />
       <DaySwitcher
         day={day}
         isToday={isToday}
@@ -102,13 +104,19 @@ export function TravelView(p: Props) {
 }
 
 /** Header: back to the full app, the trip, the map on demand. */
-function TravelHeader({ title, onExit, onMap }: { title: string; onExit: () => void; onMap: () => void }) {
+function TravelHeader({ title, onExit, onMap, onOverview }: { title: string; onExit: () => void; onMap: () => void; onOverview?: () => void }) {
   return (
     <header className="flex shrink-0 items-center gap-2 border-b border-line px-3 pt-[max(env(safe-area-inset-top),0.5rem)] pb-2">
       <button onClick={onExit} className="flex items-center gap-1.5 rounded-full px-2.5 py-2 text-[13px] font-semibold text-muted active:bg-surface-2" aria-label="Leave travel mode">
         <ArrowLeft className="size-4" /> Full view
       </button>
       <p className="min-w-0 flex-1 truncate text-center font-display text-[17px]">{title}</p>
+      {/* Icon only: the header has room for one label, and Map is the one used more */}
+      {onOverview && (
+        <button onClick={onOverview} className="flex items-center rounded-full border border-line px-2.5 py-2 active:bg-surface-2" aria-label="Trip overview">
+          <LayoutDashboard className="size-4" />
+        </button>
+      )}
       <button onClick={onMap} className="flex items-center gap-1.5 rounded-full border border-line px-3 py-2 text-[13px] font-semibold active:bg-surface-2">
         <MapIcon className="size-4" /> Map
       </button>
