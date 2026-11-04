@@ -26,7 +26,7 @@ export function BudgetCard({
   return (
     <Card
       title="Budget"
-      className="order-2"
+      className="order-2 flex flex-col lg:flex-1"
       aside={
         <button onClick={() => onGo({ kind: "tab", tab: "budget" })} className={ROW_BUTTON}>
           <Wallet className="mr-1 inline size-3.5" />
@@ -38,7 +38,7 @@ export function BudgetCard({
       <p className="mt-1 text-[14px] text-muted">
         {budget ? `${left >= 0 ? "left" : "over"} of ${formatMoney(budget, currency)}` : "spent so far · no budget set"}
       </p>
-      <div className="mt-4">{spent > 0 ? <BudgetSpark actual={series.actual} plan={series.plan} /> : <p className="py-6 text-center text-[13px] text-muted">Nothing spent yet</p>}</div>
+      <div className="mt-4 flex min-h-20 flex-1 flex-col justify-center">{spent > 0 ? <BudgetSpark actual={series.actual} plan={series.plan} /> : <p className="py-6 text-center text-[13px] text-muted">Nothing spent yet</p>}</div>
       {spent > 0 && (
         <p className={`mt-2 text-[12px] ${trendingOver ? "text-amber-400" : "text-muted"}`}>
           Spent {formatMoney(spent, currency)}
