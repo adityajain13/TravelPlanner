@@ -14,14 +14,14 @@ export function DaysGrid({ sections, legs, subtitles, onGo }: { sections: Sectio
   const stops = days.reduce((n, s) => n + placesOf(s).length, 0);
   const [theme] = useTheme();
   const maps = useMiniMaps(
-    days.map((s) => ({ key: s.key, points: dayCardOf(s, undefined).points })),
+    days.map((s) => ({ key: s.key, points: dayCardOf(s, legs.get(s.writeKey ?? s.key)).points })),
     theme,
   );
   return (
     <Card title="Your days" aside={`${stops} stops · ${days.length} days`} className="order-4">
       <div className="-mx-4 flex snap-x snap-mandatory scroll-px-4 gap-3 overflow-x-auto px-4 pb-1 sm:mx-0 sm:grid sm:grid-cols-2 sm:overflow-visible sm:px-0 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
         {days.map((s) => (
-          <DayCard key={s.key} section={s} legs={legs.get(s.key)} subtitle={subtitles?.[s.key]} mini={maps.get(s.key)} onGo={onGo} />
+          <DayCard key={s.key} section={s} legs={legs.get(s.writeKey ?? s.key)} subtitle={subtitles?.[s.key]} mini={maps.get(s.key)} onGo={onGo} />
         ))}
       </div>
       {maps.size > 0 && <p className="mt-2 text-[10px] text-muted/70">Maps © OpenStreetMap contributors · Protomaps</p>}
