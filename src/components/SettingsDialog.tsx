@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
-import { Crosshair, EyeOff, Moon, MoonStar, PanelBottom, PanelLeft, PanelLeftDashed, Plane, RectangleHorizontal, Pill, Clock, Hourglass, Sun, X, Sparkles, Loader2, Check, Luggage, CalendarPlus, Footprints } from "lucide-react";
+import { Crosshair, EyeOff, Moon, MoonStar, PanelBottom, PanelLeft, PanelLeftDashed, Plane, RectangleHorizontal, Pill, Clock, Hourglass, Sun, X, Sparkles, Loader2, Check, Luggage, CalendarPlus } from "lucide-react";
 import { useIsPhone, useTravelMode } from "../lib/travelMode";
 import type * as Y from "yjs";
 import { readTrip } from "../lib/trips";
@@ -9,7 +9,7 @@ import { withNotes, tidyNotes } from "../lib/tidyNotes";
 import { useTheme, type Theme } from "../lib/theme";
 import { useSettings, type Settings, type SettingsScope } from "../lib/settings";
 
-/** App settings (this device). One section per setting; options as selectable cards. */
+/** App settings (this device). Grouped into sections; each option is a selectable segmented control. */
 export function SettingsDialog({ onClose, scope, doc }: { onClose: () => void; scope?: SettingsScope | null; doc?: Y.Doc }) {
   const [settings, update, where] = useSettings(scope);
   const [theme, , setTheme] = useTheme();
@@ -31,38 +31,43 @@ export function SettingsDialog({ onClose, scope, doc }: { onClose: () => void; s
           </button>
         </div>
 
-        <AppearanceRow theme={theme} onPick={setTheme} />
-        {phone && (
-          <>
-            <div className="my-4 border-t border-line" />
-            <TravelModeRow travel={travel} setTravel={setTravel} onClose={onClose} />
-          </>
+        <Section title="Display" first>
+          <AppearanceRow theme={theme} onPick={setTheme} />
+          {phone && <TravelModeRow travel={travel} setTravel={setTravel} onClose={onClose} />}
+        </Section>
+        <Section title="Map">
+          <PinClickRow value={settings.pinClick} onPick={(k) => update({ pinClick: k })} />
+          <FlightPathsRow value={settings.flightPaths} onPick={(k) => update({ flightPaths: k })} />
+          <WalkRow value={settings.walkMinutes} onPick={(k) => update({ walkMinutes: k })} />
+        </Section>
+        <Section title="Itinerary">
+          <TimingRow value={settings.timing} onPick={(k) => update({ timing: k })} />
+          <BookingStyleRow value={settings.bookingStyle} onPick={(k) => update({ bookingStyle: k })} />
+          {/* The contents column only shows on wide screens, so the choice is hidden on phones */}
+          {!phone && <ContentsRow value={settings.contentsWidth} onPick={(k) => update({ contentsWidth: k })} />}
+        </Section>
+        {(doc || scope) && (
+          <Section title="Trip tools">
+            {doc && <CalendarRow doc={doc} />}
+            {scope && <TidyNotesRow doc={scope.doc} />}
+          </Section>
         )}
-        <div className="my-4 border-t border-line" />
-        <PinClickRow value={settings.pinClick} onPick={(k) => update({ pinClick: k })} />
-        <div className="my-4 border-t border-line" />
-        <FlightPathsRow value={settings.flightPaths} onPick={(k) => update({ flightPaths: k })} />
-        <div className="my-4 border-t border-line" />
-        <WalkRow value={settings.walkMinutes} onPick={(k) => update({ walkMinutes: k })} />
-        <div className="my-4 border-t border-line" />
-        <ContentsRow value={settings.contentsWidth} onPick={(k) => update({ contentsWidth: k })} />
-        <div className="my-4 border-t border-line" />
-        <BookingStyleRow value={settings.bookingStyle} onPick={(k) => update({ bookingStyle: k })} />
-        <div className="my-4 border-t border-line" />
-        <TimingRow value={settings.timing} onPick={(k) => update({ timing: k })} />
-        {doc && (
-          <>
-            <div className="my-4 border-t border-line" />
-            <CalendarRow doc={doc} />
-          </>
-        )}
-        {scope && <TidyNotesRow doc={scope.doc} />}
-        <p className="mt-5 text-[12px] text-muted">
+        <p className="mt-6 text-[12px] text-muted">
           {where === "trip" ? "Saved to your account for this trip; appearance is saved on this device." : "Settings are saved on this device."}
         </p>
       </div>
     </div>,
     document.body,
+  );
+}
+
+/** A labelled group of setting rows. The first section has no top border. */
+function Section({ title, first, children }: { title: string; first?: boolean; children: React.ReactNode }) {
+  return (
+    <section className={first ? undefined : "mt-6 border-t border-line pt-5"}>
+      <h3 className="mb-3 text-[11px] font-bold tracking-wider text-muted uppercase">{title}</h3>
+      <div className="space-y-5">{children}</div>
+    </section>
   );
 }
 
@@ -119,9 +124,9 @@ function WalkRow({ value, onPick }: { value: Settings["walkMinutes"]; onPick: (k
   return (
     <Row
       title="Walking areas"
-      hint="How far the eye button on a stop or booking reaches on foot"
+      hint="How far the eye button on a stop reaches on foot"
       value={String(value) as `${Settings["walkMinutes"]}`}
-      options={mins.map((m) => ({ key: `${m}` as `${Settings["walkMinutes"]}`, icon: <Footprints />, short: `${m} min` }))}
+      options={mins.map((m) => ({ key: `${m}` as `${Settings["walkMinutes"]}`, short: `${m} min` }))}
       onPick={(k) => onPick(Number(k) as Settings["walkMinutes"])}
     />
   );
@@ -161,7 +166,7 @@ function TimingRow({ value, onPick }: { value: Settings["timing"]; onPick: (k: S
   return (
     <Row
       title="Stop times"
-      hint={value === "set" ? "You type each stop's start and end" : "From how long each stop takes + travel"}
+      hint={value === "set" ? "You type each stop's start and end" : "Worked out from each stop's length and travel"}
       value={value}
       options={[
         { key: "set", icon: <Clock />, short: "Set" },
@@ -175,14 +180,12 @@ function TimingRow({ value, onPick }: { value: Settings["timing"]; onPick: (k: S
 /** Export the trip as a calendar file. View-only people can export too, so no readOnly check. */
 function CalendarRow({ doc }: { doc: Y.Doc }) {
   return (
-    <div className="flex items-center justify-between gap-4 max-sm:flex-col max-sm:items-stretch">
-      <div className="min-w-0">
-        <p className="text-[15px] font-bold">Calendar</p>
-        <p className="mt-0.5 text-[13px] text-muted">Download an .ics of the days, timed stops and bookings for Google Calendar, Apple Calendar or Outlook.</p>
-      </div>
+    <div>
+      <p className="text-[15px] font-bold">Calendar</p>
+      <p className="mt-0.5 text-[13px] text-muted">An .ics file of days, timed stops and bookings for Google, Apple or Outlook.</p>
       <button
         onClick={() => downloadIcs(readTrip(doc))}
-        className="flex shrink-0 items-center justify-center gap-1.5 rounded-lg border border-line bg-bg px-3 py-1.5 text-[12px] font-bold tracking-wider text-fg uppercase transition-colors hover:border-accent/60 [&>svg]:size-3.5"
+        className="mt-2.5 flex items-center justify-center gap-1.5 rounded-lg border border-line bg-bg px-3 py-1.5 text-[12px] font-bold tracking-wider text-fg uppercase whitespace-nowrap transition-colors hover:border-accent/60 [&>svg]:size-3.5"
       >
         <CalendarPlus className="text-accent" />
         Download .ics
@@ -203,45 +206,38 @@ function TidyNotesRow({ doc }: { doc: Y.Doc }) {
     setRun({ done: list.length, total: list.length, changed, failed });
   };
   return (
-    <>
-      <div className="my-4 border-t border-line" />
-      <div className="flex items-center justify-between gap-4 max-sm:flex-col max-sm:items-stretch">
-        <div className="min-w-0">
-          <p className="text-[15px] font-bold">Booking notes</p>
-          <p className="mt-0.5 text-[13px] text-muted">
-            {busy
-              ? `Formatting ${run.done + 1} of ${run.total}…`
-              : run?.changed != null
-                ? [run.changed ? `Reformatted ${run.changed} of ${run.total}` : "Already in the standard layout", run.failed ? `${run.failed} couldn't be reached, try again` : ""].filter(Boolean).join(" · ")
-                : count
-                  ? `Seat, class, baggage… in one layout (${count} with notes)`
-                  : "No booking notes yet"}
-          </p>
-        </div>
-        <button
-          onClick={go}
-          disabled={busy || !count || !navigator.onLine}
-          className="flex shrink-0 items-center justify-center gap-1.5 rounded-lg border border-line bg-bg px-3 py-1.5 text-[12px] font-bold tracking-wider text-fg uppercase transition-colors hover:border-accent/60 disabled:opacity-50 [&>svg]:size-3.5"
-        >
-          {busy ? <Loader2 className="animate-spin" /> : run?.changed != null ? <Check className="text-accent" /> : <Sparkles className="text-accent" />}
-          {busy ? "Working" : "Format now"}
-        </button>
-      </div>
-    </>
+    <div>
+      <p className="text-[15px] font-bold">Booking notes</p>
+      <p className="mt-0.5 text-[13px] text-muted">
+        {busy
+          ? `Formatting ${run.done + 1} of ${run.total}…`
+          : run?.changed != null
+            ? [run.changed ? `Reformatted ${run.changed} of ${run.total}` : "Already in the standard layout", run.failed ? `${run.failed} couldn't be reached, try again` : ""].filter(Boolean).join(" · ")
+            : count
+              ? `Seat, class, baggage… in one layout (${count} with notes)`
+              : "No booking notes yet"}
+      </p>
+      <button
+        onClick={go}
+        disabled={busy || !count || !navigator.onLine}
+        className="mt-2.5 flex items-center justify-center gap-1.5 rounded-lg border border-line bg-bg px-3 py-1.5 text-[12px] font-bold tracking-wider text-fg uppercase whitespace-nowrap transition-colors hover:border-accent/60 disabled:opacity-50 [&>svg]:size-3.5"
+      >
+        {busy ? <Loader2 className="animate-spin" /> : run?.changed != null ? <Check className="text-accent" /> : <Sparkles className="text-accent" />}
+        {busy ? "Working" : "Format now"}
+      </button>
+    </div>
   );
 }
 
-/** A setting row: label + one-line description on the left, a sliding segmented switch on the right. */
-function Row<K extends string>({ title, hint, value, options, onPick }: { title: string; hint: string; value: K; options: { key: K; icon: React.ReactNode; short: string }[]; onPick: (k: K) => void }) {
+/** A setting row: title and hint on top, a full-width sliding segmented switch below. */
+function Row<K extends string>({ title, hint, value, options, onPick }: { title: string; hint: string; value: K; options: { key: K; icon?: React.ReactNode; short: string }[]; onPick: (k: K) => void }) {
   const at = Math.max(0, options.findIndex((o) => o.key === value));
   return (
-    <div className="flex items-center justify-between gap-4 max-sm:flex-col max-sm:items-stretch">
-      <div className="min-w-0">
-        <p className="text-[15px] font-bold">{title}</p>
-        <p className="mt-0.5 truncate text-[13px] text-muted">{hint}</p>
-      </div>
+    <div>
+      <p className="text-[15px] font-bold">{title}</p>
+      <p className="mt-0.5 text-[13px] text-muted">{hint}</p>
       <div
-        className="relative grid shrink-0 rounded-lg border border-line bg-bg p-0.5"
+        className="relative mt-2.5 grid w-full rounded-lg border border-line bg-bg p-0.5"
         style={{ gridTemplateColumns: `repeat(${options.length}, minmax(0, 1fr))` }}
         role="radiogroup"
         aria-label={title}
@@ -260,7 +256,7 @@ function Row<K extends string>({ title, hint, value, options, onPick }: { title:
               role="radio"
               aria-checked={on}
               onClick={() => onPick(o.key)}
-              className={`relative z-10 flex items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-[12px] font-bold tracking-wider uppercase transition-colors duration-300 [&>svg]:size-3.5 ${on ? "text-on-accent" : "text-muted hover:text-fg"}`}
+              className={`relative z-10 flex items-center justify-center gap-1.5 rounded-md px-2 py-1.5 text-[12px] font-bold tracking-wider whitespace-nowrap uppercase transition-colors duration-300 [&>svg]:size-3.5 ${on ? "text-on-accent" : "text-muted hover:text-fg"}`}
             >
               {o.icon}
               {o.short}
