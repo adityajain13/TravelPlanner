@@ -293,6 +293,12 @@ export function TripPage() {
     if (t.kind === "item") return (setSelectedId(t.id), requestAnimationFrame(() => scrollToId(scrollRef.current, `item-${t.id}`, "center")));
     go(t.tab);
   };
+  // Travel mode unmounts the full view, so leave it first, then let the full view mount before navigating
+  const onTravelOverviewGo = (t: OverviewTarget) => {
+    setShowOverview(false);
+    setTravelOn(false);
+    setTimeout(() => onOverviewGo(t), 60);
+  };
   const contentsProps = {
     sections: view.sections.filter((s) => s.key !== ORPHAN),
     reservations: state.reservations,
@@ -334,21 +340,30 @@ export function TripPage() {
 
   if (lite)
     return (
-      <TravelModeView
-        doc={doc}
-        state={state}
-        view={view}
-        timed={timed}
-        flights={flights}
-        legResults={legResults}
-        legsBySection={legsBySection}
-        theme={theme}
-        readOnly={readOnly}
-        onExit={() => setTravelOn(false)}
-        showSettings={showSettings}
-        setShowSettings={setShowSettings}
-        settingsScope={settingsScope}
-      />
+      <>
+        <TravelModeView
+          doc={doc}
+          state={state}
+          view={view}
+          timed={timed}
+          flights={flights}
+          legResults={legResults}
+          legsBySection={legsBySection}
+          theme={theme}
+          readOnly={readOnly}
+          onExit={() => setTravelOn(false)}
+          showSettings={showSettings}
+          setShowSettings={setShowSettings}
+          settingsScope={settingsScope}
+          onOverview={() => setShowOverview(true)}
+        />
+        {/* The overview lives below the main return, which travel mode skips, so it's rendered here too */}
+        {showOverview && (
+          <OverviewScreen onClose={() => setShowOverview(false)}>
+            <OverviewContent state={state} sections={overviewSections} legs={legsBySection} lines={lines} spent={spent} today={today} readOnly={!!readOnly} onGo={onTravelOverviewGo} />
+          </OverviewScreen>
+        )}
+      </>
     );
 
   return (
