@@ -1,3 +1,4 @@
+import { askWithTool } from "./claude";
 import { getSession } from "./auth";
 import { API, error, type Env } from "./util";
 /*
@@ -119,31 +120,19 @@ export async function handleNotes(req: Request, env: Env, url: URL): Promise<Res
   const body = (await req.json().catch(() => null)) as { type?: string; title?: string; notes?: string } | null;
   const notes = body?.notes?.slice(0, 4000);
   if (!body?.type || !notes?.trim()) return error(400, "Missing type/notes");
-  const res = await fetch("https://api.anthropic.com/v1/messages", {
-    method: "POST",
-    headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
-    body: JSON.stringify({
-      model: env.EXTRACT_MODEL || "claude-haiku-5-5",
-      max_tokens: 800,
-      tools: [TIDY_TOOL],
-      tool_choice: { type: "tool", name: TIDY_TOOL.name },
-      messages: [
-        {
-          role: "user",
-          content: `Sort the notes of this ${body.type} booking ("${body.title ?? ""}") into the detail fields. Put every fact into the field it fits best; the free "notes" field is only for leftovers that fit no field at all (usually nothing). Keep every fact; reword only to make values short. Drop what repeats the title (airline, flight number, hotel name, route) and anything about the trip being direct/nonstop or its duration.
+  const r = await askWithTool<{ details?: unknown; notes?: string }>(env, {
+    model: env.EXTRACT_MODEL || "claude-haiku-5-5",
+    maxTokens: 800,
+    tool: TIDY_TOOL,
+    content: `Sort the notes of this ${body.type} booking ("${body.title ?? ""}") into the detail fields. Put every fact into the field it fits best; the free "notes" field is only for leftovers that fit no field at all (usually nothing). Keep every fact; reword only to make values short. Drop what repeats the title (airline, flight number, hotel name, route) and anything about the trip being direct/nonstop or its duration.
 
 Example (flight): "Peach MM312, direct, 1h 40m, Economy. Seat assigned at check-in. Baggage: 1 personal item, 1 cabin bag (max 5 kg), 1 checked bag (max 20 kg)."
 → details { cabin: "Economy", seat: "Assigned at check-in", baggage: "1 personal item, 1 cabin bag (5 kg), 1 checked bag (20 kg)" }, notes empty.
 
 Notes:
 ${notes}`,
-        },
-      ],
-    }),
   });
-  if (!res.ok) return error(502, "Couldn't tidy");
-  const data = (await res.json()) as { content: { type: string; input?: { details?: unknown; notes?: string } }[] };
-  const out = data.content.find((c) => c.type === "tool_use")?.input;
+  const out = r.input;
   if (!out) return error(502, "Couldn't tidy");
   return Response.json({ notes: formatBookingNotes(body.type, out.details, out.notes) ?? "" });
 }

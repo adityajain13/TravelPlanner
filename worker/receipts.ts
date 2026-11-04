@@ -1,3 +1,4 @@
+import { askWithTool } from "./claude";
 import { getSession } from "./auth";
 import { API, error, type Env } from "./util";
 
@@ -52,35 +53,19 @@ export async function handleReceipts(req: Request, env: Env, url: URL): Promise<
   const body = (await req.json().catch(() => null)) as { image?: string; trip?: { destination?: string; currency?: string } } | null;
   if (!body?.image || body.image.length > 6_000_000) return error(400, "Missing or oversized image");
   const ask = async (model: string) => {
-    const res = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
-      body: JSON.stringify({
-        model,
-        max_tokens: 3000,
-        tools: [TOOL],
-        tool_choice: { type: "tool", name: TOOL.name },
-        messages: [
-          {
-            role: "user",
-            content: [
-              { type: "image", source: { type: "base64", media_type: "image/jpeg", data: body.image } },
-              {
-                type: "text",
-                text: `Read this receipt${body.trip?.destination ? ` (from a trip to ${body.trip.destination})` : ""}. The photo may be sideways, upside down, crumpled or in poor light: read it anyway, and only set readable=false if it isn't a receipt at all or the prices can't be made out. List every item line with its price (weighed items: the line total, e.g. "0.840 kg @ $6.58/kg" → the printed amount). Note whether tax is added on top (Canada/US style; untaxed lines like fresh food are taxable=false) or already included in the prices.`,
-              },
-            ],
-          },
-        ],
-      }),
+    const r = await askWithTool<Record<string, unknown>>(env, {
+      model,
+      maxTokens: 3000,
+      tool: TOOL,
+      content: [
+        { type: "image", source: { type: "base64", media_type: "image/jpeg", data: body.image } },
+        {
+          type: "text",
+          text: `Read this receipt${body.trip?.destination ? ` (from a trip to ${body.trip.destination})` : ""}. The photo may be sideways, upside down, crumpled or in poor light: read it anyway, and only set readable=false if it isn't a receipt at all or the prices can't be made out. List every item line with its price (weighed items: the line total, e.g. "0.840 kg @ $6.58/kg" → the printed amount). Note whether tax is added on top (Canada/US style; untaxed lines like fresh food are taxable=false) or already included in the prices.`,
+        },
+      ],
     });
-    if (!res.ok) {
-      const detail = (await res.text()).slice(0, 300);
-      console.error("receipt parse", model, res.status, detail);
-      return { fail: `${res.status} ${(/"message"\s*:\s*"([^"]+)"/.exec(detail)?.[1] ?? "").slice(0, 120)}`.trim() };
-    }
-    const data = (await res.json()) as { content: { type: string; input?: Record<string, unknown> }[] };
-    return { out: data.content.find((c) => c.type === "tool_use")?.input };
+    return { out: r.input, fail: r.fail };
   };
   // The receipt model first (small print), then the email model if that one is unavailable or gives up
   const models = [...new Set([env.RECEIPT_MODEL || "claude-sonnet-5-5", env.EXTRACT_MODEL || "claude-haiku-5-5"])];
