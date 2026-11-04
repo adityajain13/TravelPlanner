@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
-import { Crosshair, EyeOff, Moon, MoonStar, PanelBottom, PanelLeft, PanelLeftDashed, Plane, RectangleHorizontal, Pill, Clock, Hourglass, Sun, X, Sparkles, Loader2, Check, Luggage, CalendarPlus } from "lucide-react";
+import { Crosshair, EyeOff, Moon, MoonStar, PanelBottom, PanelLeft, PanelLeftDashed, Plane, RectangleHorizontal, Pill, Clock, Hourglass, Sun, X, Sparkles, Loader2, Check, Luggage, CalendarPlus, Footprints } from "lucide-react";
 import { useIsPhone, useTravelMode } from "../lib/travelMode";
 import type * as Y from "yjs";
 import { readTrip } from "../lib/trips";
@@ -42,6 +42,8 @@ export function SettingsDialog({ onClose, scope, doc }: { onClose: () => void; s
         <PinClickRow value={settings.pinClick} onPick={(k) => update({ pinClick: k })} />
         <div className="my-4 border-t border-line" />
         <FlightPathsRow value={settings.flightPaths} onPick={(k) => update({ flightPaths: k })} />
+        <div className="my-4 border-t border-line" />
+        <WalkRow value={settings.walkMinutes} onPick={(k) => update({ walkMinutes: k })} />
         <div className="my-4 border-t border-line" />
         <ContentsRow value={settings.contentsWidth} onPick={(k) => update({ contentsWidth: k })} />
         <div className="my-4 border-t border-line" />
@@ -107,6 +109,20 @@ function FlightPathsRow({ value, onPick }: { value: Settings["flightPaths"]; onP
         { key: "hide", icon: <EyeOff />, short: "Hide" },
       ]}
       onPick={onPick}
+    />
+  );
+}
+
+/** Row keys are strings (the Row component's contract); they map back to minutes. */
+function WalkRow({ value, onPick }: { value: Settings["walkMinutes"]; onPick: (k: Settings["walkMinutes"]) => void }) {
+  const mins: Settings["walkMinutes"][] = [5, 10, 15, 20];
+  return (
+    <Row
+      title="Walking areas"
+      hint="How far the eye button on a stop or booking reaches on foot"
+      value={String(value) as `${Settings["walkMinutes"]}`}
+      options={mins.map((m) => ({ key: `${m}` as `${Settings["walkMinutes"]}`, icon: <Footprints />, short: `${m} min` }))}
+      onPick={(k) => onPick(Number(k) as Settings["walkMinutes"])}
     />
   );
 }

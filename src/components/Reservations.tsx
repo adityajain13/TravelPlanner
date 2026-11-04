@@ -1,4 +1,6 @@
 import { dtf } from "../lib/intl";
+import { WalkButton } from "./WalkButton";
+import { walkable } from "../lib/walkTargets";
 import { RichField, RichText } from "./RichText";
 import { airportsNow, flightAirports, localToUtc, travelInstant } from "../lib/airports";
 import { useState } from "react";
@@ -87,7 +89,7 @@ const niceTime = (t?: string) => {
 };
 const at = (d?: string, t?: string) => [niceDate(d), niceTime(t)].filter(Boolean).join(" • ");
 
-export function ReservationsPanel({ doc, state, readOnly, tripId, canForward }: { doc: Y.Doc; state: TripState; readOnly: boolean; tripId?: string; canForward?: boolean }) {
+export function ReservationsPanel({ doc, state, readOnly, tripId, canForward, walkOn, onToggleWalk }: { doc: Y.Doc; state: TripState; readOnly: boolean; tripId?: string; canForward?: boolean; walkOn?: Set<string>; onToggleWalk?: (id: string) => void }) {
   const [editing, setEditing] = useState<Partial<Reservation> | null>(null);
   const [forward, setForward] = useState<"forward" | "history" | null>(null);
   const [collapsed, setCollapsed] = useState<Set<ReservationType>>(new Set());
@@ -127,7 +129,7 @@ export function ReservationsPanel({ doc, state, readOnly, tripId, canForward }: 
               <>
                 <ul className="mt-5 space-y-4">
                   {list.map((r) => (
-                    <ReservationCard key={r.id} r={r} currency={currency} readOnly={readOnly} onEdit={() => setEditing(r)} onDelete={async () => (await askConfirm({ title: `Delete ${r.title}?`, body: "Its cost leaves the budget too." })) && removeReservation(doc, r.id)} />
+                    <ReservationCard key={r.id} r={r} currency={currency} readOnly={readOnly} onEdit={() => setEditing(r)} onDelete={async () => (await askConfirm({ title: `Delete ${r.title}?`, body: "Its cost leaves the budget too." })) && removeReservation(doc, r.id)} walkShown={walkOn?.has(`res:${r.id}`)} onWalk={walkable(r) && onToggleWalk ? () => onToggleWalk(`res:${r.id}`) : undefined} />
                   ))}
                 </ul>
                 {!readOnly && (
@@ -161,7 +163,7 @@ export function ReservationsPanel({ doc, state, readOnly, tripId, canForward }: 
 }
 
 /** Wanderlog-style booking card: details on the left, confirmation # and cost on the right. */
-function ReservationCard({ r, currency, readOnly, onEdit, onDelete }: { r: Reservation; currency: string; readOnly: boolean; onEdit: () => void; onDelete: () => void }) {
+function ReservationCard({ r, currency, readOnly, onEdit, onDelete, walkShown, onWalk }: { r: Reservation; currency: string; readOnly: boolean; onEdit: () => void; onDelete: () => void; walkShown?: boolean; onWalk?: () => void }) {
   const f = FIELDS[r.type];
   const route = r.from || r.to ? [r.from, r.to].filter(Boolean).join(" → ") : null;
   const twoStep = r.type === "car" || r.type === "flight" || r.type === "train";
@@ -222,14 +224,20 @@ function ReservationCard({ r, currency, readOnly, onEdit, onDelete }: { r: Reser
           )}
         </div>
       )}
-      {!readOnly && (
-        <div className="absolute top-3 right-3 flex gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 max-md:opacity-100" onClick={(e) => e.stopPropagation()}>
-          <button onClick={onEdit} className="grid size-8 place-items-center rounded-full bg-surface text-muted hover:text-fg" title="Edit">
-            <Pencil className="size-4" />
-          </button>
-          <button onClick={onDelete} className="grid size-8 place-items-center rounded-full bg-surface text-muted hover:text-danger" title="Delete">
-            <Trash2 className="size-4" />
-          </button>
+      {(!readOnly || onWalk) && (
+        <div className="absolute top-3 right-3 flex gap-0.5" onClick={(e) => e.stopPropagation()}>
+          {/* The eye stays visible (and works read-only); edit and delete show on hover */}
+          {onWalk && <WalkButton on={!!walkShown} onToggle={onWalk} className="grid size-8 place-items-center rounded-full bg-surface" />}
+          {!readOnly && (
+            <>
+              <button onClick={onEdit} className="grid size-8 place-items-center rounded-full bg-surface text-muted opacity-0 transition-opacity group-hover:opacity-100 max-md:opacity-100 hover:text-fg" title="Edit">
+                <Pencil className="size-4" />
+              </button>
+              <button onClick={onDelete} className="grid size-8 place-items-center rounded-full bg-surface text-muted opacity-0 transition-opacity group-hover:opacity-100 max-md:opacity-100 hover:text-danger" title="Delete">
+                <Trash2 className="size-4" />
+              </button>
+            </>
+          )}
         </div>
       )}
     </li>
