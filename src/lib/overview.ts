@@ -22,7 +22,7 @@ export interface LookItem {
 }
 export type Overview = ReturnType<typeof overviewOf>;
 
-type Leg = { mode: TravelMode; state?: LegState };
+type Leg = { mode: TravelMode; state?: LegState; from?: [number, number]; to?: [number, number]; who?: string[] };
 
 /** Local calendar date as YYYY-MM-DD (matches how the trip's days are named). */
 export const localISO = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -194,14 +194,44 @@ export function dayCardOf(s: SectionInfo, legs: Map<string, Leg> | undefined, su
     modes.set(l.mode, (modes.get(l.mode) ?? 0) + l.state.distance);
   }
   const mode = [...modes].sort((a, b) => b[1] - a[1])[0]?.[0];
+  const route = legs ? routeOf(legs) : [];
+  const bookings = [...(legs?.keys() ?? [])].filter((k) => k.startsWith("res:")).length;
   return {
-    title: subtitle ?? (named || "Nothing yet"),
-    empty: stops.length === 0,
+    title: subtitle ?? (named || (route.length > 1 ? "Travel day" : "Nothing yet")),
+    empty: stops.length === 0 && route.length < 2,
     stops: stops.length,
+    bookings,
     distanceKm: meters / 1000,
     mode,
-    points: stops.filter((i) => i.lat != null && i.lng != null).map((i) => [i.lng!, i.lat!] as [number, number]),
+    // The whole day as travelled (hotel, bookings, airports and stops); just the stops when it isn't routed yet
+    points: route.length > 1 ? route : stops.filter((i) => i.lat != null && i.lng != null).map((i) => [i.lng!, i.lat!] as [number, number]),
   };
+}
+
+const near = (a: [number, number], b: [number, number]) => Math.abs(a[0] - b[0]) + Math.abs(a[1] - b[1]) < 0.0005;
+
+/**
+ * The day's legs chained end to end into one path of points. Flight hops are left out (they'd
+ * shrink the city to a dot); on days where people split up, one person's way is shown.
+ */
+function routeOf(legs: Map<string, Leg>): [number, number][] {
+  const firstWho = [...legs.values()].find((l) => l.who?.length)?.who?.[0];
+  const pool = [...legs.values()].filter(
+    (l) => l.from && l.to && !(typeof l.state === "object" && l.state.mode === "flight") && (!l.who?.length || l.who[0] === firstWho),
+  );
+  const out: [number, number][] = [];
+  while (pool.length) {
+    // Start where no other leg ends (the morning hotel or the first stop), then follow from → to
+    let i = pool.findIndex((l) => !pool.some((m) => m !== l && near(m.to!, l.from!)));
+    if (i < 0) i = 0;
+    let cur = pool.splice(i, 1)[0];
+    out.push(cur.from!, cur.to!);
+    for (let j; (j = pool.findIndex((l) => near(l.from!, cur.to!))) >= 0; ) {
+      cur = pool.splice(j, 1)[0];
+      out.push(cur.to!);
+    }
+  }
+  return out.filter((p, k) => k === 0 || !near(p, out[k - 1]));
 }
 
 /** "2.1 km walk", "12 km drive", "5.6 km by transit". */

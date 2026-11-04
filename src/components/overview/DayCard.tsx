@@ -21,7 +21,13 @@ export function DayCard({
   onGo: (t: OverviewTarget) => void;
 }) {
   const c = dayCardOf(section, legs, subtitle);
-  const meta = c.distanceKm > 0 ? `${c.stops} ${c.stops === 1 ? "stop" : "stops"} · ${distanceText(c.distanceKm, c.mode)}` : `${c.stops} ${c.stops === 1 ? "stop" : "stops"}`;
+  const meta = [
+    c.stops ? `${c.stops} ${c.stops === 1 ? "stop" : "stops"}` : "",
+    c.bookings ? `${c.bookings} ${c.bookings === 1 ? "booking" : "bookings"}` : "",
+    c.distanceKm > 0 ? distanceText(c.distanceKm, c.mode) : "",
+  ]
+    .filter(Boolean)
+    .join(" · ");
   return (
     <button
       onClick={() => onGo({ kind: "section", key: section.key })}
