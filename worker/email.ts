@@ -1,3 +1,4 @@
+import { askWithTool } from "./claude";
 import PostalMime from "postal-mime";
 import { sendMail, type Env } from "./util";
 import { canLogin } from "./auth";
@@ -100,33 +101,18 @@ Subject: ${subject}
 
 ${body.slice(0, MAX_CHARS)}`;
 
-  const res = await fetch("https://api.anthropic.com/v1/messages", {
-    method: "POST",
-    headers: {
-      "x-api-key": env.ANTHROPIC_API_KEY,
-      "anthropic-version": "2023-06-01",
-      "content-type": "application/json",
-    },
-    body: JSON.stringify({
-      model: env.EXTRACT_MODEL || "claude-haiku-5-5",
-      max_tokens: 3000,
-      tools: [TOOL],
-      tool_choice: { type: "tool", name: TOOL.name },
-      // Attached PDFs (e-tickets, invoices) are read too: often the only place the price is
-      messages: [
-        {
-          role: "user",
-          content: [
-            ...pdfs.map((a) => ({ type: "document", source: { type: "base64", media_type: "application/pdf", data: a.base64 }, title: a.filename })),
-            { type: "text", text: prompt },
-          ],
-        },
-      ],
-    }),
+  // Attached PDFs (e-tickets, invoices) are read too: often the only place the price is
+  const r = await askWithTool<{ bookings: Booking[]; trip_id: string | null; summary: string }>(env, {
+    model: env.EXTRACT_MODEL || "claude-haiku-5-5",
+    maxTokens: 3000,
+    tool: TOOL,
+    content: [
+      ...pdfs.map((a) => ({ type: "document", source: { type: "base64", media_type: "application/pdf", data: a.base64 }, title: a.filename })),
+      { type: "text", text: prompt },
+    ],
   });
-  if (!res.ok) throw new Error(`Claude API ${res.status}: ${(await res.text()).slice(0, 200)}`);
-  const data = (await res.json()) as { content: { type: string; input?: unknown }[] };
-  const out = data.content.find((c) => c.type === "tool_use")?.input as { bookings: Booking[]; trip_id: string | null; summary: string } | undefined;
+  if (r.fail) throw new Error(`Claude API ${r.fail}`);
+  const out = r.input;
   if (!out) throw new Error("No structured output");
   const valid = new Set(trips.map((t) => t.id));
   dedupeLegCosts(out.bookings);
