@@ -10,6 +10,8 @@ import { formatDistance, formatDuration, type LegState, type TravelMode } from "
 import type { PlaceResult } from "../lib/photon";
 import { formatDayHeading } from "../lib/dates";
 import { ItemCard } from "./ItemCard";
+import { WalkButton } from "./WalkButton";
+import { walkable } from "../lib/walkTargets";
 import { fmtTime, TimeField } from "./TimeField";
 import { RichText } from "./RichText";
 import { PlaceSearch } from "./PlaceSearch";
@@ -90,6 +92,9 @@ interface Props {
   collapsed?: boolean;
   onCollapsed?: (collapsed: boolean) => void;
   dayStart?: { value: string; isDefault: boolean; landed?: string; onChange?: (t: string | undefined) => void };
+  /** Stops and bookings switched on for a walking area (ids; bookings' copies included), and the eye toggle. */
+  walkOn?: Set<string>;
+  onToggleWalk?: (id: string) => void;
 }
 
 type Chips = NonNullable<Props["chips"]>;
@@ -154,7 +159,7 @@ function SectionView(p: Props & { dropRef: (el: HTMLElement | null) => void; isO
 
       {chipsAt.get(0) && (
         <div className={card ? "mt-2 px-3" : "mt-2"}>
-          <BookingRows chips={chipsAt.get(0)!} card={card} date={info.date} legs={p.legs} readOnly={p.readOnly} onLegMode={p.onLegMode} onChipClick={p.onChipClick} />
+          <BookingRows chips={chipsAt.get(0)!} card={card} date={info.date} legs={p.legs} readOnly={p.readOnly} onLegMode={p.onLegMode} onChipClick={p.onChipClick} walkOn={p.walkOn} onToggleWalk={p.onToggleWalk} />
         </div>
       )}
       {open && (
@@ -184,7 +189,7 @@ function SectionView(p: Props & { dropRef: (el: HTMLElement | null) => void; isO
             const endLeg = p.legs?.has("end") && <LegChips legs={p.legs} id="end" readOnly={p.readOnly} onLegMode={p.onLegMode} />;
             const rows = (chips: NonNullable<typeof last>) => (
               <div className={card ? "pt-1" : "py-1.5"}>
-                <BookingRows chips={chips} card={card} date={info.date} legs={p.legs} readOnly={p.readOnly} onLegMode={p.onLegMode} onChipClick={p.onChipClick} />
+                <BookingRows chips={chips} card={card} date={info.date} legs={p.legs} readOnly={p.readOnly} onLegMode={p.onLegMode} onChipClick={p.onChipClick} walkOn={p.walkOn} onToggleWalk={p.onToggleWalk} />
               </div>
             );
             if (!last)
@@ -248,6 +253,8 @@ type ItemWiring = Pick<
   | "onReceipt"
   | "receiptsLabel"
   | "onChipClick"
+  | "walkOn"
+  | "onToggleWalk"
 >;
 
 function itemWiring(p: Props): ItemWiring {
@@ -279,6 +286,8 @@ function itemWiring(p: Props): ItemWiring {
     onReceipt: p.onReceipt,
     receiptsLabel: p.receiptsLabel,
     onChipClick: p.onChipClick,
+    walkOn: p.walkOn,
+    onToggleWalk: p.onToggleWalk,
   };
 }
 
@@ -312,6 +321,8 @@ function BookingRows({
   readOnly,
   onLegMode,
   onChipClick,
+  walkOn,
+  onToggleWalk,
 }: {
   chips: Chips;
   card: boolean;
@@ -320,6 +331,8 @@ function BookingRows({
   readOnly?: boolean;
   onLegMode?: Props["onLegMode"];
   onChipClick?: (r: Reservation) => void;
+  walkOn?: Set<string>;
+  onToggleWalk?: (id: string) => void;
 }) {
   return card ? (
     <div className="space-y-0.5">
@@ -348,6 +361,10 @@ function BookingRows({
                 {c.clock && <span className="shrink-0 text-[13px] font-semibold text-fg tabular-nums">{fmtTime(c.clock)}</span>}
                 <BookingNotes copies={c.copies ?? [c.r]} verb={c.verb} />
               </button>
+              {/* Sibling of the card body, not inside it: the eye is its own button */}
+              {walkable(c.r) && walkOn && onToggleWalk && (
+                <WalkButton on={(c.copies ?? [c.r]).some((x) => walkOn.has(`res:${x.id}`))} onToggle={() => onToggleWalk(`res:${c.r.id}`)} className="mt-1.5 grid size-7 shrink-0 place-items-center rounded-md hover:bg-surface-2" />
+              )}
             </div>
           </div>
         );
@@ -624,7 +641,7 @@ function StopRow({ item, idx, number, info, chipsBefore, card, canInsert, insert
     <div data-item-wrap className="scroll-mt-28">
       {idx > 0 && chipsBefore && (
         <div className={card ? "pt-1" : "pt-2 pb-1"}>
-          <BookingRows chips={chipsBefore} card={card} date={info.date} legs={p.legs} readOnly={p.readOnly} onLegMode={p.onLegMode} onChipClick={p.onChipClick} />
+          <BookingRows chips={chipsBefore} card={card} date={info.date} legs={p.legs} readOnly={p.readOnly} onLegMode={p.onLegMode} onChipClick={p.onChipClick} walkOn={p.walkOn} onToggleWalk={p.onToggleWalk} />
         </div>
       )}
       {insertAt === idx ? (
@@ -682,6 +699,8 @@ function StopRow({ item, idx, number, info, chipsBefore, card, canInsert, insert
         people={info.kind === "day" ? p.people : undefined}
         onReceipt={p.onReceipt ? (f) => p.onReceipt!(item.id, f) : undefined}
         receiptsLabel={p.receiptsLabel?.(item.id)}
+        walkShown={p.walkOn?.has(item.id)}
+        onToggleWalk={p.onToggleWalk ? () => p.onToggleWalk!(item.id) : undefined}
       />
     </div>
   );

@@ -11,6 +11,7 @@ import { PhotoCredit } from "./PhotoCredit";
 import { PinMarker } from "./ItemCard";
 import { GoogleDetails } from "./GoogleDetails";
 import { SectionPicker, type SectionTarget } from "./SectionPicker";
+import { WalkButton } from "./WalkButton";
 
 export type PanelMode = "compact" | "full";
 
@@ -38,6 +39,9 @@ interface Props {
   from?: { lat: number; lng: number };
   /** Reports the space the panel covers so the map can frame the pin around it. */
   onInset: (inset: { top: number; bottom: number }) => void;
+  /** Walking area around this place: on now, and the eye toggle. */
+  walkShown?: boolean;
+  onToggleWalk?: () => void;
 }
 
 type Summary = { text: string; url?: string } | null | undefined;
@@ -103,12 +107,14 @@ export function PlacePanel(p: Props) {
         onNext={p.onNext}
         onMode={p.onMode}
         onClose={p.onClose}
+        walkShown={p.walkShown}
+        onToggleWalk={p.onToggleWalk}
       />
     );
 
   return (
     <div ref={ref} className="absolute bottom-3 left-3 right-14 z-20 flex max-h-[min(58%,560px)] flex-col overflow-hidden rounded-2xl border border-line bg-surface/97 shadow-2xl backdrop-blur max-sm:right-3">
-      <PanelHeader index={p.index} total={p.total} onPrev={p.onPrev} onNext={p.onNext} onMode={p.onMode} onClose={p.onClose} />
+      <PanelHeader index={p.index} total={p.total} onPrev={p.onPrev} onNext={p.onNext} onMode={p.onMode} onClose={p.onClose} walkShown={p.walkShown} onToggleWalk={p.onToggleWalk} />
       <div className="min-h-0 overflow-y-auto px-4 pt-3 pb-3.5">
         <div className="flex gap-4">
           <div className="min-w-0 flex-1">
@@ -157,7 +163,11 @@ function PanelHeader({
   onNext,
   onMode,
   onClose,
+  walkShown,
+  onToggleWalk,
 }: {
+  walkShown?: boolean;
+  onToggleWalk?: () => void;
   index: number;
   total: number;
   onPrev?: () => void;
@@ -169,6 +179,7 @@ function PanelHeader({
     <div className="flex items-center justify-between gap-2 border-b border-line px-4 py-2">
       <PlaceNav index={index} total={total} onPrev={onPrev} onNext={onNext} />
       <div className="flex">
+        {onToggleWalk && <WalkButton on={!!walkShown} onToggle={onToggleWalk} className="grid size-8 place-items-center rounded-full hover:bg-surface-2" />}
         <button onClick={() => onMode("compact")} className={ICON_BTN} title="Shrink" aria-label="Shrink">
           <Minimize2 className="size-4" />
         </button>
@@ -192,7 +203,11 @@ function CompactPanel({
   onNext,
   onMode,
   onClose,
+  walkShown,
+  onToggleWalk,
 }: {
+  walkShown?: boolean;
+  onToggleWalk?: () => void;
   rootRef: RefObject<HTMLDivElement | null>;
   item: Item;
   number?: number;
@@ -229,6 +244,7 @@ function CompactPanel({
           <div className="mt-1.5 flex items-center justify-between gap-2">
             <PlaceNav index={index} total={total} onPrev={onPrev} onNext={onNext} />
             <div className="flex">
+              {onToggleWalk && <WalkButton on={!!walkShown} onToggle={onToggleWalk} className="grid size-8 place-items-center rounded-full hover:bg-surface-2" />}
               <button onClick={() => onMode("full")} className={ICON_BTN} title="Show details" aria-label="Show details">
                 <Maximize2 className="size-4" />
               </button>

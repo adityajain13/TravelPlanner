@@ -51,4 +51,7 @@ export interface PlanContext {
   setCostFor: Dispatch<SetStateAction<string | null>>;
   setCompareDay: Dispatch<SetStateAction<string | null>>;
   setDayDraft: (date: string, draft: string | undefined) => void;
+  /** Stops and bookings with a walking area on (eye buttons), and flipping one. */
+  walkOn: Set<string>;
+  toggleWalk: (id: string) => void;
 }

@@ -16,6 +16,7 @@ import { fmtTime, StayField, TimeRangeField } from "./TimeField";
 import { googleMapsLink } from "../lib/photon";
 import { GoogleDetails } from "./GoogleDetails";
 import { SectionPicker, type SectionTarget } from "./SectionPicker";
+import { WalkButton } from "./WalkButton";
 
 interface Props {
   item: Item;
@@ -53,6 +54,9 @@ interface Props {
   receiptsLabel?: string;
   /** The trip's people (days only): pick who goes to this stop. */
   people?: string[];
+  /** Walking area around this stop: on now, and the eye toggle. */
+  walkShown?: boolean;
+  onToggleWalk?: () => void;
 }
 
 /** Wanderlog-style teardrop marker with the stop number, in the day's colour. */
@@ -105,7 +109,7 @@ const ItemCardMemo = memoLatest(ItemCardView, "ItemCard");
 
 function ItemCardView({
   item, number, color, selected, readOnly, currency = "CAD", searchContext, timeBefore, auto, onStay, onSelect, onChange, onDelete,
-  checked, selecting, onCheck, targets, onMoveTo, sections, onToggleSection, onCostDetails, people, onReceipt, receiptsLabel, sortable, overlay,
+  checked, selecting, onCheck, targets, onMoveTo, sections, onToggleSection, onCostDetails, people, onReceipt, receiptsLabel, sortable, overlay, walkShown, onToggleWalk,
 }: Props & { sortable?: SortableBits; overlay?: boolean }) {
   const { setNodeRef, transform, transition, isDragging } = sortable ?? ({} as Partial<SortableBits>);
   const style = sortable ? { transform: CSS.Translate.toString(transform ?? null), transition } : undefined;
@@ -140,7 +144,7 @@ function ItemCardView({
         <div className="min-w-0 flex-1">
           <div className="flex items-start justify-between gap-2">
             <CardTitle item={item} readOnly={readOnly} onChange={onChange} onDelete={onDelete} />
-            <CardActions item={item} readOnly={readOnly} onReceipt={onReceipt} onChange={onChange} onDelete={onDelete} />
+            <CardActions item={item} readOnly={readOnly} onReceipt={onReceipt} onChange={onChange} onDelete={onDelete} walkShown={walkShown} onToggleWalk={onToggleWalk} />
           </div>
           {isPlace && subtitle && <p className="mt-0.5 truncate text-sm text-muted">{subtitle}</p>}
           {isPlace && !selected && item.notes && <RichText text={item.notes} className="mt-1.5 line-clamp-3 text-[15px] leading-snug text-muted" />}
@@ -268,10 +272,11 @@ function CardTitle({ item, readOnly, onChange, onDelete }: Pick<Props, "item" | 
 }
 
 /** The icon buttons at the card's top right: scan a receipt from the stop, open it in Google Maps, make it a navigation point, remove it. */
-function CardActions({ item, readOnly, onReceipt, onChange, onDelete }: Pick<Props, "item" | "readOnly" | "onReceipt" | "onChange" | "onDelete">) {
+function CardActions({ item, readOnly, onReceipt, onChange, onDelete, walkShown, onToggleWalk }: Pick<Props, "item" | "readOnly" | "onReceipt" | "onChange" | "onDelete" | "walkShown" | "onToggleWalk">) {
   const isPlace = item.kind === "place";
   return (
     <div className="-mt-1 -mr-1 flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 max-md:opacity-100">
+      {isPlace && onToggleWalk && !item.waypoint && item.lat != null && <WalkButton on={!!walkShown} onToggle={onToggleWalk} />}
       {isPlace && onReceipt && !readOnly && !item.waypoint && (
         <ReceiptButton onFile={onReceipt} title="Scan a receipt from here" className="grid size-7 place-items-center rounded-md text-muted hover:bg-surface-2 hover:text-fg" />
       )}

@@ -54,6 +54,8 @@ interface Props {
   mini?: boolean;
   /** Frame every pin, not just the core of the trip (one day shown alone with the eye). */
   frameAll?: boolean;
+  /** "How far can I walk" areas (shaded rings), drawn under the routes and pins. */
+  walkAreas?: { id: string; color: string; ring: [number, number][] }[];
 }
 
 maplibregl.setWorkerUrl(workerUrl);
@@ -98,23 +100,23 @@ const readMode = (): MapMode => {
   }
 };
 
-type Latest = { pins: Pin[]; routes: Route[]; selectedId: string | null; onSelect: (id: string) => void; focusColor?: string };
+type Latest = { pins: Pin[]; routes: Route[]; selectedId: string | null; onSelect: (id: string) => void; focusColor?: string; walkAreas?: Props["walkAreas"] };
 type MapRef = RefObject<maplibregl.Map | null>;
 type LatestRef = RefObject<Latest>;
 
-export function TripMap({ pins, routes, selectedId, onSelect, theme, fitKey, fallbackCenter, inset, frame, focusColor, holdView, mini, frameAll }: Props) {
+export function TripMap({ pins, routes, selectedId, onSelect, theme, fitKey, fallbackCenter, inset, frame, focusColor, holdView, mini, frameAll, walkAreas }: Props) {
   const container = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const [mode, setMode] = useState<MapMode>(readMode);
-  const latest = useRef<Latest>({ pins, routes, selectedId, onSelect, focusColor });
-  latest.current = { pins, routes, selectedId, onSelect, focusColor };
+  const latest = useRef<Latest>({ pins, routes, selectedId, onSelect, focusColor, walkAreas });
+  latest.current = { pins, routes, selectedId, onSelect, focusColor, walkAreas };
   const firstStyle = useRef(true);
   const popup = useRef<maplibregl.Popup | null>(null);
   const centered = useRef<{ id: string; insetKnown: boolean } | null>(null);
 
   useMapInstance({ container, mapRef, latest, theme, mode, mini, fallbackCenter });
   useMapStyle({ mapRef, firstStyle, theme, mode });
-  useMapData({ mapRef, latest, pins, routes, selectedId, focusColor });
+  useMapData({ mapRef, latest, pins, routes, selectedId, focusColor, walkAreas });
   useMapFraming({ mapRef, latest, pins, routes, fitKey, frame, inset, mini, frameAll });
   useSelectionPopup({ mapRef, popup, centered, pins, selectedId, inset, holdView });
 
@@ -242,11 +244,11 @@ function useMapStyle({ mapRef, firstStyle, theme, mode }: { mapRef: MapRef; firs
 }
 
 /** Pushes pins and routes into the map's sources whenever they change. */
-function useMapData({ mapRef, latest, pins, routes, selectedId, focusColor }: Pick<Props, "pins" | "routes" | "selectedId" | "focusColor"> & { mapRef: MapRef; latest: LatestRef }) {
+function useMapData({ mapRef, latest, pins, routes, selectedId, focusColor, walkAreas }: Pick<Props, "pins" | "routes" | "selectedId" | "focusColor" | "walkAreas"> & { mapRef: MapRef; latest: LatestRef }) {
   useEffect(() => {
     const map = mapRef.current;
     if (map?.isStyleLoaded()) pushData(map, latest.current);
-  }, [pins, routes, selectedId, focusColor]);
+  }, [pins, routes, selectedId, focusColor, walkAreas]);
 }
 
 /** Framing: the mini map's fit, re-framing on fitKey, and framing one day's pins. */
@@ -381,6 +383,10 @@ function addOverlay(map: maplibregl.Map) {
   if (map.getSource("trip-pins")) return;
   map.addSource("trip-routes", { type: "geojson", data: empty() });
   map.addSource("trip-pins", { type: "geojson", data: empty() });
+  // Walking areas first, so they sit under the routes (added before trip-routes-solid) and pins
+  map.addSource("walk-areas", { type: "geojson", data: empty() });
+  map.addLayer({ id: "walk-areas-fill", type: "fill", source: "walk-areas", paint: { "fill-color": ["get", "color"], "fill-opacity": 0.1 } });
+  map.addLayer({ id: "walk-areas-line", type: "line", source: "walk-areas", paint: { "line-color": ["get", "color"], "line-opacity": 0.55, "line-width": 1.5, "line-dasharray": [2, 2] } });
   const routeLayer = (style: string, paint: Record<string, unknown>) =>
     map.addLayer({
       id: `trip-routes-${style}`,
@@ -502,10 +508,15 @@ function splitShared(routes: Route[], focusColor?: string) {
   return out;
 }
 
-function pushData(map: maplibregl.Map, d: Pick<Props, "pins" | "routes" | "selectedId" | "focusColor">) {
+function pushData(map: maplibregl.Map, d: Pick<Props, "pins" | "routes" | "selectedId" | "focusColor" | "walkAreas">) {
   const pinSrc = map.getSource("trip-pins") as GeoJSONSource | undefined;
   const routeSrc = map.getSource("trip-routes") as GeoJSONSource | undefined;
+  const walkSrc = map.getSource("walk-areas") as GeoJSONSource | undefined;
   if (!pinSrc || !routeSrc) return;
+  walkSrc?.setData({
+    type: "FeatureCollection",
+    features: (d.walkAreas ?? []).map((a) => ({ type: "Feature", geometry: { type: "Polygon", coordinates: [a.ring] }, properties: { color: a.color } })),
+  });
   // Make each pin's image before the data needs it (styleimagemissing alone left them blank)
   for (const p of d.pins) {
     const id = `tp-pin|${p.color}|${p.glyph ? "" : p.label}|${p.glyph ?? ""}`;

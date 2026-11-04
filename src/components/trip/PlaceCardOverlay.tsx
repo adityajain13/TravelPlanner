@@ -23,6 +23,8 @@ export function PlaceCardOverlay({
   sectionsOf,
   toggleSection,
   setPanelInset,
+  walkOn,
+  toggleWalk,
 }: {
   doc: Y.Doc;
   state: TripState;
@@ -40,6 +42,8 @@ export function PlaceCardOverlay({
   sectionsOf: (itemId: string) => string[];
   toggleSection: (itemId: string, shown: string) => void;
   setPanelInset: Dispatch<SetStateAction<TripPin | null>>;
+  walkOn: Set<string>;
+  toggleWalk: (id: string) => void;
 }) {
   // The stop before this one on its day: the card's route starts there
   const prevStop = (() => {
@@ -72,6 +76,8 @@ export function PlaceCardOverlay({
       currency={state.meta.currency ?? "CAD"}
       from={prevStop}
       onInset={setPanelInset}
+      walkShown={walkOn.has(openItem.id)}
+      onToggleWalk={() => toggleWalk(openItem.id)}
     />
   );
 }

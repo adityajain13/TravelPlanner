@@ -19,10 +19,12 @@ export interface Settings {
   bookingStyle: "card" | "pill";
   /** Stop times typed in, or worked out from how long each stop takes plus the routes. */
   timing: "set" | "auto";
+  /** Walking areas on the map: how far the eye button on a stop or booking reaches on foot, in minutes. */
+  walkMinutes: 5 | 10 | 15 | 20;
 }
 
 const KEY = "tp-settings";
-const DEFAULTS: Settings = { pinClick: "focus", flightPaths: "show", contentsWidth: "thick", bookingStyle: "card", timing: "set" };
+const DEFAULTS: Settings = { pinClick: "focus", flightPaths: "show", contentsWidth: "thick", bookingStyle: "card", timing: "set", walkMinutes: 10 };
 
 const readDevice = (): Settings => {
   try {

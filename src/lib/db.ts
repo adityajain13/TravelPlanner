@@ -33,6 +33,13 @@ export interface RouteRow {
   fetchedAt: number;
 }
 
+/** Walking area around a point (ring of [lng, lat]); own table, as routes' type is LegResult. */
+export interface WalkAreaRow {
+  key: string;
+  ring: [number, number][];
+  fetchedAt: number;
+}
+
 export interface SettingRow {
   key: string;
   value: unknown;
@@ -43,6 +50,7 @@ export const db = new Dexie("travelplanner") as Dexie & {
   settings: EntityTable<SettingRow, "key">;
   regions: EntityTable<RegionRow, "tripId">;
   routes: EntityTable<RouteRow, "key">;
+  walkAreas: EntityTable<WalkAreaRow, "key">;
 };
 
 db.version(1).stores({
@@ -62,4 +70,12 @@ db.version(3).stores({
   settings: "key",
   regions: "tripId",
   routes: "key", // cached leg geometries (derived data, safe to clear)
+});
+
+db.version(4).stores({
+  trips: "id, updatedAt, startDate",
+  settings: "key",
+  regions: "tripId",
+  routes: "key",
+  walkAreas: "key", // "how far can I walk" rings (derived data, safe to clear)
 });

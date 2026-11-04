@@ -36,6 +36,8 @@ export function ItinerarySection({ c, s, si }: { c: PlanContext; s: PlanSection;
     setReceiptFor,
     setEditingRes,
     setCostFor,
+    walkOn,
+    toggleWalk,
   } = c;
   return (
     <>
@@ -57,6 +59,8 @@ export function ItinerarySection({ c, s, si }: { c: PlanContext; s: PlanSection;
         legs={legsBySection.get(s.writeKey ?? s.key)}
         onLegMode={(legId, m) => setLegMode(doc, state, s.key, legId, m)}
         onChipClick={(r) => !readOnly && setEditingRes(r)}
+        walkOn={walkOn}
+        onToggleWalk={toggleWalk}
         onFocus={() => setFocus((f) => (f === s.key ? null : s.key))}
         onSelect={(itemId) => setSelectedId((cur) => (cur === itemId ? null : itemId))}
         onRename={s.listId ? (t) => renameList(doc, s.listId!, t) : undefined}

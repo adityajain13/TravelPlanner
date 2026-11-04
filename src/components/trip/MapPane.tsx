@@ -3,6 +3,7 @@ import { PanelLeft } from "lucide-react";
 import type { DayFrame, ItineraryData, PlanSection, TripView, TripPin } from "./types";
 import type { Item } from "../../lib/trips";
 import type { Theme } from "../../lib/theme";
+import type { WalkArea } from "../../hooks/useWalkAreas";
 // MapLibre is the heaviest dependency; load it after the plan panel is on screen.
 // Start fetching the (large) map chunk as soon as the trip page loads, in parallel with the
 // trip's own data, instead of only once the page has rendered
@@ -30,6 +31,7 @@ export function MapPane({
   panelInset,
   pinClick,
   mapPicked,
+  walkAreas,
   children,
 }: {
   planHidden: boolean;
@@ -51,6 +53,7 @@ export function MapPane({
   panelInset: TripPin | null;
   pinClick: "focus" | "card";
   mapPicked: string | null;
+  walkAreas: WalkArea[];
   children?: ReactNode;
 }) {
   return (
@@ -80,6 +83,7 @@ export function MapPane({
           focusColor={openSection?.color}
           // Settings → "Just open the card": a pin clicked on the map doesn't move the map
           holdView={pinClick === "card" && !!selectedId && mapPicked === selectedId}
+          walkAreas={walkAreas}
         />
       </Suspense>
       {children}

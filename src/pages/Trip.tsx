@@ -24,6 +24,8 @@ import { fetchInbox, type InboxItem } from "../lib/inbox";
 import { useItinerary } from "../hooks/useItinerary";
 import { useTripUpkeep } from "../hooks/useTripUpkeep";
 import { useTripViewState } from "../hooks/useTripViewState";
+import { useWalkAreas, useWalkToggles } from "../hooks/useWalkAreas";
+import { walkPlan } from "../lib/walkTargets";
 import { dayChips, ReservationsPanel } from "../components/Reservations";
 import { BudgetPanel } from "../components/Budget";
 import { OverviewButton } from "../components/overview/OverviewButton";
@@ -149,6 +151,11 @@ export function TripPage() {
     if (state) for (const d of daysBetween(state.meta.startDate, state.meta.endDate)) m.set(d, dayChips(state.reservations, d));
     return m;
   }, [state?.reservations, state?.meta.startDate, state?.meta.endDate]);
+  // "How far can I walk" areas: eye-toggled stops and bookings (per device), drawn for the focused day
+  const { toggles: walkToggles, setMany: setWalk } = useWalkToggles(id);
+  const walk = useMemo(() => walkPlan(state, view?.sections ?? [], focus, walkToggles), [state, view, focus, walkToggles]);
+  const walkAreas = useWalkAreas(walk.targets, settings.walkMinutes);
+  const toggleWalk = (itemId: string) => setWalk(walk.copies.get(itemId) ?? [itemId], !walk.on.has(itemId));
   if (row !== LOADING && !shareToken && auth === "out") return <Navigate to="/login" replace />;
   if (!ready || row === LOADING) return <div className="grid h-full place-items-center text-muted">Loading…</div>;
   if (!state || !doc || !view) return <TripUnavailable canSync={canSync} syncStatus={syncStatus} synced={synced} waited={waited} />;
@@ -336,6 +343,8 @@ export function TripPage() {
     setCostFor,
     setCompareDay,
     setDayDraft,
+    walkOn: walk.on,
+    toggleWalk,
   };
 
   if (lite)
@@ -421,7 +430,7 @@ export function TripPage() {
             onOpenContents={() => setContentsDrawer(true)}
           />
           <div className="px-3">
-            {tab === "bookings" && <ReservationsPanel doc={doc} state={state} readOnly={readOnly} tripId={id} canForward={canReview} />}
+            {tab === "bookings" && <ReservationsPanel doc={doc} state={state} readOnly={readOnly} tripId={id} canForward={canReview} walkOn={walk.on} onToggleWalk={toggleWalk} />}
             {tab === "budget" && <BudgetPanel doc={doc} state={state} readOnly={readOnly} />}
             {tab === "plan" && (<>
             <OverviewButton countdown={overview.countdown} attention={overview.attention} onOpen={() => setShowOverview(true)} />
@@ -467,6 +476,7 @@ export function TripPage() {
         panelInset={panelInset}
         pinClick={settings.pinClick}
         mapPicked={mapPicked}
+        walkAreas={walkAreas}
       >
         <MapOverlays
           doc={doc}
@@ -504,6 +514,8 @@ export function TripPage() {
           sectionsOf={sectionsOf}
           toggleSection={toggleSection}
           setPanelInset={setPanelInset}
+          walkOn={walk.on}
+          toggleWalk={toggleWalk}
         />
       </MapPane>
 
