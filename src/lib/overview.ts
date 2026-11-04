@@ -186,9 +186,12 @@ export function dayCardOf(s: SectionInfo, legs: Map<string, Leg> | undefined, su
     .join(" & ");
   let meters = 0;
   const modes = new Map<TravelMode, number>();
+  // Ground travel only (flight hops aren't routed); the label is the mode that covers the most distance,
+  // so one long transit ride outweighs a few short walks
   for (const l of legs?.values() ?? []) {
-    modes.set(l.mode, (modes.get(l.mode) ?? 0) + 1);
-    if (typeof l.state === "object") meters += l.state.distance;
+    if (typeof l.state !== "object" || l.state.mode === "flight") continue;
+    meters += l.state.distance;
+    modes.set(l.mode, (modes.get(l.mode) ?? 0) + l.state.distance);
   }
   const mode = [...modes].sort((a, b) => b[1] - a[1])[0]?.[0];
   return {

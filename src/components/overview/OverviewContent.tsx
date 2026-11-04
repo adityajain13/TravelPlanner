@@ -30,15 +30,18 @@ export function OverviewContent({ state, sections, legs, lines, spent, today, re
   const currency = meta.currency ?? "CAD";
   return (
     <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6">
-      {/* Phones stack in this order: hero, budget, to look at, days, links. Desktop: two columns under the hero. */}
+      {/* Phones stack in this order: hero, to look at, quick links, budget, days. Desktop: two columns under the hero. */}
       <div className="flex flex-col gap-5 lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)] lg:items-start">
         <OverviewHero meta={meta} o={o} />
         <div className="contents lg:flex lg:flex-col lg:gap-5">
           <LookAtCard look={o.look} readyCount={o.readyCount} readOnly={readOnly} onGo={onGo} />
           <QuickLinks reservations={state.reservations} onGo={onGo} />
         </div>
-        <div className="contents lg:flex lg:flex-col lg:gap-5">
+        <div className="contents lg:flex lg:flex-col lg:gap-5 lg:self-stretch">
           <BudgetCard budget={meta.budget} spent={spent} currency={currency} pct={pct} trendingOver={trendingOver} series={series} onGo={onGo} />
+        </div>
+        {/* Days run the full width under both columns (a long trip would otherwise trail far below the left column) */}
+        <div className="order-4 lg:order-none lg:col-span-2">
           <DaysGrid sections={sections} legs={legs} subtitles={meta.subtitles} onGo={onGo} />
         </div>
       </div>

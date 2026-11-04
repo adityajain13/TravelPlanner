@@ -12,7 +12,7 @@ export function DaysGrid({ sections, legs, subtitles, onGo }: { sections: Sectio
   const stops = days.reduce((n, s) => n + placesOf(s).length, 0);
   return (
     <Card title="Your days" aside={`${stops} stops · ${days.length} days`} className="order-4">
-      <div className="-mx-4 flex snap-x snap-mandatory scroll-px-4 gap-3 overflow-x-auto px-4 pb-1 sm:mx-0 sm:grid sm:grid-cols-2 sm:overflow-visible sm:px-0 lg:grid-cols-3 xl:grid-cols-4">
+      <div className="-mx-4 flex snap-x snap-mandatory scroll-px-4 gap-3 overflow-x-auto px-4 pb-1 sm:mx-0 sm:grid sm:grid-cols-2 sm:overflow-visible sm:px-0 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
         {days.map((s) => (
           <DayCard key={s.key} section={s} legs={legs.get(s.key)} subtitle={subtitles?.[s.key]} onGo={onGo} />
         ))}
