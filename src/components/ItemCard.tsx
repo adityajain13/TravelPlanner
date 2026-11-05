@@ -147,7 +147,7 @@ function ItemCardView({
             <CardActions item={item} readOnly={readOnly} onReceipt={onReceipt} onChange={onChange} onDelete={onDelete} walkShown={walkShown} onToggleWalk={onToggleWalk} />
           </div>
           {isPlace && subtitle && <p className="mt-0.5 truncate text-sm text-muted">{subtitle}</p>}
-          {isPlace && !selected && item.notes && <RichText text={item.notes} className="mt-1.5 line-clamp-3 text-[15px] leading-snug text-muted" />}
+          {isPlace && !selected && item.notes && <RichText text={item.notes} className="mt-1.5 line-clamp-3 text-[15px] leading-snug text-fg" />}
 
           {isPlace && !selected && (auto || item.startTime || item.endTime || item.cost != null || !!item.who?.length || !!receiptsLabel) && (
             <ClosedChips item={item} auto={auto} onStay={onStay} readOnly={readOnly} timeBefore={timeBefore} receiptsLabel={receiptsLabel} currency={currency} onChange={onChange} onCostDetails={onCostDetails} />
