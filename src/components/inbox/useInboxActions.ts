@@ -6,7 +6,7 @@ import { formatShort } from "../../lib/dates";
 
 /** Where "Add" puts a booking that isn't a reservation: its day, else the trip's first list. */
 export function targetOf(b: Booking, state: TripState) {
-  if (reservationTypeFor(b)) return { section: "", label: "Add to reservations" };
+  if (reservationTypeFor(b)) return { section: "", label: "Add booking" };
   const d = b.start_date;
   if (d && d >= state.meta.startDate && d <= state.meta.endDate) return { section: daySection(d), label: `Add to ${formatShort(d)}` };
   const list = state.lists[0];
