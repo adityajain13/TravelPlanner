@@ -347,6 +347,8 @@ function ClosedChips({
           <Users className="size-3.5" /> {item.who.join(" & ")}
         </span>
       )}
+      {/* Who goes always gets its own line: times and costs start on the next */}
+      {!!item.who?.length && <span className="basis-full" aria-hidden />}
       {auto && <AutoTimeChips item={item} auto={auto} onStay={onStay} readOnly={readOnly} chip={chip} />}
       {!auto && (item.startTime || item.endTime) && (
         <TimeRangeField
