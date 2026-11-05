@@ -141,6 +141,7 @@ export function DateField({ value, onChange, min, max, placeholder = "Pick a dat
         <Popover anchor={btn.current} onClose={() => setOpen(false)}>
           <Suspense fallback={<CalendarLoading />}>
           <DayPicker
+            fixedWeeks // always 6 rows: the popover keeps its size, so the month arrows stay put for quick clicking
             mode="single"
             selected={selected}
             defaultMonth={selected ?? lo}
@@ -215,6 +216,7 @@ export function DateRangeField({
         <Popover anchor={btn.current} onClose={() => setOpen(false)}>
           <Suspense fallback={<CalendarLoading />}>
           <DayPicker
+            fixedWeeks // always 6 rows: the popover keeps its size, so the month arrows stay put for quick clicking
             mode="range"
             selected={draft}
             defaultMonth={from}
