@@ -65,14 +65,18 @@ export function ItinerarySection({ c, s, si }: { c: PlanContext; s: PlanSection;
         onSelect={(itemId) => setSelectedId((cur) => (cur === itemId ? null : itemId))}
         onRename={s.listId ? (t) => renameList(doc, s.listId!, t) : undefined}
         onDeleteSection={s.listId ? () => void deleteSection(doc, s.listId!, s.title ?? "this section", s.items.length) : undefined}
-        onAddPlace={(p, index) => {
+        onAddPlace={(p, index, startTime) => {
           const newId = addPlace(doc, s.writeKey ?? s.key, p, index, { destination: state.meta.destination, near });
+          // A "+" between bookings gives the place its time so it slots between them
+          if (startTime) changeItem(doc, newId, { startTime });
           // Lists (Places to visit…) collect ideas: add them closed; a day's new stop opens
           if (s.kind === "day") setSelectedId(newId);
           revealAdded(newId);
         }}
-        onAddNote={(text, index) => addItem(doc, s.writeKey ?? s.key, { kind: "note", name: text }, undefined, index)}
-        onAddChecklist={(index) => addItem(doc, s.writeKey ?? s.key, { kind: "checklist", name: "", checks: [{ id: Math.random().toString(36).slice(2, 10), text: "" }] }, undefined, index)}
+        onAddNote={(text, index, startTime) => addItem(doc, s.writeKey ?? s.key, { kind: "note", name: text, ...(startTime ? { startTime } : {}) }, undefined, index)}
+        onAddChecklist={(index, startTime) =>
+          addItem(doc, s.writeKey ?? s.key, { kind: "checklist", name: "", checks: [{ id: Math.random().toString(36).slice(2, 10), text: "" }], ...(startTime ? { startTime } : {}) }, undefined, index)
+        }
         onChange={(itemId, patch) => changeItem(doc, itemId, patch)}
         onDelete={(itemId) => removeItem(doc, itemId)}
         checked={readOnly ? undefined : checked}
