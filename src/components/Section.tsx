@@ -157,11 +157,28 @@ function SectionView(p: Props & { dropRef: (el: HTMLElement | null) => void; isO
         onFocus={p.onFocus}
       />
 
-      {chipsAt.get(0) && (
-        <div className={card ? "mt-2 px-3" : "mt-2"}>
-          <BookingRows chips={chipsAt.get(0)!} card={card} date={info.date} legs={p.legs} readOnly={p.readOnly} onLegMode={p.onLegMode} onChipClick={p.onChipClick} walkOn={p.walkOn} onToggleWalk={p.onToggleWalk} />
-        </div>
-      )}
+      {chipsAt.get(0) &&
+        (() => {
+          const top = chipsAt.get(0)!;
+          const rows = (chips: typeof top) => (
+            <BookingRows chips={chips} card={card} date={info.date} legs={p.legs} readOnly={p.readOnly} onLegMode={p.onLegMode} onChipClick={p.onChipClick} walkOn={p.walkOn} onToggleWalk={p.onToggleWalk} />
+          );
+          // A day with no stops has all its bookings here: the way to tonight's hotel goes just above the check-in
+          const checkIn = info.items.length === 0 && p.legs?.has("end") ? top.filter((c) => c.r.type === "lodging" && c.verb === "Check-in") : [];
+          return (
+            <div className={card ? "mt-2 px-3" : "mt-2"}>
+              {checkIn.length ? (
+                <>
+                  {rows(top.filter((c) => !checkIn.includes(c)))}
+                  <LegChips legs={p.legs} id="end" readOnly={p.readOnly} onLegMode={p.onLegMode} />
+                  {rows(checkIn)}
+                </>
+              ) : (
+                rows(top)
+              )}
+            </div>
+          );
+        })()}
       {open && (
         <div className="mt-2 space-y-0.5 px-3">
           <SortableContext items={info.items.map((i) => i.id)} strategy={verticalListSortingStrategy}>
@@ -193,7 +210,8 @@ function SectionView(p: Props & { dropRef: (el: HTMLElement | null) => void; isO
               </div>
             );
             if (!last)
-              return endLeg;
+              // No stops: drawn above the check-in in the top group instead (when there is one)
+              return info.items.length === 0 && chipsAt.get(0)?.some((c) => c.r.type === "lodging" && c.verb === "Check-in") ? null : endLeg;
             const rest = last.filter((c) => c.r.type !== "lodging");
             const hotel = last.filter((c) => c.r.type === "lodging");
             return (
