@@ -24,6 +24,56 @@ export const isSplitDay = (items: Item[], people: string[]) => people.length > 1
 
 export type Segment = { kind: "shared"; items: Item[] } | { kind: "split"; columns: { who: string[]; items: Item[] }[] };
 
+/**
+ * A drop-off or pick-up made by withRides: a stop on the driver's route only, never written or numbered.
+ * Not draggable and no card; its id is `drop:<place>` or `pick:<place>`.
+ */
+export const isRideStop = (it: Item) => !!it.rideKind;
+
+/**
+ * Adds the rides to a day's list. A place only some people go to can be driven there by someone
+ * not in its `who`: a drop-off goes just before the place (on the driver's route), a pick-up after
+ * the split run it sits in (where the riders are done). Used for routing and times only.
+ */
+export function withRides(items: Item[], people: string[]): Item[] {
+  const before = new Map<number, Item[]>();
+  const after = new Map<number, Item[]>();
+  items.forEach((x, i) => {
+    const r = x.ride;
+    if (!r || !partial(x, people) || !people.includes(r.by) || x.who!.includes(r.by)) return;
+    if (r.drop) (before.get(i) ?? before.set(i, []).get(i)!).push(rideStop(x, r.by, "drop"));
+    if (r.pick) {
+      // The run ends at its last partial place, as in segmentsOf
+      let end = i;
+      for (let k = i; k < items.length && inRun(items[k], people); k++) if (partial(items[k], people)) end = k;
+      (after.get(end) ?? after.set(end, []).get(end)!).push(rideStop(x, r.by, "pick"));
+    }
+  });
+  if (!before.size && !after.size) return items;
+  const out: Item[] = [];
+  items.forEach((it, i) => out.push(...(before.get(i) ?? []), it, ...(after.get(i) ?? [])));
+  return out;
+}
+
+function rideStop(x: Item, by: string, kind: "drop" | "pick"): Item {
+  return {
+    id: `${kind}:${x.id}`,
+    kind: "place",
+    section: x.section,
+    order: x.order,
+    name: x.name,
+    lat: x.lat,
+    lng: x.lng,
+    address: x.address,
+    who: [by],
+    waypoint: true,
+    rideOf: x.id,
+    rideKind: kind,
+    rideWith: x.who,
+    createdAt: 0,
+  };
+}
+
 /** The day as runs: shared items in order, and split runs of side-by-side branches. */
 export function segmentsOf(items: Item[], people: string[]): Segment[] {
   if (!isSplitDay(items, people)) return [{ kind: "shared", items }];

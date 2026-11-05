@@ -19,6 +19,8 @@ export interface Item {
   notes?: string;
   /** Only a point to route through: no time, no number. */
   waypoint?: boolean;
+  /** One person drives others to this place (and back); see the app's trips.ts. */
+  ride?: { by: string; drop?: boolean; pick?: boolean };
   startTime?: string;
   endTime?: string;
   lat?: number;

@@ -6,7 +6,7 @@ import { CurrencySelect } from "./CurrencySelect";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { ReceiptButton } from "./ReceiptFlow";
-import { ReceiptText, Bookmark, CheckSquare, Clock, Users, ListChecks, Plus, X, ExternalLink, GripVertical, ImagePlus, Milestone, StickyNote, Trash2, Wallet } from "lucide-react";
+import { Car, ReceiptText, Bookmark, CheckSquare, Clock, Users, ListChecks, Plus, X, ExternalLink, GripVertical, ImagePlus, Milestone, StickyNote, Trash2, Wallet } from "lucide-react";
 import { ImagePicker } from "./ImagePicker";
 import { Photo } from "./Photo";
 import { PhotoCredit } from "./PhotoCredit";
@@ -345,6 +345,7 @@ function ClosedChips({
       {!!item.who?.length && (
         <span className="flex items-center gap-1.5 whitespace-nowrap rounded-full bg-surface-2 px-2.5 py-1 text-muted" title="Only they go here; their route is drawn on its own">
           <Users className="size-3.5" /> {item.who.join(" & ")}
+          {item.ride ? ` · with ${item.ride.by}` : null}
         </span>
       )}
       {/* Who goes always gets its own line: times and costs start on the next */}
@@ -405,6 +406,7 @@ function OpenDetails({
         <SectionRow item={item} targets={targets} onMoveTo={onMoveTo} onToggleSection={onToggleSection} sections={sections} onCheck={onCheck} checked={checked} />
       )}
       {!point && people && people.length > 1 && !readOnly && <WhoPicker item={item} people={people} onChange={onChange} />}
+      {!point && people && people.length > 1 && !readOnly && !!item.who?.length && <RidePicker item={item} people={people} onChange={onChange} />}
       {!point && <TimeRow item={item} auto={auto} onStay={onStay} readOnly={readOnly} timeBefore={timeBefore} onChange={onChange} />}
       {!point && (item.cost != null || !readOnly) && <CostRow item={item} readOnly={readOnly} currency={currency} onChange={onChange} onCostDetails={onCostDetails} />}
       {!point && <GoogleDetails item={item} onLink={(googlePlaceId) => onChange({ googlePlaceId })} onSnapshot={(d) => onChange({ google: { ...d, fetchedAt: Date.now() } })} />}
@@ -441,6 +443,8 @@ function SectionRow({ item, targets, onMoveTo, onToggleSection, sections, onChec
 
 /** Who goes here: everyone, or only the people ticked (they get their own route). */
 function WhoPicker({ item, people, onChange }: { item: Item; people: string[]; onChange: (patch: Partial<Item>) => void }) {
+  // A ride only makes sense while its driver is not one of the goers and someone is left to drive
+  const setWho = (who?: string[]) => onChange({ who, ...(item.ride && (!who || who.includes(item.ride.by)) ? { ride: undefined } : {}) });
   return (
     <div className="flex flex-wrap items-center gap-1.5 text-[13px]">
       <Users className="size-3.5 text-muted" />
@@ -451,10 +455,10 @@ function WhoPicker({ item, people, onChange }: { item: Item; people: string[]; o
             key={t ?? "everyone"}
             type="button"
             onClick={() => {
-              if (t === undefined) return onChange({ who: undefined });
+              if (t === undefined) return setWho(undefined);
               const next = on ? (item.who ?? []).filter((x) => x !== t) : [...(item.who ?? []), t];
               // Everyone ticked = everyone
-              onChange({ who: next.length && next.length < people.length ? next : undefined });
+              setWho(next.length && next.length < people.length ? next : undefined);
             }}
             title={t ? `Only ${t} goes here (their own route)` : "Everyone goes here"}
             className={`rounded-full px-2.5 py-1 font-semibold ${on ? "bg-accent text-on-accent" : "bg-surface-2 text-muted hover:text-fg"}`}
@@ -463,6 +467,51 @@ function WhoPicker({ item, people, onChange }: { item: Item; people: string[]; o
           </button>
         );
       })}
+    </div>
+  );
+}
+
+/**
+ * Getting there, for a place only some go to: on their own way, or driven by one person who isn't
+ * going here. The driver can drop them off here and/or pick them up after (the stops that follow).
+ */
+function RidePicker({ item, people, onChange }: { item: Item; people: string[]; onChange: (patch: Partial<Item>) => void }) {
+  const ride = item.ride;
+  const toggle = (k: "drop" | "pick") => {
+    const next = { ...ride!, [k]: !ride![k] };
+    onChange({ ride: next.drop || next.pick ? next : undefined });
+  };
+  const drivers = people.filter((t) => !item.who?.includes(t));
+  return (
+    <div className="flex flex-wrap items-center gap-1.5 text-[13px]">
+      <Car className="size-3.5 text-muted" />
+      <span className="font-semibold text-muted">Getting there</span>
+      {[undefined, ...drivers].map((t) => {
+        const on = t === undefined ? !ride : ride?.by === t;
+        return (
+          <button
+            key={t ?? "own"}
+            type="button"
+            onClick={() => onChange({ ride: t === undefined ? undefined : { by: t, drop: true, pick: true } })}
+            title={t ? `${t} drives them here` : "They get there on their own"}
+            className={`rounded-full px-2.5 py-1 font-semibold ${on ? "bg-accent text-on-accent" : "bg-surface-2 text-muted hover:text-fg"}`}
+          >
+            {t ?? "Own way"}
+          </button>
+        );
+      })}
+      {ride &&
+        (["drop", "pick"] as const).map((k) => (
+          <button
+            key={k}
+            type="button"
+            aria-pressed={!!ride[k]}
+            onClick={() => toggle(k)}
+            className={`rounded-full border px-2.5 py-1 font-semibold ${ride[k] ? "border-accent text-accent" : "border-line text-muted hover:text-fg"}`}
+          >
+            {k === "drop" ? "Drop off" : "Pick up"}
+          </button>
+        ))}
     </div>
   );
 }

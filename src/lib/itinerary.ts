@@ -8,7 +8,7 @@ import { departureTime, legKey, type LegRequest, type LegState, type TravelMode 
 import { RES_GLYPH } from "./pinArt";
 import { autoTimes, DEFAULT_DAY_START, DEFAULT_STAY, fixedBlocks } from "./autoTime";
 import { draftSection, isDraftSection, mainPlanName, sectionsFor, type Item, type Reservation, type TripState } from "./trips";
-import { goesTo, stopLabels, visibleTo } from "./branches";
+import { goesTo, isRideStop, stopLabels, visibleTo, withRides } from "./branches";
 
 export const ORPHAN = "orphan";
 
@@ -236,8 +236,20 @@ function legLabel(l: Leg, above: string | undefined): string {
 
 /** The name of the place listed just above a stop (waypoints count), if any. */
 function placeAbove(items: Item[], id: string): string | undefined {
-  for (let j = items.findIndex((x) => x.id === id) - 1; j >= 0; j--) if (items[j].kind === "place") return items[j].name;
+  for (let j = items.findIndex((x) => x.id === id) - 1; j >= 0; j--) if (items[j].kind === "place" && !items[j].rideKind) return items[j].name; // drop-off/pick-up rows aren't cards above it
   return undefined;
+}
+
+/**
+ * Ride legs get their names: the driver's into a drop-off or pick-up, and the riders' into the place
+ * they're driven to ("with Me"). Names are added in mergeLanes, so this runs before it.
+ */
+function rideLabels(mine: Leg[], items: Item[]) {
+  for (const l of mine) {
+    const it = items.find((x) => x.id === l.toId);
+    if (it && isRideStop(it)) l.label = it.rideKind === "drop" ? "Drop off" : "Pick up";
+    else if (it?.ride?.drop) l.label = [l.label, `with ${it.ride.by}`].filter(Boolean).join(" · ");
+  }
 }
 
 /** A day's legs: one route, or one per person when some stops are only theirs. */
@@ -245,9 +257,13 @@ function walkDay(ctx: Ctx, out: ItineraryParts, s: SectionInfo, ghost: boolean) 
   const people = ctx.state.meta.travelers ?? [];
   const split = s.kind === "day" && people.length > 1 && s.items.some((i) => i.kind === "place" && i.who?.length);
   if (!split) return walkLane(ctx, out, s, s.items, ghost);
+  // The drop-offs and pick-ups are stops on the driver's route (withRides)
+  const items = withRides(s.items, people);
   const startAt = out.legs.length;
-  for (const person of people) walkLane(ctx, out, s, s.items.filter((i) => i.kind !== "place" || !i.who?.length || i.who.includes(person)), ghost, person);
-  out.legs.push(...mergeLanes(out.legs.splice(startAt), people, s.items));
+  for (const person of people) walkLane(ctx, out, s, items.filter((i) => i.kind !== "place" || !i.who?.length || i.who.includes(person)), ghost, person);
+  const mine = out.legs.splice(startAt);
+  rideLabels(mine, items);
+  out.legs.push(...mergeLanes(mine, people, items));
 }
 
 /** Numbered pins for a day's (or list's) stops. Stops the viewed person doesn't go to are faded and unnumbered. */
@@ -256,7 +272,7 @@ function stopPins(s: SectionInfo, focus: string | null, people: string[], viewin
   // Navigation points are pinned but not numbered (absent from the labels)
   const labels = stopLabels(s.items, people, viewing);
   for (const it of s.items) {
-    if (it.kind !== "place") continue;
+    if (it.kind !== "place" || isRideStop(it)) continue;
     const faded = !!viewing && !goesTo(it, viewing);
     if (it.lat != null && it.lng != null && (!focus || s.key === focus))
       pins.push({ id: it.id, lat: it.lat, lng: it.lng, color: faded ? FADED_PIN : s.color, label: faded ? "" : (labels.get(it.id) ?? ""), glyph: it.waypoint ? "waypoint" : undefined, name: it.name, image: it.image?.thumb, unsplash: it.image?.source === "unsplash" ? { name: it.image.authorName ?? "Unknown", author: it.image.author } : undefined });
@@ -378,9 +394,19 @@ export function withAutoTimes(view: Itinerary | null, state: TripState | null, a
     const ver = s.writeKey ?? s.key;
     const between = slots?.get(ver);
     const blocks = fixedBlocks(state.reservations, s.date!).map((b) => (b.id && between?.has(b.id) ? { ...b, beforeId: between.get(b.id) } : b));
-    const t = autoTimes(s.items, legsBySection.get(ver), state.meta.dayStarts?.[s.date!] ?? DEFAULT_DAY_START, view.landings.get(ver), state.meta.travelers, blocks);
+    const people = state.meta.travelers ?? [];
+    const expanded = withRides(s.items, people);
+    const t = autoTimes(expanded, legsBySection.get(ver), state.meta.dayStarts?.[s.date!] ?? DEFAULT_DAY_START, view.landings.get(ver), people, blocks);
+    // The drop-offs and pick-ups get their times here too (the section's items stay the real stops)
+    const rideTimes = new Map(
+      expanded.filter((it) => isRideStop(it) && t.has(it.id)).map((it) => {
+        const x = t.get(it.id)!;
+        return [it.id, { startTime: x.start, endTime: x.end, rideWait: x.wait, rideLate: x.late }] as const;
+      }),
+    );
     return {
       ...s,
+      rideTimes,
       items: s.items.map((it) => {
         const x = t.get(it.id);
         if (!x) return it;

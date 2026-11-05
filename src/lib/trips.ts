@@ -60,6 +60,16 @@ export interface Item extends CostSplit {
   image?: import("./images").PlaceImage;
   /** Only these trip people go here (e.g. each person's own home on the day you fly); none = everyone. */
   who?: string[];
+  /** A place only some go to, driven there (and back) by one person who isn't in `who`. */
+  ride?: { by: string; drop?: boolean; pick?: boolean };
+  /** Virtual stops only (branches.withRides, never stored): the place a drop-off or pick-up is for, and which. */
+  rideOf?: string;
+  rideKind?: "drop" | "pick";
+  /** Virtual stops only: the people being driven (the place's `who`). */
+  rideWith?: string[];
+  /** Virtual pick-ups only, from auto times: minutes the driver waits, or minutes the riders wait. */
+  rideWait?: number;
+  rideLate?: number;
   /** How you get here from the previous stop of the day; falls back to the trip default. */
   travelMode?: import("./routing").TravelMode;
   /** The forwarded email (inbox row) this came from. */

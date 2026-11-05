@@ -24,6 +24,10 @@ const up5 = (min: number) => Math.ceil(min / 5 - 1e-9) * 5;
  * Stops only some people go to (each person's own home…) run on that person's own clock from
  * the day's start; a stop they go to together starts once the last of them gets there.
  * Timed bookings (`fixed`) are blocks: a stop that would arrive after one begins waits for it to end.
+ *
+ * A pick-up (a virtual stop from withRides) waits for the riders to finish the stop they're at:
+ * the driver leaves when both are ready. `wait` is how long the driver waits; `late` how long the
+ * riders wait for the driver. Both are then on the same clock again.
  */
 export function autoTimes(
   items: Item[],
@@ -33,7 +37,7 @@ export function autoTimes(
   people: string[] = [],
   fixed: FixedBlock[] = [],
 ) {
-  const out = new Map<string, { start: string; end: string; nextDay: boolean }>();
+  const out = new Map<string, { start: string; end: string; nextDay: boolean; wait?: number; late?: number }>();
   let day = toMin(start);
   if (landed && /^\d{1,2}:\d{2}/.test(landed)) day = Math.max(day, toMin(landed));
   const split = people.length > 1 && items.some((i) => i.kind === "place" && i.who?.length);
@@ -71,6 +75,16 @@ export function autoTimes(
     }
     // A navigation point is passed through, not stayed at: no time, no number
     const stay = it.waypoint ? 0 : it.stay ?? DEFAULT_STAY;
+    if (it.rideKind === "pick") {
+      const x = items.find((s) => s.id === it.rideOf);
+      const riders = (x?.who ?? []).filter((p) => clock.has(p));
+      const ready = riders.length ? Math.max(...riders.map((p) => clock.get(p)!)) : arrive;
+      const depart = Math.max(arrive, ready);
+      for (const p of [...going, ...riders]) clock.set(p, depart);
+      const gap = ready > arrive ? { wait: ready - arrive } : arrive > ready ? { late: arrive - ready } : {};
+      out.set(it.id, { start: toHHMM(arrive), end: toHHMM(depart), nextDay: depart >= 1440, ...gap });
+      continue;
+    }
     const end = arrive + stay;
     out.set(it.id, { start: toHHMM(arrive), end: toHHMM(end), nextDay: end >= 1440 });
     for (const p of going) clock.set(p, end);

@@ -2,7 +2,7 @@ import { Fragment, useEffect, useRef, useState, type Dispatch, type ReactNode, t
 import { memoLatest } from "../lib/memo";
 import { useDroppable } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
-import { Check, ChevronDown, Columns3, Eye, GitBranch, PenLine, ListChecks, MapPin, Pencil, Plus, StickyNote, Trash2 } from "lucide-react";
+import { Car, Check, ChevronDown, Columns3, Eye, GitBranch, PenLine, ListChecks, MapPin, Pencil, Plus, StickyNote, Trash2 } from "lucide-react";
 import type { Item, Reservation } from "../lib/trips";
 import { RES_ICON } from "./Reservations";
 import { LegChip } from "./LegChip";
@@ -15,7 +15,7 @@ import { WalkButton } from "./WalkButton";
 import { walkable } from "../lib/walkTargets";
 import { fmtTime, TimeField } from "./TimeField";
 import { RichText } from "./RichText";
-import { goesTo, isSplitDay, legsVisibleTo, segmentsOf, stopLabels, type Segment } from "../lib/branches";
+import { goesTo, isRideStop, isSplitDay, legsVisibleTo, segmentsOf, stopLabels, withRides, type Segment } from "../lib/branches";
 import { WhoChips } from "./WhoChips";
 import { PlaceSearch } from "./PlaceSearch";
 import type { SectionTarget } from "./SectionPicker";
@@ -38,6 +38,8 @@ export interface SectionInfo {
   /** Days with drafts: the day's plan (id undefined) and each draft, plus the one shown. */
   versions?: { id?: string; name: string }[];
   draftId?: string;
+  /** Days with rides: the auto times of each drop-off and pick-up, by its id (see branches.withRides). */
+  rideTimes?: Map<string, Pick<Item, "startTime" | "endTime" | "rideWait" | "rideLate">>;
 }
 
 interface Props {
@@ -141,7 +143,11 @@ function SectionView(props: Props & { dropRef: (el: HTMLElement | null) => void;
   const people = info.kind === "day" ? (p.people ?? []) : [];
   const split = isSplitDay(info.items, people);
   const labels = stopLabels(info.items, people, p.viewing);
-  const segments: Segment[] = p.viewing ? [{ kind: "shared", items: info.items }] : segmentsOf(info.items, people);
+  // Drop-offs and pick-ups sit on the driver's list only (the riders' rows never show them); the real stops keep their indexes
+  const shown = withRides(info.items, people).map((it) => (isRideStop(it) ? { ...it, ...info.rideTimes?.get(it.id) } : it));
+  const segments: Segment[] = p.viewing
+    ? [{ kind: "shared", items: shown.filter((it) => !isRideStop(it) || (!!p.viewing && goesTo(it, p.viewing))) }]
+    : segmentsOf(shown, people);
   const idxOf = new Map(info.items.map((it, i) => [it.id, i]));
   const card = p.chipStyle === "card";
   const wiring = itemWiring(p);
@@ -177,6 +183,7 @@ function SectionView(props: Props & { dropRef: (el: HTMLElement | null) => void;
 
   /** One stop: numbered by its label, faded when one person's view leaves it out. */
   const stop = (it: Item) => {
+    if (isRideStop(it)) return <RideRow key={it.id} item={it} legs={p.legs} readOnly={p.readOnly} onLegMode={p.onLegMode} />;
     const idx = idxOf.get(it.id)!;
     return (
       <StopRow
@@ -726,6 +733,38 @@ function SplitColumns({ columns, render }: { columns: { who: string[]; items: It
         </div>
       ))}
     </ChipScroller>
+  );
+}
+
+/** "Manish, Nishi & Arshiya" */
+function listNames(names: string[] = []) {
+  return names.length > 1 ? `${names.slice(0, -1).join(", ")} & ${names.at(-1)}` : (names[0] ?? "");
+}
+
+/**
+ * A drop-off or pick-up on the driver's list: a slim line, not a stop (no card, no number, not draggable).
+ * A pick-up shows when they all leave, and who waited for whom.
+ */
+function RideRow({ item, legs, readOnly, onLegMode }: { item: Item; legs: Props["legs"]; readOnly?: boolean; onLegMode?: Props["onLegMode"] }) {
+  const pick = item.rideKind === "pick";
+  return (
+    <>
+      {legs?.has(item.id) && <LegChips legs={legs} id={item.id} readOnly={readOnly} onLegMode={onLegMode} />}
+      <div className="flex items-start gap-2.5 py-1.5 pl-1 text-[13px]">
+        <Car className="mt-0.5 size-4 shrink-0 text-muted" />
+        <div className="min-w-0">
+          <p className="font-semibold text-muted">
+            {pick ? "Pick up" : "Drop off"} {listNames(item.rideWith)}
+          </p>
+          <p className="text-[12px] text-muted">
+            {item.name}
+            {pick && item.endTime ? ` · ${fmtTime(item.endTime)}` : ""}
+            {item.rideWait ? ` · waits ${item.rideWait} min` : ""}
+            {item.rideLate ? <span className="text-amber-400"> · they wait {item.rideLate} min</span> : null}
+          </p>
+        </div>
+      </div>
+    </>
   );
 }
 
