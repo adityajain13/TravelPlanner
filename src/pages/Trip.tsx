@@ -62,7 +62,9 @@ export function TripPage() {
   const [checked, setChecked] = useState<Set<string>>(new Set());
   const lastChecked = useRef<string | null>(null);
   // Device-local view state (panel mode, hidden columns, day drafts, unpinned places)
-  const { panelMode, setPanelMode, dayDraft, setDayDraft, contentsHidden, hideContents, planHidden, togglePlan, unpinned, dismissUnpinned } = useTripViewState(id);
+  const { panelMode, setPanelMode, dayDraft, setDayDraft, contentsHidden, hideContents, planHidden, togglePlan, unpinned, dismissUnpinned, viewing: storedViewing, setViewing } = useTripViewState(id);
+  // Whose view of a split day (see lib/branches.ts); a person no longer on the trip falls back to everyone
+  const viewing = storedViewing && state?.meta.travelers?.includes(storedViewing) ? storedViewing : undefined;
   const [panelInset, setPanelInset] = useState<{ top: number; bottom: number } | null>(null);
   const [costFor, setCostFor] = useState<string | null>(null); // stop whose cost details are open
   const [focus, setFocus] = useState<string | null>(null); // section shown alone on the map
@@ -147,7 +149,7 @@ export function TripPage() {
   // Settings → Stop times: Auto. Each day's stops get times worked out from the day's start, how
   // long each stop takes and the routes between; the cards show those instead of typed times.
   const autoOn = settings.timing === "auto";
-  const { view, flights, legResults, routes, legsBySection, timed } = useItinerary(state, { focus, dayDraft, autoOn });
+  const { view, flights, legResults, routes, legsBySection, timed } = useItinerary(state, { focus, dayDraft, autoOn, viewing });
 
   // Background fix-ups (pins, photos, notes, old imports)
   useTripUpkeep({ doc, state, readOnly, lite, auth });
@@ -354,6 +356,8 @@ export function TripPage() {
     setDayDraft,
     walkOn: walk.on,
     toggleWalk,
+    viewing,
+    setViewing,
   };
 
   if (lite)
@@ -369,6 +373,7 @@ export function TripPage() {
           legsBySection={legsBySection}
           theme={theme}
           readOnly={readOnly}
+          viewing={viewing}
           onExit={() => setTravelOn(false)}
           showSettings={showSettings}
           setShowSettings={setShowSettings}
@@ -516,6 +521,8 @@ export function TripPage() {
           openIdx={openIdx}
           openPlaces={openPlaces}
           goTo={goTo}
+          people={state.meta.travelers ?? []}
+          viewing={viewing}
           setSelectedId={setSelectedId}
           panelMode={panelMode}
           setPanelMode={setPanelMode}

@@ -8,6 +8,7 @@ import { departureTime, legKey, type LegRequest, type LegState, type TravelMode 
 import { RES_GLYPH } from "./pinArt";
 import { autoTimes, DEFAULT_DAY_START, DEFAULT_STAY, fixedBlocks } from "./autoTime";
 import { draftSection, isDraftSection, mainPlanName, sectionsFor, type Item, type Reservation, type TripState } from "./trips";
+import { goesTo, stopLabels, visibleTo } from "./branches";
 
 export const ORPHAN = "orphan";
 
@@ -249,19 +250,22 @@ function walkDay(ctx: Ctx, out: ItineraryParts, s: SectionInfo, ghost: boolean) 
   out.legs.push(...mergeLanes(out.legs.splice(startAt), people, s.items));
 }
 
-/** Numbered pins for a day's (or list's) stops. */
-function stopPins(s: SectionInfo, focus: string | null): Pin[] {
+/** Numbered pins for a day's (or list's) stops. Stops the viewed person doesn't go to are faded and unnumbered. */
+function stopPins(s: SectionInfo, focus: string | null, people: string[], viewing?: string): Pin[] {
   const pins: Pin[] = [];
-  let n = 0;
+  // Navigation points are pinned but not numbered (absent from the labels)
+  const labels = stopLabels(s.items, people, viewing);
   for (const it of s.items) {
     if (it.kind !== "place") continue;
-    // Navigation points are pinned but not numbered
-    if (!it.waypoint) n++;
+    const faded = !!viewing && !goesTo(it, viewing);
     if (it.lat != null && it.lng != null && (!focus || s.key === focus))
-      pins.push({ id: it.id, lat: it.lat, lng: it.lng, color: s.color, label: it.waypoint ? "" : String(n), glyph: it.waypoint ? "waypoint" : undefined, name: it.name, image: it.image?.thumb, unsplash: it.image?.source === "unsplash" ? { name: it.image.authorName ?? "Unknown", author: it.image.author } : undefined });
+      pins.push({ id: it.id, lat: it.lat, lng: it.lng, color: faded ? FADED_PIN : s.color, label: faded ? "" : (labels.get(it.id) ?? ""), glyph: it.waypoint ? "waypoint" : undefined, name: it.name, image: it.image?.thumb, unsplash: it.image?.source === "unsplash" ? { name: it.image.authorName ?? "Unknown", author: it.image.author } : undefined });
   }
   return pins;
 }
+
+/** Grey pin for a stop one person's view leaves out. */
+const FADED_PIN = "#5c6663";
 
 /**
  * Bookings with a location get their own pins (one per booking, with its type's symbol). Cars are
@@ -292,8 +296,9 @@ interface ItineraryParts {
   bookends: Map<string, { start?: Bookend; end?: Bookend }>; // plan → where the day starts/ends
 }
 
-export function buildItinerary(state: TripState, opts: { focus: string | null; airportDb: AirportDb | null; dayDraft: Record<string, string> }) {
-  const { focus, airportDb } = opts;
+export function buildItinerary(state: TripState, opts: { focus: string | null; airportDb: AirportDb | null; dayDraft: Record<string, string>; viewing?: string }) {
+  const { focus, airportDb, viewing } = opts;
+  const people = state.meta.travelers ?? [];
   const grouped = groupItems(state);
   const sections = buildSections(state, grouped, opts.dayDraft);
   const ctx = tripContext(state, airportDb);
@@ -302,7 +307,7 @@ export function buildItinerary(state: TripState, opts: { focus: string | null; a
   const out: ItineraryParts = { legs: [], landings: new Map(), bookends: new Map() };
   const pins: Pin[] = [];
   for (const s of sections) {
-    pins.push(...stopPins(s, focus));
+    pins.push(...stopPins(s, focus, people, viewing));
     walkDay(ctx, out, s, false);
   }
   // The plans not shown (the day's plan while a draft is up, other drafts)
@@ -336,9 +341,9 @@ export function airportPins(state: TripState | null, view: Itinerary | null, air
   return { pins, arcs };
 }
 
-export function mapRoutes(legs: Itinerary["legs"], legResults: Map<string, LegState>, focus: string | null): Route[] {
+export function mapRoutes(legs: Itinerary["legs"], legResults: Map<string, LegState>, focus: string | null, viewing?: string): Route[] {
   return legs
-    .filter((l) => !l.ghost && (!focus || l.section === focus))
+    .filter((l) => !l.ghost && (!focus || l.section === focus) && visibleTo(l.who, viewing))
     .map((l) => {
       const r = legResults.get(l.req.key);
       if (typeof r === "object") {
@@ -515,8 +520,8 @@ export function mergeLegs(direct: Itinerary["legs"], via: ViaResult): Itinerary[
 }
 
 /** Pins (numbered stops + the hotel/airport its legs touch) and routes for one plan of a day. */
-export function planMapData(view: Itinerary, extraPins: Pin[], legResults: Map<string, LegState>, ver: string, items: Item[], color: string, opts: { includeGhost: boolean; numberedPins: boolean }) {
-  const legs = view.legs.filter((l) => l.ver === ver && (opts.includeGhost || !l.ghost));
+export function planMapData(view: Itinerary, extraPins: Pin[], legResults: Map<string, LegState>, ver: string, items: Item[], color: string, opts: { includeGhost: boolean; numberedPins: boolean; people: string[]; viewing?: string }) {
+  const legs = view.legs.filter((l) => l.ver === ver && (opts.includeGhost || !l.ghost) && visibleTo(l.who, opts.viewing));
   const routes = legs.map((l): Route => {
     const r = legResults.get(l.req.key);
     if (typeof r === "object") return { color: l.color, coords: r.coords, style: r.mode === "flight" || r.rough ? "dashed" : r.mode === "walk" ? "dotted" : "solid" };
@@ -528,11 +533,10 @@ export function planMapData(view: Itinerary, extraPins: Pin[], legResults: Map<s
   const pins: Pin[] = [];
   if (opts.numberedPins) {
     // Compare: the plan's stops numbered in order, then the hotel / airport its legs touch
-    let n = 0;
+    const labels = stopLabels(items, opts.people);
     for (const it of items) {
       if (it.kind !== "place") continue;
-      if (!it.waypoint) n++;
-      if (it.lat != null && it.lng != null) pins.push({ id: it.id, lat: it.lat, lng: it.lng, color, label: it.waypoint ? "" : String(n), glyph: it.waypoint ? "waypoint" : undefined, name: it.name });
+      if (it.lat != null && it.lng != null) pins.push({ id: it.id, lat: it.lat, lng: it.lng, color, label: labels.get(it.id) ?? "", glyph: it.waypoint ? "waypoint" : undefined, name: it.name });
     }
     for (const x of [...view.pins, ...extraPins]) if (atEnd(x) && !pins.some((q) => q.id === x.id)) pins.push(x);
   } else {

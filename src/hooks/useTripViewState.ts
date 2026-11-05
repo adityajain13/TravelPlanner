@@ -71,6 +71,23 @@ export function useTripViewState(id: string | undefined) {
       /* private mode */
     }
   };
+  // Days where the group splits: whose view of the day is shown (undefined = everyone), kept per device
+  const [viewing, setViewingState] = useState<string | undefined>(() => {
+    try {
+      return localStorage.getItem(`tp-viewing-${id}`) ?? undefined;
+    } catch {
+      return undefined;
+    }
+  });
+  const setViewing = (person: string | undefined) => {
+    setViewingState(person);
+    try {
+      if (person) localStorage.setItem(`tp-viewing-${id}`, person);
+      else localStorage.removeItem(`tp-viewing-${id}`);
+    } catch {
+      /* private mode */
+    }
+  };
   // Places a Wanderlog import couldn't locate (set by the importer for this session)
   const [unpinned, setUnpinned] = useState<string[]>(() => {
     try {
@@ -86,6 +103,8 @@ export function useTripViewState(id: string | undefined) {
     setPanelMode,
     dayDraft,
     setDayDraft,
+    viewing,
+    setViewing,
     contentsHidden,
     hideContents,
     planHidden,

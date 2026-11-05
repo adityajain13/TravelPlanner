@@ -54,4 +54,7 @@ export interface PlanContext {
   /** Stops and bookings with a walking area on (eye buttons), and flipping one. */
   walkOn: Set<string>;
   toggleWalk: (id: string) => void;
+  /** Split days: whose view is shown (undefined = everyone), and choosing one (device-local). */
+  viewing?: string;
+  setViewing: (person: string | undefined) => void;
 }

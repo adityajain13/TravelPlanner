@@ -43,7 +43,7 @@ export function DayCompareHost(p: {
         const raw = of(ver);
         const at = p.autoOn ? autoTimes(raw, p.legsBySection.get(ver), p.state.meta.dayStarts?.[p.date] ?? DEFAULT_DAY_START, p.view.landings.get(ver), p.state.meta.travelers, fixedBlocks(p.state.reservations, p.date)) : null;
         const items = at ? raw.map((it) => (at.get(it.id) ? { ...it, startTime: at.get(it.id)!.start, endTime: at.get(it.id)!.end } : it)) : raw;
-        const map = planMapData(p.view, p.flightPins, p.legResults, ver, items, sec.color, { includeGhost: true, numberedPins: true });
+        const map = planMapData(p.view, p.flightPins, p.legResults, ver, items, sec.color, { includeGhost: true, numberedPins: true, people: p.state.meta.travelers ?? [] });
         return {
           id: v.id,
           name: v.name,

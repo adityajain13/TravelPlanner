@@ -3,6 +3,7 @@ import type * as Y from "yjs";
 import { PlacePanel, type PanelMode } from "../PlacePanel";
 import type { SectionTarget } from "../SectionPicker";
 import { moveItems, updateItem, type Item, type TripState } from "../../lib/trips";
+import { stopLabels } from "../../lib/branches";
 import type { PlanSection, TripPin } from "./types";
 
 /** The place card over the map for the open stop: its details, prev / next stop, moving it between days. */
@@ -15,6 +16,8 @@ export function PlaceCardOverlay({
   openIdx,
   openPlaces,
   goTo,
+  people,
+  viewing,
   setSelectedId,
   panelMode,
   setPanelMode,
@@ -34,6 +37,8 @@ export function PlaceCardOverlay({
   openIdx: number;
   openPlaces: Item[];
   goTo: (itemId: string) => void;
+  people: string[];
+  viewing?: string;
   setSelectedId: Dispatch<SetStateAction<string | null>>;
   panelMode: PanelMode;
   setPanelMode: (m: PanelMode) => void;
@@ -53,11 +58,13 @@ export function PlaceCardOverlay({
     return b ? { lat: b.lat!, lng: b.lng! } : undefined;
   })();
   if (!openItem) return null;
+  // The number the stop has in the list (a branch's number on a split day)
+  const number = openSection ? stopLabels(openSection.items, people, viewing).get(openItem.id) : undefined;
   return (
     <PlacePanel
       key={panelMode}
       item={openItem}
-      number={openIdx >= 0 ? openIdx + 1 : undefined}
+      number={number}
       color={openSection!.color}
       index={Math.max(0, openIdx)}
       total={Math.max(1, openPlaces.length)}

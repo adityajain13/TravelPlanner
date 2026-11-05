@@ -17,7 +17,7 @@ export type PanelMode = "compact" | "full";
 
 interface Props {
   item: Item;
-  number?: number;
+  number?: string;
   color: string;
   /** Position among the places of its day/list, for "6 of 12". */
   index: number;
@@ -210,7 +210,7 @@ function CompactPanel({
   onToggleWalk?: () => void;
   rootRef: RefObject<HTMLDivElement | null>;
   item: Item;
-  number?: number;
+  number?: string;
   color: string;
   index: number;
   total: number;
@@ -260,7 +260,7 @@ function CompactPanel({
 }
 
 /** The name, with the Wikipedia summary below it while it loads or once it's found. */
-function PlaceTitle({ item, number, color, summary }: { item: Item; number?: number; color: string; summary: Summary }) {
+function PlaceTitle({ item, number, color, summary }: { item: Item; number?: string; color: string; summary: Summary }) {
   return (
     <>
       <div className="flex items-start gap-2">
