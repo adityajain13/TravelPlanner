@@ -8,8 +8,8 @@ import { formatMoney } from "../lib/fx";
 import { BOOKING_ICON } from "./InboxPanel";
 
 /** Home: "N unmatched emails" button, opening a sheet to send each to a trip or delete it. */
-export function UnmatchedInbox({ items, trips, onChange }: { items: InboxItem[]; trips: TripIndexRow[]; onChange: () => void }) {
-  const [open, setOpen] = useState(false);
+export function UnmatchedInbox({ items, trips, onChange, initiallyOpen = false }: { items: InboxItem[]; trips: TripIndexRow[]; onChange: () => void; initiallyOpen?: boolean }) {
+  const [open, setOpen] = useState(initiallyOpen);
   if (items.length === 0) return null;
   return (
     <>

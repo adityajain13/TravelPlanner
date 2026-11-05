@@ -18,6 +18,7 @@ export function PlanTools({
   canReview,
   inbox,
   setInbox,
+  autoExpandFirst,
   setEditingRes,
   photoFill,
   setPhotoFill,
@@ -30,6 +31,8 @@ export function PlanTools({
   canReview: boolean;
   inbox: InboxItem[];
   setInbox: Dispatch<SetStateAction<InboxItem[]>>;
+  /** Expand the first forwarded booking (opened from the "ready to review" email) */
+  autoExpandFirst?: boolean;
   setEditingRes: Dispatch<SetStateAction<Partial<Reservation> | null>>;
   photoFill: PhotoFill | null;
   setPhotoFill: Dispatch<SetStateAction<PhotoFill | null>>;
@@ -41,7 +44,7 @@ export function PlanTools({
         <ReservationQuickAdd onPick={(t: ReservationType) => setEditingRes({ type: t, startDate: state.meta.startDate })} />
       )}
       <GettingAroundRow doc={doc} state={state} readOnly={readOnly} photoFill={photoFill} setPhotoFill={setPhotoFill} />
-      {canReview && <InboxPanel items={inbox} doc={doc} state={state} onDone={(itemId) => setInbox((xs) => xs.filter((x) => x.id !== itemId))} />}
+      {canReview && <InboxPanel items={inbox} doc={doc} state={state} autoExpandFirst={autoExpandFirst} onDone={(itemId) => setInbox((xs) => xs.filter((x) => x.id !== itemId))} />}
     </>
   );
 }

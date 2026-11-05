@@ -288,7 +288,7 @@ const sameBooking = (a: Partial<Reservation>, b: Partial<Reservation>) =>
 /** What differs per traveller on a shared booking. */
 type Person = { id?: string; traveler?: string; confirmation?: string; cost?: number; costCurrency?: string; notes?: string };
 
-export function ReservationForm({ doc, state, initial, onClose }: { doc: Y.Doc; state: TripState; initial: Partial<Reservation>; onClose: () => void }) {
+export function ReservationForm({ doc, state, initial, onClose, onSaved }: { doc: Y.Doc; state: TripState; initial: Partial<Reservation>; onClose: () => void; /** after a successful save, e.g. to mark a forwarded email as added */ onSaved?: () => void }) {
   const currency = state.meta.currency ?? "CAD";
   const [r, setR] = useState<Partial<Reservation>>({ costCurrency: currency, ...initial });
   // Everyone on this booking: the details are edited once, seats/notes/cost per person
@@ -310,6 +310,7 @@ export function ReservationForm({ doc, state, initial, onClose }: { doc: Y.Doc; 
     setBusy(true);
     const geo = await locateUnpinned(r, initial, type, picked, state.meta.center);
     saveBookingCopies({ doc, state, r, title: r.title.trim(), initial, type, who, copies0, geo });
+    onSaved?.();
     onClose();
   }
 

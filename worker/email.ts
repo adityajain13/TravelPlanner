@@ -260,11 +260,13 @@ async function saveBookings(env: Env, owner: string, sender: string, subject: st
 async function sendReceipt(env: Env, sender: string, owner: string, trips: TripRow[], out: Extracted) {
   const trip = trips.find((t) => t.id === out.trip_id);
   const where = trip ? `in "${trip.title}"` : "in your inbox (no matching trip, so pick one in the app)";
+  // ?review=1 makes the app open the bookings for review (the trip's itinerary, or the unmatched sheet on Home)
+  const reviewUrl = trip ? `${APP_URL}trip/${trip.id}?review=1` : `${APP_URL}?review=1`;
   await reply(
     env,
     sender,
     `Got it: ${out.bookings.length} booking${out.bookings.length > 1 ? "s" : ""} ready to review`,
-    `${out.summary}\n\nThey're waiting ${where}:\n${out.bookings.map((b) => `• ${b.title}${b.start_date ? ` (${b.start_date}${b.start_time ? ` ${b.start_time}` : ""})` : ""}`).join("\n")}\n\n${owner === sender ? `Review and add them: ${APP_URL}` : "The trip owner will review and add them."}`,
+    `${out.summary}\n\nThey're waiting ${where}:\n${out.bookings.map((b) => `• ${b.title}${b.start_date ? ` (${b.start_date}${b.start_time ? ` ${b.start_time}` : ""})` : ""}`).join("\n")}\n\n${owner === sender ? `Review and add them: ${reviewUrl}` : "The trip owner will review and add them."}`,
   );
 }
 
@@ -302,5 +304,7 @@ export async function handleEmail(message: ForwardableEmailMessage, env: Env) {
   }
 
   await saveBookings(env, owner, sender, mail.subject, out);
+  // Open copies of the trip refetch their inbox now instead of on the next reload
+  if (out.trip_id) await env.TRIP_ROOM.get(env.TRIP_ROOM.idFromName(out.trip_id)).signal("inbox").catch(() => undefined);
   await sendReceipt(env, sender, owner, trips, out);
 }
