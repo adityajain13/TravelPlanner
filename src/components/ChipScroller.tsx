@@ -4,8 +4,23 @@ import { ChevronLeft, ChevronRight } from "lucide-react";
 /**
  * Horizontal row that actually scrolls with a mouse: the wheel scrolls sideways, arrow buttons
  * appear at whichever end has more, edges fade, and you can drag it. Touch scrolling is native.
+ * Turn off the mouse drag and wheel for a row whose children need them (draggable cards).
  */
-export function ChipScroller({ children, className = "" }: { children: ReactNode; className?: string }) {
+export function ChipScroller({
+  children,
+  className = "",
+  innerClassName = "flex items-center gap-1.5",
+  dragScroll = true,
+  wheelScroll = true,
+  labels = { prev: "Earlier days", next: "Later days" },
+}: {
+  children: ReactNode;
+  className?: string;
+  innerClassName?: string;
+  dragScroll?: boolean;
+  wheelScroll?: boolean;
+  labels?: { prev: string; next: string };
+}) {
   const ref = useRef<HTMLDivElement>(null);
   const [edge, setEdge] = useState({ left: false, right: false });
 
@@ -32,11 +47,13 @@ export function ChipScroller({ children, className = "" }: { children: ReactNode
     const click = (e: MouseEvent) => moved && (e.stopPropagation(), e.preventDefault(), (moved = false));
     update();
     el.addEventListener("scroll", update, { passive: true });
-    el.addEventListener("wheel", wheel, { passive: false });
-    el.addEventListener("pointerdown", down);
-    window.addEventListener("pointermove", move);
-    window.addEventListener("pointerup", up);
-    el.addEventListener("click", click, true);
+    if (wheelScroll) el.addEventListener("wheel", wheel, { passive: false });
+    if (dragScroll) {
+      el.addEventListener("pointerdown", down);
+      window.addEventListener("pointermove", move);
+      window.addEventListener("pointerup", up);
+      el.addEventListener("click", click, true);
+    }
     const ro = new ResizeObserver(update);
     ro.observe(el);
     return () => {
@@ -48,7 +65,7 @@ export function ChipScroller({ children, className = "" }: { children: ReactNode
       el.removeEventListener("click", click, true);
       ro.disconnect();
     };
-  }, []);
+  }, [dragScroll, wheelScroll]);
 
   const by = (dir: 1 | -1) => ref.current?.scrollBy({ left: dir * ref.current.clientWidth * 0.7, behavior: "smooth" });
   const fade = `${edge.left ? "transparent, black 40px" : "black, black"}, black calc(100% - 40px), ${edge.right ? "transparent" : "black"}`;
@@ -60,18 +77,18 @@ export function ChipScroller({ children, className = "" }: { children: ReactNode
     <div className="relative">
       <div
         ref={ref}
-        className="flex items-center gap-1.5 overflow-x-auto [scrollbar-width:none] select-none [&::-webkit-scrollbar]:hidden"
+        className={`overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden ${innerClassName} ${dragScroll ? "select-none" : ""}`}
         style={{ maskImage: `linear-gradient(to right, ${fade})`, WebkitMaskImage: `linear-gradient(to right, ${fade})` }}
       >
         {children}
       </div>
       {edge.left && (
-        <button onClick={() => by(-1)} className={`${arrow} -left-1`} aria-label="Earlier days">
+        <button onClick={() => by(-1)} className={`${arrow} -left-1`} aria-label={labels.prev}>
           <ChevronLeft className="size-4" />
         </button>
       )}
       {edge.right && (
-        <button onClick={() => by(1)} className={`${arrow} -right-1`} aria-label="Later days">
+        <button onClick={() => by(1)} className={`${arrow} -right-1`} aria-label={labels.next}>
           <ChevronRight className="size-4" />
         </button>
       )}

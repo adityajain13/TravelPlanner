@@ -10,6 +10,7 @@ import { formatDistance, formatDuration, type LegState, type TravelMode } from "
 import type { PlaceResult } from "../lib/photon";
 import { formatDayHeading } from "../lib/dates";
 import { ItemCard } from "./ItemCard";
+import { ChipScroller } from "./ChipScroller";
 import { WalkButton } from "./WalkButton";
 import { walkable } from "../lib/walkTargets";
 import { fmtTime, TimeField } from "./TimeField";
@@ -713,18 +714,18 @@ function SectionActions({
   );
 }
 
-/** Branches of a split day, side by side (two columns) or scrolling (three or more). */
+/** Branches of a split day, side by side: each column is a fixed width, and the row scrolls sideways when they don't fit. */
 function SplitColumns({ columns, render }: { columns: { who: string[]; items: Item[] }[]; render: (it: Item) => ReactNode }) {
-  const two = columns.length === 2;
   return (
-    <div className={two ? "grid grid-cols-2 gap-2" : "flex gap-2 overflow-x-auto"}>
+    // No mouse drag or wheel here: the cards inside are draggable and the page must still scroll over them
+    <ChipScroller dragScroll={false} wheelScroll={false} innerClassName="flex items-start gap-2 snap-x" labels={{ prev: "Earlier branch", next: "Later branch" }}>
       {columns.map((c) => (
-        <div key={c.who.join("|")} className={`min-w-0 rounded-xl border border-dashed border-line p-2 ${two ? "" : "min-w-[260px] flex-1"}`}>
+        <div key={c.who.join("|")} className="w-[min(380px,86%)] shrink-0 snap-start min-w-0 rounded-xl border border-dashed border-line p-2">
           <p className="mb-1 text-[11px] font-bold tracking-wider text-muted uppercase">{c.who.join(", ")}</p>
           {c.items.map(render)}
         </div>
       ))}
-    </div>
+    </ChipScroller>
   );
 }
 

@@ -131,7 +131,7 @@ function ItemCardView({
       ) : (
       <div
         onClick={isPlace ? onSelect : undefined}
-        className={`flex min-w-0 flex-1 gap-3 rounded-xl border p-3 transition-colors ${isPlace ? "cursor-pointer" : ""} ${
+        className={`flex min-w-0 flex-1 gap-3 rounded-xl border p-3 transition-colors ${isPlace ? "@container cursor-pointer" : ""} ${
           selected && isPlace
             ? "border-accent/60 bg-surface-2"
             : isPlace
@@ -142,11 +142,17 @@ function ItemCardView({
         }`}
       >
         <div className="min-w-0 flex-1">
+          {/* Narrow cards (see @container on the box): the photo floats top right, so the title wraps beside it */}
+          {isPlace && item.image && !selected && (
+            <div className="float-right mb-1 ml-2 hidden size-14 overflow-hidden rounded-lg @max-sm:block">
+              <Photo srcs={[item.image.thumb, item.image.url]} className="size-full object-cover" />
+            </div>
+          )}
           <div className="flex items-start justify-between gap-2">
             <CardTitle item={item} readOnly={readOnly} onChange={onChange} onDelete={onDelete} />
-            <CardActions item={item} readOnly={readOnly} onReceipt={onReceipt} onChange={onChange} onDelete={onDelete} walkShown={walkShown} onToggleWalk={onToggleWalk} />
+            <CardActions item={item} readOnly={readOnly} onReceipt={onReceipt} onChange={onChange} onDelete={onDelete} walkShown={walkShown} onToggleWalk={onToggleWalk} className={`${TITLE_ACTIONS} @max-sm:hidden`} />
           </div>
-          {isPlace && subtitle && <p className="mt-0.5 truncate text-sm text-muted">{subtitle}</p>}
+          {isPlace && subtitle && <p className="mt-0.5 truncate text-sm text-muted @max-sm:line-clamp-2 @max-sm:whitespace-normal">{subtitle}</p>}
           {isPlace && !selected && item.notes && <RichText text={item.notes} className="mt-1.5 line-clamp-3 text-[15px] leading-snug text-fg" />}
 
           {isPlace && !selected && (auto || item.startTime || item.endTime || item.cost != null || !!item.who?.length || !!receiptsLabel) && (
@@ -159,9 +165,12 @@ function ItemCardView({
               sections={sections} onCheck={onCheck} checked={checked} people={people} onChange={onChange} currency={currency} onCostDetails={onCostDetails}
             />
           )}
+
+          {/* Narrow cards: the actions move down here, always visible */}
+          {isPlace && <CardActions item={item} readOnly={readOnly} onReceipt={onReceipt} onChange={onChange} onDelete={onDelete} walkShown={walkShown} onToggleWalk={onToggleWalk} className="mt-2 hidden justify-end @max-sm:flex" />}
         </div>
 
-        {isPlace && (item.image || (selected && !readOnly)) && <PhotoSlot item={item} selected={selected} readOnly={readOnly} onOpenPicker={() => setPicking(true)} />}
+        {isPlace && (item.image || (selected && !readOnly)) && <PhotoSlot item={item} selected={selected} readOnly={readOnly} onOpenPicker={() => setPicking(true)} className={selected ? "" : "@max-sm:hidden"} />}
       </div>
       )}
 
@@ -271,11 +280,14 @@ function CardTitle({ item, readOnly, onChange, onDelete }: Pick<Props, "item" | 
   );
 }
 
+/** Where the actions sit in a title row: hover-revealed on desktop, always on touch screens. */
+const TITLE_ACTIONS = "flex -mt-1 -mr-1 opacity-0 transition-opacity group-hover:opacity-100 max-md:opacity-100";
+
 /** The icon buttons at the card's top right: scan a receipt from the stop, open it in Google Maps, make it a navigation point, remove it. */
-function CardActions({ item, readOnly, onReceipt, onChange, onDelete, walkShown, onToggleWalk }: Pick<Props, "item" | "readOnly" | "onReceipt" | "onChange" | "onDelete" | "walkShown" | "onToggleWalk">) {
+function CardActions({ item, readOnly, onReceipt, onChange, onDelete, walkShown, onToggleWalk, className = TITLE_ACTIONS }: Pick<Props, "item" | "readOnly" | "onReceipt" | "onChange" | "onDelete" | "walkShown" | "onToggleWalk"> & { className?: string }) {
   const isPlace = item.kind === "place";
   return (
-    <div className="-mt-1 -mr-1 flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 max-md:opacity-100">
+    <div className={`shrink-0 items-center gap-0.5 ${className}`}>
       {isPlace && onToggleWalk && !item.waypoint && item.lat != null && <WalkButton on={!!walkShown} onToggle={onToggleWalk} />}
       {isPlace && onReceipt && !readOnly && !item.waypoint && (
         <ReceiptButton onFile={onReceipt} title="Scan a receipt from here" className="grid size-7 place-items-center rounded-md text-muted hover:bg-surface-2 hover:text-fg" />
@@ -331,7 +343,7 @@ function ClosedChips({
         </span>
       )}
       {!!item.who?.length && (
-        <span className="flex items-center gap-1.5 rounded-full bg-surface-2 px-2.5 py-1 text-muted" title="Only they go here; their route is drawn on its own">
+        <span className="flex items-center gap-1.5 whitespace-nowrap rounded-full bg-surface-2 px-2.5 py-1 text-muted" title="Only they go here; their route is drawn on its own">
           <Users className="size-3.5" /> {item.who.join(" & ")}
         </span>
       )}
@@ -498,9 +510,9 @@ function CostRow({ item, readOnly, currency, onChange, onCostDetails }: Pick<Pro
 }
 
 /** The photo at the card's right edge: the stop's photo, or a placeholder that opens the picker. */
-function PhotoSlot({ item, selected, readOnly, onOpenPicker }: Pick<Props, "item" | "selected" | "readOnly"> & { onOpenPicker: () => void }) {
+function PhotoSlot({ item, selected, readOnly, onOpenPicker, className = "" }: Pick<Props, "item" | "selected" | "readOnly"> & { onOpenPicker: () => void; className?: string }) {
   return (
-    <div className="flex w-[72px] shrink-0 flex-col items-stretch gap-1 sm:w-20">
+    <div className={`flex w-[72px] shrink-0 flex-col items-stretch gap-1 sm:w-20 ${className}`}>
       <button
         onClick={(e) => {
           e.stopPropagation();
@@ -566,7 +578,7 @@ function NotesInput({ value, onCommit, disabled }: { value: string; onCommit: (v
   );
 }
 
-const chip = "flex items-center gap-1.5 rounded-full bg-accent/12 px-2.5 py-1 text-fg ring-1 ring-accent/25 transition-colors disabled:cursor-default";
+const chip = "flex items-center gap-1.5 whitespace-nowrap rounded-full bg-accent/12 px-2.5 py-1 text-fg ring-1 ring-accent/25 transition-colors disabled:cursor-default";
 
 export const capitalize = (s: string) => (s ? s[0].toUpperCase() + s.slice(1) : s);
 
