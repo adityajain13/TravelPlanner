@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from "react";
+import { useEffect, useRef, useState, type Dispatch, type ReactNode, type SetStateAction } from "react";
 import { memoLatest } from "../lib/memo";
 import { useDroppable } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
@@ -58,10 +58,10 @@ interface Props {
   onRename?: (title: string) => void;
   /** Lists only: delete this section and its items. */
   onDeleteSection?: () => void;
-  /** index: insert before the item at that position (from the "+" between stops); omitted = append. */
-  onAddPlace: (p: PlaceResult, index?: number) => void;
-  onAddNote: (text: string, index?: number) => void;
-  onAddChecklist?: (index?: number) => void;
+  /** index: insert before the item at that position (from the "+" between stops); omitted = append. startTime: set by a "+" between bookings so the new item slots there. */
+  onAddPlace: (p: PlaceResult, index?: number, startTime?: string) => void;
+  onAddNote: (text: string, index?: number, startTime?: string) => void;
+  onAddChecklist?: (index?: number, startTime?: string) => void;
   onChange: (id: string, patch: Partial<Item>) => void;
   onDelete: (id: string) => void;
   checked?: Set<string>;
@@ -98,6 +98,11 @@ interface Props {
 }
 
 type Chips = NonNullable<Props["chips"]>;
+type Chip = Chips[number];
+/** A "+" gap is keyed by the stop index it sits before (number) or by its booking, `chip:<stop>:<booking>`. */
+type GapKey = number | string;
+/** The "+" above each booking of a day: the bookings of one group (stop index) → the gap above one of them. */
+type GapAbove = (g: number, group: Chips) => (c: Chip) => ReactNode;
 
 /**
  * A day or list. The drop target hook re-renders on every drag-state change, so it lives in this
@@ -116,8 +121,8 @@ function SectionView(p: Props & { dropRef: (el: HTMLElement | null) => void; isO
   const [localOpen, setLocalOpen] = useState(true);
   const open = p.collapsed != null ? !p.collapsed : localOpen;
   const setOpen = (f: (o: boolean) => boolean) => (p.onCollapsed ? p.onCollapsed(!f(open)) : setLocalOpen(f));
-  const [insertAt, setInsertAt] = useState<number | null>(null);
-  const [menuAt, setMenuAt] = useState<number | null>(null);
+  const [insertAt, setInsertAt] = useState<GapKey | null>(null);
+  const [menuAt, setMenuAt] = useState<GapKey | null>(null);
   const [subEditing, setSubEditing] = useState(false);
   const canInsert = !p.readOnly && info.key !== "orphan";
   const { dropRef: setNodeRef, isOver } = p;
@@ -127,6 +132,35 @@ function SectionView(p: Props & { dropRef: (el: HTMLElement | null) => void; isO
   const chipsAt = placeChips(p.chips ?? [], info.items);
   const card = p.chipStyle === "card";
   const wiring = itemWiring(p);
+  // A "+" above every booking of a day, so a new item lands between bookings and stops, not only above stops
+  const gapAbove: GapAbove | undefined =
+    canInsert && info.kind === "day"
+      ? (g, group) => (c) => {
+          const k = group.indexOf(c);
+          // Nothing can come before the morning hotel: a day with no stops that opens with its check-out or stay
+          if (g === 0 && k === 0 && info.items.length === 0 && (c.verb === "Check-out" || c.verb === "Staying")) return null;
+          // The item directly above the gap: the booking before it, else the stop above
+          const stop = g > 0 ? info.items[g - 1] : undefined;
+          const startTime = timeForGap(k > 0 ? group[k - 1].time : (stop?.endTime ?? stop?.startTime), c.time);
+          return (
+            <ChipGap
+              gapKey={`chip:${g}:${k}`}
+              index={g}
+              startTime={startTime}
+              pill={!card}
+              near={p.near}
+              countryCode={p.countryCode}
+              menuAt={menuAt}
+              setMenuAt={setMenuAt}
+              insertAt={insertAt}
+              setInsertAt={setInsertAt}
+              onAddPlace={p.onAddPlace}
+              onAddNote={p.onAddNote}
+              onAddChecklist={p.onAddChecklist}
+            />
+          );
+        }
+      : undefined;
 
   return (
     <section
@@ -160,8 +194,9 @@ function SectionView(p: Props & { dropRef: (el: HTMLElement | null) => void; isO
       {chipsAt.get(0) &&
         (() => {
           const top = chipsAt.get(0)!;
-          const rows = (chips: typeof top) => (
-            <BookingRows chips={chips} card={card} date={info.date} legs={p.legs} readOnly={p.readOnly} onLegMode={p.onLegMode} onChipClick={p.onChipClick} walkOn={p.walkOn} onToggleWalk={p.onToggleWalk} />
+          const gap = gapAbove?.(0, top);
+          const rows = (chips: typeof top, insert?: (c: Chip) => ReactNode) => (
+            <BookingRows chips={chips} card={card} date={info.date} legs={p.legs} readOnly={p.readOnly} onLegMode={p.onLegMode} onChipClick={p.onChipClick} walkOn={p.walkOn} onToggleWalk={p.onToggleWalk} insertBefore={insert} />
           );
           // A day with no stops has all its bookings here: the way to tonight's hotel goes just above the check-in
           const checkIn = info.items.length === 0 && p.legs?.has("end") ? top.filter((c) => c.r.type === "lodging" && c.verb === "Check-in") : [];
@@ -169,12 +204,14 @@ function SectionView(p: Props & { dropRef: (el: HTMLElement | null) => void; isO
             <div className={card ? "mt-2 px-3" : "mt-2"}>
               {checkIn.length ? (
                 <>
-                  {rows(top.filter((c) => !checkIn.includes(c)))}
+                  {rows(top.filter((c) => !checkIn.includes(c)), gap)}
+                  {/* The gap above the first check-in goes above the way to it, like the other legs */}
+                  {gap?.(checkIn[0])}
                   <LegChips legs={p.legs} id="end" readOnly={p.readOnly} onLegMode={p.onLegMode} />
-                  {rows(checkIn)}
+                  {rows(checkIn, (c) => (c === checkIn[0] ? null : gap?.(c)))}
                 </>
               ) : (
-                rows(top)
+                rows(top, gap)
               )}
             </div>
           );
@@ -197,6 +234,7 @@ function SectionView(p: Props & { dropRef: (el: HTMLElement | null) => void; isO
                 setInsertAt={setInsertAt}
                 menuAt={menuAt}
                 setMenuAt={setMenuAt}
+                gapAbove={gapAbove}
               />
             ))}
           </SortableContext>
@@ -204,9 +242,10 @@ function SectionView(p: Props & { dropRef: (el: HTMLElement | null) => void; isO
           {(() => {
             const last = info.items.length > 0 ? chipsAt.get(info.items.length) : undefined;
             const endLeg = p.legs?.has("end") && <LegChips legs={p.legs} id="end" readOnly={p.readOnly} onLegMode={p.onLegMode} />;
-            const rows = (chips: NonNullable<typeof last>) => (
+            const gap = gapAbove?.(info.items.length, last ?? []);
+            const rows = (chips: NonNullable<typeof last>, insert?: (c: Chip) => ReactNode) => (
               <div className={card ? "pt-1" : "py-1.5"}>
-                <BookingRows chips={chips} card={card} date={info.date} legs={p.legs} readOnly={p.readOnly} onLegMode={p.onLegMode} onChipClick={p.onChipClick} walkOn={p.walkOn} onToggleWalk={p.onToggleWalk} />
+                <BookingRows chips={chips} card={card} date={info.date} legs={p.legs} readOnly={p.readOnly} onLegMode={p.onLegMode} onChipClick={p.onChipClick} walkOn={p.walkOn} onToggleWalk={p.onToggleWalk} insertBefore={insert} />
               </div>
             );
             if (!last)
@@ -216,9 +255,11 @@ function SectionView(p: Props & { dropRef: (el: HTMLElement | null) => void; isO
             const hotel = last.filter((c) => c.r.type === "lodging");
             return (
               <>
-                {rest.length > 0 && rows(rest)}
+                {rest.length > 0 && rows(rest, gap)}
+                {/* The gap above the hotel goes above the way to it, like the other legs */}
+                {hotel.length > 0 && gap?.(hotel[0])}
                 {endLeg}
-                {hotel.length > 0 && rows(hotel)}
+                {hotel.length > 0 && rows(hotel, (c) => (c === hotel[0] ? null : gap?.(c)))}
               </>
             );
           })()}
@@ -341,6 +382,7 @@ function BookingRows({
   onChipClick,
   walkOn,
   onToggleWalk,
+  insertBefore,
 }: {
   chips: Chips;
   card: boolean;
@@ -351,6 +393,8 @@ function BookingRows({
   onChipClick?: (r: Reservation) => void;
   walkOn?: Set<string>;
   onToggleWalk?: (id: string) => void;
+  /** The "+" above a booking; drawn above its leg chips so the legs stay on the booking. */
+  insertBefore?: (c: Chip) => ReactNode;
 }) {
   return card ? (
     <div className="space-y-0.5">
@@ -359,6 +403,7 @@ function BookingRows({
         const viaKey = viaKeyOf(c, legs);
         return (
           <div key={`${c.r.id}-${i}`}>
+            {insertBefore?.(c)}
             {depKey && <LegChips legs={legs} id={depKey} readOnly={readOnly} onLegMode={onLegMode} />}
             {viaKey && <LegChips legs={legs} id={viaKey} readOnly={readOnly} onLegMode={onLegMode} />}
             {/* Same columns as a stop: empty pin column, then the card */}
@@ -396,6 +441,7 @@ function BookingRows({
         const viaKey = viaKeyOf(c, legs);
         return (
           <div key={`${c.r.id}-${i}`} className="flex flex-col items-start gap-1.5">
+            {insertBefore?.(c)}
             {depKey && legKeysFor(legs, depKey).length > 0 && (
               <div className="-ml-6">
                 <LegChips legs={legs} id={depKey} readOnly={readOnly} onLegMode={onLegMode} />
@@ -647,19 +693,20 @@ interface StopRowProps extends ItemWiring {
   chipsBefore?: Chips;
   card: boolean;
   canInsert: boolean;
-  insertAt: number | null;
-  setInsertAt: Dispatch<SetStateAction<number | null>>;
-  menuAt: number | null;
-  setMenuAt: Dispatch<SetStateAction<number | null>>;
+  insertAt: GapKey | null;
+  setInsertAt: Dispatch<SetStateAction<GapKey | null>>;
+  menuAt: GapKey | null;
+  setMenuAt: Dispatch<SetStateAction<GapKey | null>>;
+  gapAbove?: GapAbove;
 }
 
 /** One stop of a day or list: the bookings before it, the "+" gap (or the insert box), and the card. */
-function StopRow({ item, idx, number, info, chipsBefore, card, canInsert, insertAt, setInsertAt, menuAt, setMenuAt, ...p }: StopRowProps) {
+function StopRow({ item, idx, number, info, chipsBefore, card, canInsert, insertAt, setInsertAt, menuAt, setMenuAt, gapAbove, ...p }: StopRowProps) {
   return (
     <div data-item-wrap className="scroll-mt-28">
       {idx > 0 && chipsBefore && (
         <div className={card ? "pt-1" : "pt-2 pb-1"}>
-          <BookingRows chips={chipsBefore} card={card} date={info.date} legs={p.legs} readOnly={p.readOnly} onLegMode={p.onLegMode} onChipClick={p.onChipClick} walkOn={p.walkOn} onToggleWalk={p.onToggleWalk} />
+          <BookingRows chips={chipsBefore} card={card} date={info.date} legs={p.legs} readOnly={p.readOnly} onLegMode={p.onLegMode} onChipClick={p.onChipClick} walkOn={p.walkOn} onToggleWalk={p.onToggleWalk} insertBefore={gapAbove?.(idx, chipsBefore)} />
         </div>
       )}
       {insertAt === idx ? (
@@ -730,9 +777,9 @@ interface InsertGapProps {
   legs: Props["legs"];
   readOnly?: boolean;
   onLegMode?: Props["onLegMode"];
-  menuAt: number | null;
-  setMenuAt: Dispatch<SetStateAction<number | null>>;
-  setInsertAt: Dispatch<SetStateAction<number | null>>;
+  menuAt: GapKey | null;
+  setMenuAt: Dispatch<SetStateAction<GapKey | null>>;
+  setInsertAt: Dispatch<SetStateAction<GapKey | null>>;
   onAddNote: Props["onAddNote"];
   onAddChecklist?: Props["onAddChecklist"];
 }
@@ -741,24 +788,99 @@ interface InsertGapProps {
 function InsertGap({ idx, itemId, legs, readOnly, onLegMode, menuAt, setMenuAt, setInsertAt, onAddNote, onAddChecklist }: InsertGapProps) {
   return (
     <div className="group/gap relative">
+      <GapPlus k={idx} menuAt={menuAt} setMenuAt={setMenuAt} setInsertAt={setInsertAt} onNote={() => onAddNote("", idx)} onChecklist={onAddChecklist && (() => onAddChecklist(idx))} />
+      {!legs?.has(itemId) && <div className="h-3.5" />}
+      {legs?.has(itemId) && <LegChips legs={legs} id={itemId} readOnly={readOnly} onLegMode={onLegMode} />}
+    </div>
+  );
+}
+
+/** The hover "+" at the left of a gap, and its menu: a place (opens the search in the gap), a note, a checklist. */
+function GapPlus({
+  k,
+  menuAt,
+  setMenuAt,
+  setInsertAt,
+  onNote,
+  onChecklist,
+}: {
+  k: GapKey;
+  menuAt: GapKey | null;
+  setMenuAt: Dispatch<SetStateAction<GapKey | null>>;
+  setInsertAt: Dispatch<SetStateAction<GapKey | null>>;
+  onNote: () => void;
+  onChecklist?: () => void;
+}) {
+  const open = menuAt === k;
+  return (
+    <>
       <button
-        onClick={() => setMenuAt((m) => (m === idx ? null : idx))}
-        className={`absolute top-1/2 left-0 z-10 grid size-7 -translate-y-1/2 place-items-center rounded-full text-muted transition-opacity group-hover/gap:opacity-100 hover:bg-surface-2 hover:text-accent focus-visible:opacity-100 max-md:opacity-50 ${menuAt === idx ? "bg-surface-2 text-accent opacity-100" : "opacity-0"}`}
+        onClick={() => setMenuAt((m) => (m === k ? null : k))}
+        className={`absolute top-1/2 left-0 z-10 grid size-7 -translate-y-1/2 place-items-center rounded-full text-muted transition-opacity group-hover/gap:opacity-100 hover:bg-surface-2 hover:text-accent focus-visible:opacity-100 max-md:opacity-50 ${open ? "bg-surface-2 text-accent opacity-100" : "opacity-0"}`}
         title="Add something here"
         aria-label="Add something here"
       >
         <Plus className="size-4" />
       </button>
-      {menuAt === idx && (
+      {open && (
         <InsertMenu
           onClose={() => setMenuAt(null)}
-          onPlace={() => (setMenuAt(null), setInsertAt(idx))}
-          onNote={() => (setMenuAt(null), onAddNote("", idx))}
-          onChecklist={onAddChecklist ? () => (setMenuAt(null), onAddChecklist(idx)) : undefined}
+          onPlace={() => (setMenuAt(null), setInsertAt(k))}
+          onNote={() => (setMenuAt(null), onNote())}
+          onChecklist={onChecklist && (() => (setMenuAt(null), onChecklist()))}
         />
       )}
-      {!legs?.has(itemId) && <div className="h-3.5" />}
-      {legs?.has(itemId) && <LegChips legs={legs} id={itemId} readOnly={readOnly} onLegMode={onLegMode} />}
+    </>
+  );
+}
+
+interface ChipGapProps {
+  /** The stop index the booking's group sits before: where the new item goes. */
+  index: number;
+  gapKey: string;
+  /** Start time for a new place (or a timed note) so it slots just above the booking. */
+  startTime?: string;
+  pill: boolean;
+  near?: [number, number];
+  countryCode?: string;
+  menuAt: GapKey | null;
+  setMenuAt: Dispatch<SetStateAction<GapKey | null>>;
+  insertAt: GapKey | null;
+  setInsertAt: Dispatch<SetStateAction<GapKey | null>>;
+  onAddPlace: Props["onAddPlace"];
+  onAddNote: Props["onAddNote"];
+  onAddChecklist?: Props["onAddChecklist"];
+}
+
+/**
+ * The "+" above a booking. A new item lands between the bookings above and the booking itself: a
+ * place or note takes a time that slots it there (see timeForGap), since bookings are placed by time.
+ */
+function ChipGap({ index, gapKey, startTime, pill, near, countryCode, menuAt, setMenuAt, insertAt, setInsertAt, onAddPlace, onAddNote, onAddChecklist }: ChipGapProps) {
+  if (insertAt === gapKey)
+    return (
+      <div className={`w-full py-1.5 pr-1 ${pill ? "" : "pl-9"}`} data-popover>
+        <PlaceSearch
+          autoFocus
+          near={near}
+          countryCode={countryCode}
+          onPick={(r) => (onAddPlace(r, index, startTime), setInsertAt(null))}
+          onNote={(t) => (onAddNote(t, index, startTime), setInsertAt(null))}
+          onCancel={() => setInsertAt(null)}
+        />
+      </div>
+    );
+  return (
+    <div className={`group/gap relative ${pill ? "w-full" : ""}`}>
+      <GapPlus
+        k={gapKey}
+        menuAt={menuAt}
+        setMenuAt={setMenuAt}
+        setInsertAt={setInsertAt}
+        onNote={() => onAddNote("", index, startTime)}
+        onChecklist={onAddChecklist && (() => onAddChecklist(index, startTime))}
+      />
+      <div className="h-3.5" />
     </div>
   );
 }
@@ -993,6 +1115,25 @@ export function placeChips(chips: NonNullable<Props["chips"]>, items: Item[]) {
     else add(slotFor(items, t), c);
   }
   return at;
+}
+
+/** `t` moved by d minutes, kept within the day. */
+function shiftTime(t: string, d: number) {
+  const m = Math.min(1439, Math.max(0, toMin(t) + d));
+  return `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
+}
+
+/**
+ * Start time for a new place in a gap: a minute after the item above when that is still before the
+ * booking below (the booking then slots after it), else a minute before the booking. Undefined when
+ * there is no time to order against.
+ */
+export function timeForGap(prev?: string, next?: string): string | undefined {
+  const p = hhmm(prev);
+  const n = hhmm(next);
+  if (p && (!n || p < n)) return shiftTime(p, 1);
+  if (n) return shiftTime(n, -1);
+  return undefined;
 }
 
 /** Latest start/end time among the stops above position idx (not just the one directly above). */
