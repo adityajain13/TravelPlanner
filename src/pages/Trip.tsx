@@ -374,6 +374,7 @@ export function TripPage() {
           theme={theme}
           readOnly={readOnly}
           viewing={viewing}
+          onViewing={setViewing}
           onExit={() => setTravelOn(false)}
           showSettings={showSettings}
           setShowSettings={setShowSettings}
