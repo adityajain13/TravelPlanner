@@ -1,4 +1,5 @@
 import { askWithTool } from "./claude";
+import { splitPassengers } from "./passengers";
 import PostalMime from "postal-mime";
 import { sendMail, type Env } from "./util";
 import { canLogin } from "./auth";
@@ -96,6 +97,7 @@ ${tripList}
 
 Pick the trip whose dates and destination fit the bookings (allow a few days either side for travel days). If none fits, use null.
 Include each booking's total price (cost + currency) when it appears in the email or any attached PDF (receipts, e-tickets, invoices).
+Passengers and guests: one booking entry per person. If a flight, train or bus lists two passengers, return two entries with the same trip details, each with exactly one name in "traveler" (never "A, B" or "A and B" in one entry); that person's seat, ticket number, baggage and loyalty number go in their own entry. A single total price paid for the group goes on the first person's entry only; a price shown per person goes on each.
 
 Subject: ${subject}
 
@@ -297,6 +299,7 @@ export async function handleEmail(message: ForwardableEmailMessage, env: Env) {
   const pinned = tag ? trips.find((t) => t.id.toLowerCase() === tag) : undefined;
   const out = await extractBookings(env, sender, mail, trips, pinned);
   if (!out) return;
+  out.bookings = splitPassengers(out.bookings, await tripPeople(env, out.trip_id));
 
   if (!out.bookings.length) {
     await reply(env, sender, `No booking found: ${mail.subject}`, "I couldn't find a flight, hotel, train or reservation in that email, so nothing was added.");
@@ -307,4 +310,15 @@ export async function handleEmail(message: ForwardableEmailMessage, env: Env) {
   // Open copies of the trip refetch their inbox now instead of on the next reload
   if (out.trip_id) await env.TRIP_ROOM.get(env.TRIP_ROOM.idFromName(out.trip_id)).signal("inbox").catch(() => undefined);
   await sendReceipt(env, sender, owner, trips, out);
+}
+
+/** The trip's people ("Manish Jain", "Nishi"…), to tell "Manish, Nishi" (two people) from "Jain, Manish" (one). */
+async function tripPeople(env: Env, tripId: string | null): Promise<string[]> {
+  if (!tripId) return [];
+  try {
+    const snap = await env.TRIP_ROOM.get(env.TRIP_ROOM.idFromName(tripId)).read();
+    return (snap.meta.travelers ?? []).map((t: string) => t.toLowerCase());
+  } catch {
+    return [];
+  }
 }
