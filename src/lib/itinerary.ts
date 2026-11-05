@@ -380,6 +380,8 @@ export interface ViaResult {
 
 export const NO_VIA: ViaResult = { legs: [], replaces: new Set(), slots: new Map() };
 
+const crowKm = (a: [number, number], b: [number, number]) =>
+  Math.hypot((a[1] - b[1]) * 111.32, (a[0] - b[0]) * 111.32 * Math.cos((a[1] * Math.PI) / 180));
 const isPinned = (it: Item) => it.kind === "place" && it.lat != null && it.lng != null;
 const hm = (t?: string) => timeOf(t)?.slice(0, 5);
 
@@ -457,15 +459,18 @@ export function viaLegs(sections: SectionInfo[], state: TripState, direct: Itine
     for (const { after, list } of chains.values()) {
       const first = list[0];
       // Before the first stop: from where the day starts (the hotel / arrival airport leg it takes over)
-      const opening = !first.before && after ? direct.find((l) => l.ver === ver && l.toId === after.id && !l.who) : undefined;
+      // (a day with no stops: the leg to tonight's hotel, e.g. from the arrival airport)
+      const opening = first.before ? undefined : direct.find((l) => l.ver === ver && l.toId === (after ? after.id : "end") && !l.who);
       let from: { ll: [number, number]; at?: string; label?: string } | undefined = first.before
         ? { ll: [first.before.lng!, first.before.lat!], at: first.before.endTime ?? first.before.startTime }
-        : opening && { ll: opening.req.from, label: opening.label };
+        : opening && { ll: opening.req.from, label: after ? opening.label : undefined };
       for (const { p } of list) {
         const to: [number, number] = [p.lng, p.lat];
         if (from) {
-          const mode = (state.meta.hotelLegModes?.[`${s.key}|res:${p.pid}`] ?? defaultMode) as TravelMode;
-          add(`res:${p.pid}`, from.ll, to, { mode, at: from.at ?? p.at, label: from.label ?? `To ${p.r.title}`, skipSamePoint: true });
+          // A counter in the terminal or next door (the rental desk at the airport): a short walk, still shown
+          const close = crowKm(from.ll, to) < 0.4;
+          const mode = (state.meta.hotelLegModes?.[`${s.key}|res:${p.pid}`] ?? (close ? "walk" : defaultMode)) as TravelMode;
+          add(`res:${p.pid}`, from.ll, to, { mode, at: from.at ?? p.at, label: from.label ?? `To ${p.r.title}` });
         }
         if (after) slotMap.set(p.pid, after.id);
         from = { ll: to, at: p.end ?? p.at };
@@ -478,7 +483,8 @@ export function viaLegs(sections: SectionInfo[], state: TripState, direct: Itine
       const evening = !after && from ? direct.find((l) => l.ver === ver && l.toId === "end" && !l.who) : undefined;
       if (evening && from) {
         out.replaces.add(`${ver}|end`);
-        add("end", from.ll, evening.req.to, { mode: evening.req.mode, at: from.at, label: evening.label, skipSamePoint: true });
+        // "YYC to the hotel" now starts at the booking: "To the hotel"
+        add("end", from.ll, evening.req.to, { mode: evening.req.mode, at: from.at, label: evening.label?.replace(/^[A-Z0-9]{3} to /, "To "), skipSamePoint: true });
       }
     }
     if (slotMap.size) out.slots.set(ver, slotMap);
