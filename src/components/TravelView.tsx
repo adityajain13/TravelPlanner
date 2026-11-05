@@ -6,7 +6,8 @@ import { formatDistance, formatDuration } from "../lib/routing";
 import { formatDayHeading } from "../lib/dates";
 import { inkOn } from "../lib/colors";
 import type { SectionInfo } from "./Section";
-import { goesTo, legsVisibleTo, stopLabels } from "../lib/branches";
+import { goesTo, isSplitDay, legsVisibleTo, stopLabels } from "../lib/branches";
+import { WhoChips } from "./WhoChips";
 import { dayChips, RES_ICON } from "./Reservations";
 import { fmtTime } from "./TimeField";
 import { RichText, RichLine } from "./RichText";
@@ -32,6 +33,8 @@ interface Props {
   /** The trip's people, and whose view of a split day is shown (undefined = everyone). */
   people?: string[];
   viewing?: string;
+  /** Split days: switch between everyone and one person's day. */
+  onViewing?: (person: string | undefined) => void;
 }
 
 const localDate = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -95,6 +98,10 @@ export function TravelView(p: Props) {
         onNext={nextDay}
         onToday={() => setIdx(todayIdx)}
       />
+      {/* Only on days where the group splits up */}
+      {p.onViewing && isSplitDay(day.items, p.people ?? []) && (
+        <WhoChips people={p.people ?? []} viewing={p.viewing} onViewing={p.onViewing} className="justify-center border-b border-line px-3 py-2" />
+      )}
 
       <div className="min-h-0 flex-1 overflow-y-auto pb-[max(env(safe-area-inset-bottom),1.5rem)]">
         {isToday && (current || next) && <NowNextCard current={current} next={next} legs={legs} />}

@@ -25,6 +25,7 @@ export function TravelModeView({
   settingsScope,
   onOverview,
   viewing,
+  onViewing,
 }: {
   doc: Y.Doc;
   state: TripState;
@@ -41,6 +42,7 @@ export function TravelModeView({
   settingsScope: SettingsScope | null;
   onOverview?: () => void;
   viewing?: string;
+  onViewing?: (person: string | undefined) => void;
 }) {
   return (
     <>
@@ -54,6 +56,7 @@ export function TravelModeView({
         onOverview={onOverview}
         people={state.meta.travelers ?? []}
         viewing={viewing}
+        onViewing={onViewing}
         onToggleCheck={readOnly ? undefined : (itemId, checkId) => {
           const it = state.items.find((x) => x.id === itemId);
           if (it) updateItem(doc, itemId, { checks: (it.checks ?? []).map((c) => (c.id === checkId ? { ...c, done: !c.done } : c)) });
