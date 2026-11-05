@@ -41,7 +41,12 @@ export function withRides(items: Item[], people: string[]): Item[] {
   items.forEach((x, i) => {
     const r = x.ride;
     if (!r || !partial(x, people) || !people.includes(r.by) || x.who!.includes(r.by)) return;
-    if (r.drop) (before.get(i) ?? before.set(i, []).get(i)!).push(rideStop(x, r.by, "drop"));
+    if (r.drop) {
+      // Dropped off where the group splits up: before the run's first stop, whoever's it is
+      let start = i;
+      for (let k = i; k >= 0 && inRun(items[k], people); k--) if (partial(items[k], people)) start = k;
+      (before.get(start) ?? before.set(start, []).get(start)!).push(rideStop(x, r.by, "drop"));
+    }
     if (r.pick) {
       // The run ends at its last partial place, as in segmentsOf
       let end = i;
