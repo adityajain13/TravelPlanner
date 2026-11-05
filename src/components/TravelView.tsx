@@ -6,6 +6,7 @@ import { formatDistance, formatDuration } from "../lib/routing";
 import { formatDayHeading } from "../lib/dates";
 import { inkOn } from "../lib/colors";
 import type { SectionInfo } from "./Section";
+import { goesTo, legsVisibleTo, stopLabels } from "../lib/branches";
 import { dayChips, RES_ICON } from "./Reservations";
 import { fmtTime } from "./TimeField";
 import { RichText, RichLine } from "./RichText";
@@ -28,6 +29,9 @@ interface Props {
   onExit: () => void;
   /** Opens the trip overview over the travel view (phones) */
   onOverview?: () => void;
+  /** The trip's people, and whose view of a split day is shown (undefined = everyone). */
+  people?: string[];
+  viewing?: string;
 }
 
 const localDate = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -56,7 +60,7 @@ export function TravelView(p: Props) {
     return () => clearInterval(t);
   }, []);
   const day = p.days[Math.min(idx, p.days.length - 1)];
-  const legs = day ? p.legsFor(day) : undefined;
+  const legs = day ? legsVisibleTo(p.legsFor(day), p.viewing) : undefined;
   const isToday = day?.date === localDate(now);
   const chips = useMemo(() => (day ? dayChips(p.reservations, day.date!) : []), [day, p.reservations]);
 
@@ -66,11 +70,12 @@ export function TravelView(p: Props) {
   const places = day.items.filter((i) => i.kind === "place");
   const stops = places.filter((i) => !i.waypoint);
   const nowMin = now.getHours() * 60 + now.getMinutes();
-  const current = isToday ? stops.find((i) => (toMin(i.startTime) ?? 1e9) <= nowMin && nowMin < (toMin(i.endTime) ?? (toMin(i.startTime) ?? 0) + 60)) : undefined;
-  const next = isToday ? stops.find((i) => (toMin(i.startTime) ?? -1) > nowMin) : undefined;
+  // Now / next are the viewed person's stops (everyone's on the day when no one is viewed)
+  const mine = stops.filter((i) => !p.viewing || goesTo(i, p.viewing));
+  const current = isToday ? mine.find((i) => (toMin(i.startTime) ?? 1e9) <= nowMin && nowMin < (toMin(i.endTime) ?? (toMin(i.startTime) ?? 0) + 60)) : undefined;
+  const next = isToday ? mine.find((i) => (toMin(i.startTime) ?? -1) > nowMin) : undefined;
   const tonight = p.reservations.find((r) => r.type === "lodging" && r.startDate && r.startDate <= day.date! && (r.endDate ?? r.startDate) > day.date!);
-  let n = 0;
-  const numberOf = new Map(stops.map((i) => [i.id, ++n]));
+  const labels = stopLabels(day.items, p.people ?? [], p.viewing);
   const toggleStop = (id: string) => setOpen((o) => (o === id ? null : id));
   const prevDay = () => (setIdx((i) => i - 1), setOpen(null));
   const nextDay = () => (setIdx((i) => i + 1), setOpen(null));
@@ -94,7 +99,7 @@ export function TravelView(p: Props) {
       <div className="min-h-0 flex-1 overflow-y-auto pb-[max(env(safe-area-inset-bottom),1.5rem)]">
         {isToday && (current || next) && <NowNextCard current={current} next={next} legs={legs} />}
         <BookingCards chips={chips} />
-        <DayItems day={day} legs={legs} numberOf={numberOf} currentId={current?.id} open={open} onToggle={toggleStop} onToggleCheck={p.onToggleCheck} />
+        <DayItems day={day} legs={legs} labels={labels} viewing={p.viewing} currentId={current?.id} open={open} onToggle={toggleStop} onToggleCheck={p.onToggleCheck} />
         {tonight && <TonightCard tonight={tonight} />}
       </div>
 
@@ -248,7 +253,8 @@ function BookingCards({ chips }: { chips: ReturnType<typeof dayChips> }) {
 function DayItems({
   day,
   legs,
-  numberOf,
+  labels,
+  viewing,
   currentId,
   open,
   onToggle,
@@ -256,7 +262,8 @@ function DayItems({
 }: {
   day: SectionInfo;
   legs: Legs;
-  numberOf: Map<string, number>;
+  labels: Map<string, string>;
+  viewing?: string;
   currentId?: string;
   open: string | null;
   onToggle: (id: string) => void;
@@ -271,7 +278,7 @@ function DayItems({
           {it.kind === "place" && it.waypoint ? (
             <ViaRow it={it} />
           ) : it.kind === "place" ? (
-            <StopRow it={it} n={numberOf.get(it.id)!} color={day.color} open={open === it.id} onToggle={() => onToggle(it.id)} mode={legs?.get(it.id)?.mode} current={currentId === it.id} weekday={new Date(`${day.date}T12:00`).getDay()} />
+            <StopRow it={it} n={labels.get(it.id)} dimmed={!!viewing && !goesTo(it, viewing)} color={day.color} open={open === it.id} onToggle={() => onToggle(it.id)} mode={legs?.get(it.id)?.mode} current={currentId === it.id} weekday={new Date(`${day.date}T12:00`).getDay()} />
           ) : it.kind === "checklist" ? (
             <ChecklistCard it={it} onToggleCheck={onToggleCheck} />
           ) : (
@@ -364,12 +371,12 @@ function ViaRow({ it }: { it: Item }) {
   );
 }
 
-function StopRow({ it, n, color, open, onToggle, mode, current, weekday }: { it: Item; n: number; color: string; open: boolean; onToggle: () => void; mode?: TravelMode; current: boolean; weekday: number }) {
+function StopRow({ it, n, dimmed, color, open, onToggle, mode, current, weekday }: { it: Item; n?: string; dimmed?: boolean; color: string; open: boolean; onToggle: () => void; mode?: TravelMode; current: boolean; weekday: number }) {
   const g = it.google;
   // Google lists hours Monday-first; getDay() is Sunday-first
   const hoursToday = g?.hours?.[(weekday + 6) % 7];
   return (
-    <div className={`mx-3 my-1 rounded-2xl border ${current ? "border-accent/50 bg-accent/5" : "border-line bg-surface"}`}>
+    <div className={`mx-3 my-1 rounded-2xl border ${current ? "border-accent/50 bg-accent/5" : "border-line bg-surface"} ${dimmed ? "opacity-40" : ""}`}>
       <div className="flex items-center gap-3 p-3">
         <button onClick={onToggle} className="flex min-w-0 flex-1 items-center gap-3 text-left" aria-expanded={open}>
           <span className="w-12 shrink-0 text-right text-[13px] leading-tight font-semibold tabular-nums">{it.startTime ? fmtTime(it.startTime) : "—"}</span>

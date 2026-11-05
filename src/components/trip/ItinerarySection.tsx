@@ -38,6 +38,8 @@ export function ItinerarySection({ c, s, si }: { c: PlanContext; s: PlanSection;
     setCostFor,
     walkOn,
     toggleWalk,
+    viewing,
+    setViewing,
   } = c;
   return (
     <>
@@ -54,6 +56,8 @@ export function ItinerarySection({ c, s, si }: { c: PlanContext; s: PlanSection;
         chips={s.kind === "day" ? (chipsByDay.get(s.date!) ?? NO_CHIPS) : NO_CHIPS}
         chipStyle={chipStyle}
         people={state.meta.travelers}
+        viewing={s.kind === "day" ? viewing : undefined}
+        onViewing={setViewing}
         onReceipt={readOnly ? undefined : (itemId, file) => setReceiptFor({ file, itemId })}
         receiptsLabel={(itemId) => receiptsLabel(state.expenses, itemId)}
         legs={legsBySection.get(s.writeKey ?? s.key)}

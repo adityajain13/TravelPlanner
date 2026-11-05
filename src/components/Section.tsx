@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type Dispatch, type ReactNode, type SetStateAction } from "react";
+import { Fragment, useEffect, useRef, useState, type Dispatch, type ReactNode, type SetStateAction } from "react";
 import { memoLatest } from "../lib/memo";
 import { useDroppable } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
@@ -14,6 +14,8 @@ import { WalkButton } from "./WalkButton";
 import { walkable } from "../lib/walkTargets";
 import { fmtTime, TimeField } from "./TimeField";
 import { RichText } from "./RichText";
+import { goesTo, isSplitDay, legsVisibleTo, segmentsOf, stopLabels, type Segment } from "../lib/branches";
+import { WhoChips } from "./WhoChips";
 import { PlaceSearch } from "./PlaceSearch";
 import type { SectionTarget } from "./SectionPicker";
 import { Popover } from "./DatePicker";
@@ -46,7 +48,7 @@ interface Props {
   /** Bookings in the day as small pills (default look) or slim cards lined up with the stops. */
   chipStyle?: "pill" | "card";
   /** Incoming leg per item id (days only). */
-  legs?: Map<string, { mode: TravelMode; state?: LegState; from: [number, number]; to: [number, number]; label?: string }>;
+  legs?: Map<string, { mode: TravelMode; state?: LegState; from: [number, number]; to: [number, number]; label?: string; who?: string[] }>;
   searchContext?: string;
   onLegMode?: (itemId: string, mode: TravelMode) => void;
   onChipClick?: (r: Reservation) => void;
@@ -92,6 +94,9 @@ interface Props {
   collapsed?: boolean;
   onCollapsed?: (collapsed: boolean) => void;
   dayStart?: { value: string; isDefault: boolean; landed?: string; onChange?: (t: string | undefined) => void };
+  /** Split days: whose view is shown (undefined = everyone), and choosing one. */
+  viewing?: string;
+  onViewing?: (person: string | undefined) => void;
   /** Stops and bookings switched on for a walking area (ids; bookings' copies included), and the eye toggle. */
   walkOn?: Set<string>;
   onToggleWalk?: (id: string) => void;
@@ -115,7 +120,9 @@ export function Section(p: Props) {
 
 const SectionBody = memoLatest(SectionView, "Section");
 
-function SectionView(p: Props & { dropRef: (el: HTMLElement | null) => void; isOver: boolean }) {
+function SectionView(props: Props & { dropRef: (el: HTMLElement | null) => void; isOver: boolean }) {
+  // One person's view shows only the legs that person takes
+  const p = { ...props, legs: legsVisibleTo(props.legs, props.viewing) };
   const { info } = p;
   // Collapsed is saved in the trip (everyone sees it collapsed); local only where you can't edit
   const [localOpen, setLocalOpen] = useState(true);
@@ -128,8 +135,13 @@ function SectionView(p: Props & { dropRef: (el: HTMLElement | null) => void; isO
   const { dropRef: setNodeRef, isOver } = p;
   const placeCount = info.items.filter((i) => i.kind === "place").length;
   const dayTravel = dayTravelText(p.legs);
-  let n = 0;
   const chipsAt = placeChips(p.chips ?? [], info.items);
+  // A split day: the branches side by side, or (viewing one person) just their stops
+  const people = info.kind === "day" ? (p.people ?? []) : [];
+  const split = isSplitDay(info.items, people);
+  const labels = stopLabels(info.items, people, p.viewing);
+  const segments: Segment[] = p.viewing ? [{ kind: "shared", items: info.items }] : segmentsOf(info.items, people);
+  const idxOf = new Map(info.items.map((it, i) => [it.id, i]));
   const card = p.chipStyle === "card";
   const wiring = itemWiring(p);
   // A "+" above every booking of a day, so a new item lands between bookings and stops, not only above stops
@@ -162,6 +174,30 @@ function SectionView(p: Props & { dropRef: (el: HTMLElement | null) => void; isO
         }
       : undefined;
 
+  /** One stop: numbered by its label, faded when one person's view leaves it out. */
+  const stop = (it: Item) => {
+    const idx = idxOf.get(it.id)!;
+    return (
+      <StopRow
+        key={it.id}
+        {...wiring}
+        item={it}
+        idx={idx}
+        number={labels.get(it.id)}
+        dimmed={!!p.viewing && it.kind === "place" && !goesTo(it, p.viewing)}
+        info={info}
+        chipsBefore={chipsAt.get(idx)}
+        card={card}
+        canInsert={canInsert}
+        insertAt={insertAt}
+        setInsertAt={setInsertAt}
+        menuAt={menuAt}
+        setMenuAt={setMenuAt}
+        gapAbove={gapAbove}
+      />
+    );
+  };
+
   return (
     <section
       ref={setNodeRef}
@@ -190,6 +226,7 @@ function SectionView(p: Props & { dropRef: (el: HTMLElement | null) => void; isO
         focused={p.focused}
         onFocus={p.onFocus}
       />
+      {split && p.onViewing && <WhoChips people={people} viewing={p.viewing} onViewing={p.onViewing} />}
 
       {chipsAt.get(0) &&
         (() => {
@@ -219,24 +256,16 @@ function SectionView(p: Props & { dropRef: (el: HTMLElement | null) => void; isO
       {open && (
         <div className="mt-2 space-y-0.5 px-3">
           <SortableContext items={info.items.map((i) => i.id)} strategy={verticalListSortingStrategy}>
-            {info.items.map((it, idx) => (
-              <StopRow
-                key={it.id}
-                {...wiring}
-                item={it}
-                idx={idx}
-                number={it.kind === "place" && !it.waypoint ? ++n : undefined}
-                info={info}
-                chipsBefore={chipsAt.get(idx)}
-                card={card}
-                canInsert={canInsert}
-                insertAt={insertAt}
-                setInsertAt={setInsertAt}
-                menuAt={menuAt}
-                setMenuAt={setMenuAt}
-                gapAbove={gapAbove}
-              />
-            ))}
+            {segments.map((seg, si) =>
+              seg.kind === "shared" ? (
+                <Fragment key={seg.items[0]?.id ?? `s${si}`}>{seg.items.map(stop)}</Fragment>
+              ) : (
+                <Fragment key={seg.columns[0].items[0].id}>
+                  <SplitColumns columns={seg.columns} render={stop} />
+                  {segments[si + 1]?.kind === "shared" && <p className="py-1 text-center text-[12px] text-muted">everyone together again ↓</p>}
+                </Fragment>
+              ),
+            )}
           </SortableContext>
           {/* After the last stop: the other bookings, then the way to tonight's hotel, then the hotel check-in */}
           {(() => {
@@ -684,10 +713,27 @@ function SectionActions({
   );
 }
 
+/** Branches of a split day, side by side (two columns) or scrolling (three or more). */
+function SplitColumns({ columns, render }: { columns: { who: string[]; items: Item[] }[]; render: (it: Item) => ReactNode }) {
+  const two = columns.length === 2;
+  return (
+    <div className={two ? "grid grid-cols-2 gap-2" : "flex gap-2 overflow-x-auto"}>
+      {columns.map((c) => (
+        <div key={c.who.join("|")} className={`min-w-0 rounded-xl border border-dashed border-line p-2 ${two ? "" : "min-w-[260px] flex-1"}`}>
+          <p className="mb-1 text-[11px] font-bold tracking-wider text-muted uppercase">{c.who.join(", ")}</p>
+          {c.items.map(render)}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 interface StopRowProps extends ItemWiring {
   item: Item;
   idx: number;
-  number?: number;
+  number?: string;
+  /** Not this person's stop in one person's view: faded. */
+  dimmed?: boolean;
   info: SectionInfo;
   /** Bookings that sit right before this stop. */
   chipsBefore?: Chips;
@@ -701,7 +747,7 @@ interface StopRowProps extends ItemWiring {
 }
 
 /** One stop of a day or list: the bookings before it, the "+" gap (or the insert box), and the card. */
-function StopRow({ item, idx, number, info, chipsBefore, card, canInsert, insertAt, setInsertAt, menuAt, setMenuAt, gapAbove, ...p }: StopRowProps) {
+function StopRow({ item, idx, number, dimmed, info, chipsBefore, card, canInsert, insertAt, setInsertAt, menuAt, setMenuAt, gapAbove, ...p }: StopRowProps) {
   return (
     <div data-item-wrap className="scroll-mt-28">
       {idx > 0 && chipsBefore && (
@@ -738,35 +784,37 @@ function StopRow({ item, idx, number, info, chipsBefore, card, canInsert, insert
         )
       )}
       {(insertAt === idx || !canInsert) && p.legs?.has(item.id) && <LegChips legs={p.legs} id={item.id} readOnly={p.readOnly} onLegMode={p.onLegMode} />}
-      <ItemCard
-        key={item.id}
-        item={item}
-        number={number}
-        color={info.color}
-        selected={p.selectedId === item.id}
-        readOnly={p.readOnly}
-        currency={p.currency}
-        searchContext={p.searchContext}
-        timeBefore={info.kind === "day" ? latestBefore(info.items, idx) : undefined}
-        auto={p.autoTimes?.get(item.id)}
-        onStay={p.onStay ? (m) => p.onStay!(item.id, m) : undefined}
-        onSelect={() => p.onSelect(item.id)}
-        onChange={(patch) => p.onChange(item.id, patch)}
-        onDelete={() => p.onDelete(item.id)}
-        checked={p.checked?.has(item.id)}
-        selecting={!!p.checked?.size}
-        onCheck={p.onCheck && info.key !== "orphan" ? (c, shift) => p.onCheck!(item.id, c, shift) : undefined}
-        targets={p.targets}
-        onMoveTo={p.onMoveTo ? (k) => p.onMoveTo!(item.id, k) : undefined}
-        sections={p.placedIn?.get(item.id)}
-        onToggleSection={p.onToggleSection ? (k) => p.onToggleSection!(item.id, k) : undefined}
-        onCostDetails={p.onCostDetails ? () => p.onCostDetails!(item.id) : undefined}
-        people={info.kind === "day" ? p.people : undefined}
-        onReceipt={p.onReceipt ? (f) => p.onReceipt!(item.id, f) : undefined}
-        receiptsLabel={p.receiptsLabel?.(item.id)}
-        walkShown={p.walkOn?.has(item.id)}
-        onToggleWalk={p.onToggleWalk ? () => p.onToggleWalk!(item.id) : undefined}
-      />
+      <div className={dimmed ? "opacity-40" : undefined}>
+        <ItemCard
+          key={item.id}
+          item={item}
+          number={number}
+          color={info.color}
+          selected={p.selectedId === item.id}
+          readOnly={p.readOnly}
+          currency={p.currency}
+          searchContext={p.searchContext}
+          timeBefore={info.kind === "day" ? latestBefore(info.items, idx) : undefined}
+          auto={p.autoTimes?.get(item.id)}
+          onStay={p.onStay ? (m) => p.onStay!(item.id, m) : undefined}
+          onSelect={() => p.onSelect(item.id)}
+          onChange={(patch) => p.onChange(item.id, patch)}
+          onDelete={() => p.onDelete(item.id)}
+          checked={p.checked?.has(item.id)}
+          selecting={!!p.checked?.size}
+          onCheck={p.onCheck && info.key !== "orphan" ? (c, shift) => p.onCheck!(item.id, c, shift) : undefined}
+          targets={p.targets}
+          onMoveTo={p.onMoveTo ? (k) => p.onMoveTo!(item.id, k) : undefined}
+          sections={p.placedIn?.get(item.id)}
+          onToggleSection={p.onToggleSection ? (k) => p.onToggleSection!(item.id, k) : undefined}
+          onCostDetails={p.onCostDetails ? () => p.onCostDetails!(item.id) : undefined}
+          people={info.kind === "day" ? p.people : undefined}
+          onReceipt={p.onReceipt ? (f) => p.onReceipt!(item.id, f) : undefined}
+          receiptsLabel={p.receiptsLabel?.(item.id)}
+          walkShown={p.walkOn?.has(item.id)}
+          onToggleWalk={p.onToggleWalk ? () => p.onToggleWalk!(item.id) : undefined}
+        />
+      </div>
     </div>
   );
 }

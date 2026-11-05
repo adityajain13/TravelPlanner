@@ -24,6 +24,7 @@ export function TravelModeView({
   setShowSettings,
   settingsScope,
   onOverview,
+  viewing,
 }: {
   doc: Y.Doc;
   state: TripState;
@@ -39,6 +40,7 @@ export function TravelModeView({
   setShowSettings: Dispatch<SetStateAction<boolean>>;
   settingsScope: SettingsScope | null;
   onOverview?: () => void;
+  viewing?: string;
 }) {
   return (
     <>
@@ -50,13 +52,15 @@ export function TravelModeView({
         theme={theme}
         onExit={onExit}
         onOverview={onOverview}
+        people={state.meta.travelers ?? []}
+        viewing={viewing}
         onToggleCheck={readOnly ? undefined : (itemId, checkId) => {
           const it = state.items.find((x) => x.id === itemId);
           if (it) updateItem(doc, itemId, { checks: (it.checks ?? []).map((c) => (c.id === checkId ? { ...c, done: !c.done } : c)) });
         }}
         mapFor={(d) => {
           const ver = d.writeKey ?? d.key;
-          const m = planMapData(view, flights.pins, legResults, ver, d.items, d.color, { includeGhost: false, numberedPins: false });
+          const m = planMapData(view, flights.pins, legResults, ver, d.items, d.color, { includeGhost: false, numberedPins: false, people: state.meta.travelers ?? [], viewing });
           return { pins: m.pins, routes: m.routes };
         }}
       />

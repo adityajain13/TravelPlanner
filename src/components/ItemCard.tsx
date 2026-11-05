@@ -20,7 +20,7 @@ import { WalkButton } from "./WalkButton";
 
 interface Props {
   item: Item;
-  number?: number;
+  number?: string;
   color: string;
   selected: boolean;
   readOnly?: boolean;

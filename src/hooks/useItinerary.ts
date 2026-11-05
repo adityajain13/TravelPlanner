@@ -4,8 +4,8 @@ import { useLegs } from "../lib/routing";
 import { airportPins, buildItinerary, legsByPlan, mapRoutes, mergeLegs, NO_VIA, viaLegs, withAutoTimes } from "../lib/itinerary";
 import type { TripState } from "../lib/trips";
 
-export function useItinerary(state: TripState | null, opts: { focus: string | null; dayDraft: Record<string, string>; autoOn: boolean }) {
-  const { focus, dayDraft, autoOn } = opts;
+export function useItinerary(state: TripState | null, opts: { focus: string | null; dayDraft: Record<string, string>; autoOn: boolean; viewing?: string }) {
+  const { focus, dayDraft, autoOn, viewing } = opts;
   // Build sections, their items, colours and map data in one pass
   const hasFlights = !!state?.reservations.some((r) => r.type === "flight");
   const [airportDb, setAirportDb] = useState<AirportDb | null>(null);
@@ -17,7 +17,7 @@ export function useItinerary(state: TripState | null, opts: { focus: string | nu
     if (idle) idle(go, { timeout: 1500 });
     else setTimeout(go, 300);
   }, [hasFlights, airportDb]);
-  const view = useMemo(() => (state ? buildItinerary(state, { focus, airportDb, dayDraft }) : null), [state, focus, airportDb, dayDraft]);
+  const view = useMemo(() => (state ? buildItinerary(state, { focus, airportDb, dayDraft, viewing }) : null), [state, focus, airportDb, dayDraft, viewing]);
   // Airports from flight bookings: a plane pin each, and an arc per flight (never routed like a leg)
   const flights = useMemo(() => airportPins(state, view, airportDb, focus), [airportDb, state, view, focus]);
   // Route every direct leg (stop to stop, hotel, airports); cached per device
@@ -30,7 +30,7 @@ export function useItinerary(state: TripState | null, opts: { focus: string | nu
   const viaResults = useLegs(via.legs.map((l) => l.req));
   const results = useMemo(() => new Map([...legResults, ...viaResults]), [legResults, viaResults]);
   const legs = useMemo(() => mergeLegs(view?.legs ?? [], via), [view, via]);
-  const routes = useMemo(() => mapRoutes(legs, results, focus), [legs, results, focus]);
+  const routes = useMemo(() => mapRoutes(legs, results, focus, viewing), [legs, results, focus, viewing]);
   const legsBySection = useMemo(() => legsByPlan(legs, results), [legs, results]);
   const timed = useMemo(() => withAutoTimes(view, state, autoOn, legsBySection, via.slots), [view, state, autoOn, legsBySection, via]);
   return { view, flights, legResults: results, routes, legsBySection, timed };
