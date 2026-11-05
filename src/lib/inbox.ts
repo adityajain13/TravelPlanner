@@ -47,7 +47,8 @@ export const fetchInbox = () => api<{ items: InboxItem[] }>("/inbox").then((r) =
 export const patchInbox = (id: string, body: { status?: "added" | "dismissed"; trip_id?: string | null }) =>
   api(`/inbox/${id}`, { method: "PATCH", body: JSON.stringify(body) });
 
-const PINNABLE = new Set<Booking["type"]>(["hotel", "restaurant", "activity", "car", "other"]);
+/** Types that get a place on the map (venues), as opposed to flights and trains. */
+export const PINNABLE = new Set<Booking["type"]>(["hotel", "restaurant", "activity", "car", "other"]);
 
 /** Turn a booking into a trip item. Venues get geocoded so they show on the map. */
 export async function bookingToItem(b: Booking, near?: [number, number]): Promise<Omit<Item, "id" | "section" | "order" | "createdAt">> {

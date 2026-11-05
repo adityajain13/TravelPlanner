@@ -132,6 +132,11 @@ export class TripRoom extends DurableObject<Env> {
     return snapshot(this.doc);
   }
 
+  /** Pokes every open copy of the trip (e.g. "inbox": new forwarded bookings to review). Not part of the trip's data or history. */
+  async signal(name: string) {
+    this.doc.transact(() => this.doc.getMap("signals").set(name, Date.now()), "signal");
+  }
+
   /** Runs an edit as origin "claude"; connected app clients receive it live like any other change. */
   async mutate(op: Op): Promise<{ ok: true; item: Item | null } | { ok: false; error: string }> {
     try {

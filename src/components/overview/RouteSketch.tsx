@@ -26,7 +26,7 @@ function sketchPoints(points: [number, number][]): (readonly [number, number])[]
  * A tiny map of the day's pinned stops: dotted route, first stop filled, last stop ringed.
  * With `mini` (a real map snapshot), the same marks sit on the picture instead.
  */
-export function RouteSketch({ points, color, mini }: { points: [number, number][]; color: string; mini?: MiniMap }) {
+export function RouteSketch({ points, color, mini, className = "h-24" }: { points: [number, number][]; color: string; mini?: MiniMap; className?: string }) {
   if (!points.length) return null;
   const vw = mini ? MINI_W : W;
   const vh = mini ? MINI_H : H;
@@ -35,7 +35,7 @@ export function RouteSketch({ points, color, mini }: { points: [number, number][
   const s = mini ? 2 : 1;
   const last = pts.length - 1;
   return (
-    <div className="relative h-24 overflow-hidden rounded-xl bg-surface-2">
+    <div className={`relative ${className} overflow-hidden rounded-xl bg-surface-2`}>
       {mini && <MiniImage key={mini.url} url={mini.url} />}
       <svg viewBox={`0 0 ${vw} ${vh}`} className={mini ? "absolute inset-0 size-full" : "size-full"} preserveAspectRatio={mini ? "xMidYMid slice" : undefined} aria-hidden>
         {pts.length === 1 && <circle cx={mini ? pts[0][0] : W / 2} cy={mini ? pts[0][1] : H / 2} r={6 * s} fill={color} />}

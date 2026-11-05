@@ -20,7 +20,7 @@ import { useTheme } from "../lib/theme";
 import { useIsPhone, useTravelMode } from "../lib/travelMode";
 import { useSettings } from "../lib/settings";
 import { ORPHAN } from "../lib/itinerary";
-import { fetchInbox, type InboxItem } from "../lib/inbox";
+import { useInbox } from "../hooks/useInbox";
 import { useItinerary } from "../hooks/useItinerary";
 import { useTripUpkeep } from "../hooks/useTripUpkeep";
 import { useTripViewState } from "../hooks/useTripViewState";
@@ -116,13 +116,22 @@ export function TripPage() {
   const lite = travelOn && isPhone;
 
   // Bookings forwarded to trips@ that matched this trip
-  const [inbox, setInbox] = useState<InboxItem[]>([]);
+  const [inbox, setInbox] = useInbox(id, canReview, doc);
+  // Email's "ready to review" link (?review=1): show the forwarded bookings expanded, once.
+  // window.history, not history: that name is the undo object here.
+  const [reviewing, setReviewing] = useState(false);
+  const reviewDone = useRef(false);
   useEffect(() => {
-    if (!canReview || !id || !navigator.onLine) return;
-    fetchInbox()
-      .then((items) => setInbox(items.filter((i) => i.trip_id === id)))
-      .catch(() => undefined);
-  }, [canReview, id]);
+    const url = new URL(window.location.href);
+    if (reviewDone.current || url.searchParams.get("review") !== "1" || !inbox.length) return;
+    reviewDone.current = true;
+    url.searchParams.delete("review");
+    window.history.replaceState(window.history.state, "", url);
+    setTab("plan");
+    setMobileView("plan");
+    setReviewing(true);
+    setTimeout(() => scrollToId(scrollRef.current, "inbox-review", "start"), 40); // after the tab renders
+  }, [inbox]);
   useEffect(() => {
     setWaited(false);
     const t = setTimeout(() => setWaited(true), 8000);
@@ -443,6 +452,7 @@ export function TripPage() {
               canReview={canReview}
               inbox={inbox}
               setInbox={setInbox}
+              autoExpandFirst={reviewing}
               setEditingRes={setEditingRes}
               photoFill={photoFill}
               setPhotoFill={setPhotoFill}

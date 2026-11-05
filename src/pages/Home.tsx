@@ -1,5 +1,5 @@
 import { Logo } from "../components/Logo";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useLiveQuery } from "dexie-react-hooks";
 import { CalendarDays, DoorOpen, FileUp, LogOut, MapPin, Plus, Trash2, Users, X } from "lucide-react";
@@ -23,17 +23,40 @@ export function Home() {
   const { email, logout } = useSession();
 
   const [unmatched, setUnmatched] = useState<InboxItem[]>([]);
-  const loadInbox = () =>
-    fetchInbox()
-      .then((items) => setUnmatched(items.filter((i) => !i.trip_id)))
-      .catch(() => undefined);
+  const loadInbox = useCallback(
+    () =>
+      fetchInbox()
+        .then((items) => setUnmatched(items.filter((i) => !i.trip_id)))
+        .catch(() => undefined),
+    [],
+  );
+  // Email's "ready to review" link (?review=1): open the unmatched sheet, then drop the param
+  const [review, setReview] = useState(() => new URLSearchParams(window.location.search).get("review") === "1");
+  useEffect(() => {
+    if (!review || !unmatched.length) return;
+    setReview(false);
+    const url = new URL(window.location.href);
+    url.searchParams.delete("review");
+    window.history.replaceState(window.history.state, "", url);
+  }, [review, unmatched.length]);
 
   // Pull trips from other devices / push ones made offline; check for forwarded bookings
   useEffect(() => {
     if (!navigator.onLine) return;
     reconcileTrips().catch(() => undefined);
     void loadInbox();
-  }, []);
+  }, [loadInbox]);
+  // Bookings can be forwarded while the app is open: check again when it's back in front or online
+  useEffect(() => {
+    const onVisible = () => document.visibilityState === "visible" && void loadInbox();
+    const onOnline = () => void loadInbox();
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("online", onOnline);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("online", onOnline);
+    };
+  }, [loadInbox]);
   const [creating, setCreating] = useState(false);
   const [importing, setImporting] = useState(false);
   const navigate = useNavigate();
@@ -66,7 +89,8 @@ export function Home() {
       <div className="mb-8 flex items-end justify-between gap-4">
         <h1 className="font-display text-4xl leading-none sm:text-5xl">Your trips</h1>
         <div className="flex shrink-0 gap-2">
-        <UnmatchedInbox items={unmatched} trips={trips ?? []} onChange={loadInbox} />
+        {/* Mounted only while there are unmatched emails, so initiallyOpen is read when they arrive */}
+        {unmatched.length > 0 && <UnmatchedInbox items={unmatched} trips={trips ?? []} onChange={loadInbox} initiallyOpen={review} />}
         <button
           onClick={() => setImporting(true)}
           className="flex items-center gap-1.5 rounded-full border border-line px-4 py-2 text-sm text-muted hover:border-accent hover:text-fg"
