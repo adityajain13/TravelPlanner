@@ -54,7 +54,7 @@ export function buildSections(state: TripState, grouped: ReturnType<typeof group
 /* ---- Routing a day: pins, legs (stop to stop, hotel, airports), and where each day starts/ends ---- */
 
 type Flight = { r: Reservation; dep: Airport; arr: Airport; arrDate: string };
-type Leg = { section: string; ver: string; ghost?: boolean; who?: string[]; toId: string; color: string; req: LegRequest; label?: string };
+type Leg = { section: string; ver: string; ghost?: boolean; who?: string[]; toId: string; color: string; req: LegRequest; label?: string; /** Stop→stop legs: the stop it leaves from */ fromName?: string };
 
 /** What every day's routing needs to know about the whole trip. */
 function tripContext(state: TripState, airportDb: AirportDb | null) {
@@ -123,10 +123,10 @@ function dayBookends(state: TripState, s: SectionInfo, f: DayFlights): { start?:
  * hotel leg and stop-to-stop legs never are (as before the split).
  */
 function legAdder(s: SectionInfo, out: Leg[], ghost: boolean, lane: string | undefined) {
-  return (toId: string, from: [number, number], to: [number, number], o: { mode: TravelMode; at?: string; label?: string; skipSamePoint?: boolean }) => {
+  return (toId: string, from: [number, number], to: [number, number], o: { mode: TravelMode; at?: string; label?: string; fromName?: string; skipSamePoint?: boolean }) => {
     if (o.skipSamePoint && samePoint(from, to)) return;
     const when = o.mode === "transit" ? departureTime(s.date!, o.at, to[0]) : undefined;
-    out.push({ section: s.key, ver: s.writeKey ?? s.key, ghost, who: lane ? [lane] : undefined, toId, color: s.color, ...(o.label ? { label: o.label } : {}), req: { key: legKey(o.mode, from, to, when), mode: o.mode, from, to, when } });
+    out.push({ section: s.key, ver: s.writeKey ?? s.key, ghost, who: lane ? [lane] : undefined, toId, color: s.color, ...(o.label ? { label: o.label } : {}), ...(o.fromName ? { fromName: o.fromName } : {}), req: { key: legKey(o.mode, from, to, when), mode: o.mode, from, to, when } });
   };
 }
 type AddLeg = ReturnType<typeof legAdder>;
@@ -167,7 +167,7 @@ function stopLegs(ctx: Ctx, s: SectionInfo, items: Item[], f: DayFlights, add: A
       const h = ctx.morningHotel(s.date!);
       if (h) add(it.id, [h.lng!, h.lat!], to, { mode, at: it.startTime, label: `From ${h.title}` });
     }
-    if (s.kind === "day" && prev) add(it.id, [prev.lng!, prev.lat!], to, { mode, at: prev.endTime ?? prev.startTime ?? it.startTime });
+    if (s.kind === "day" && prev) add(it.id, [prev.lng!, prev.lat!], to, { mode, at: prev.endTime ?? prev.startTime ?? it.startTime, fromName: prev.name });
     prev = it;
   }
   return prev;
@@ -201,8 +201,9 @@ function walkLane(ctx: Ctx, out: ItineraryParts, s: SectionInfo, items: Item[], 
 /**
  * People going separately: the same leg on several routes becomes one leg (theirs together);
  * different legs into the same place get one chip per person, keyed "<id>#1", "<id>#2"…
+ * A leg only some people take is named, even when it's the only one into its stop.
  */
-function mergeLanes(mine: Leg[]): Leg[] {
+function mergeLanes(mine: Leg[], people: string[], items: Item[]): Leg[] {
   const merged: Leg[] = [];
   for (const l of mine) {
     const same = merged.find((m) => m.toId === l.toId && m.req.key === l.req.key);
@@ -212,14 +213,30 @@ function mergeLanes(mine: Leg[]): Leg[] {
   const byTo = new Map<string, Leg[]>();
   for (const l of merged) byTo.set(l.toId, [...(byTo.get(l.toId) ?? []), l]);
   for (const group of byTo.values()) {
-    if (group.length > 1)
-      group.forEach((l, i) => {
-        l.label = `${(l.who ?? []).join(" & ")}${l.label ? ` · ${l.label}` : ""}`;
-        if (i) l.toId = `${l.toId}#${i}`;
-      });
-    else group[0].who = undefined; // everyone's leg: no name
+    const above = placeAbove(items, group[0].toId);
+    const named = group.length > 1 || !group[0].who || !people.every((p) => group[0].who!.includes(p));
+    if (!named) {
+      group[0].who = undefined; // everyone's leg: no name
+      continue;
+    }
+    group.forEach((l, i) => {
+      l.label = legLabel(l, above);
+      if (group.length > 1 && i) l.toId = `${l.toId}#${i}`;
+    });
   }
   return merged;
+}
+
+/** "Manish & Nishi · <label> · from <stop>": the stop is named when it isn't the card directly above. */
+function legLabel(l: Leg, above: string | undefined): string {
+  const from = l.fromName && l.fromName !== above ? `from ${l.fromName}` : undefined;
+  return [l.who?.join(" & "), l.label, from].filter(Boolean).join(" · ");
+}
+
+/** The name of the place listed just above a stop (waypoints count), if any. */
+function placeAbove(items: Item[], id: string): string | undefined {
+  for (let j = items.findIndex((x) => x.id === id) - 1; j >= 0; j--) if (items[j].kind === "place") return items[j].name;
+  return undefined;
 }
 
 /** A day's legs: one route, or one per person when some stops are only theirs. */
@@ -229,7 +246,7 @@ function walkDay(ctx: Ctx, out: ItineraryParts, s: SectionInfo, ghost: boolean) 
   if (!split) return walkLane(ctx, out, s, s.items, ghost);
   const startAt = out.legs.length;
   for (const person of people) walkLane(ctx, out, s, s.items.filter((i) => i.kind !== "place" || !i.who?.length || i.who.includes(person)), ghost, person);
-  out.legs.push(...mergeLanes(out.legs.splice(startAt)));
+  out.legs.push(...mergeLanes(out.legs.splice(startAt), people, s.items));
 }
 
 /** Numbered pins for a day's (or list's) stops. */
