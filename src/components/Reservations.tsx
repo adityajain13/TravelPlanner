@@ -478,7 +478,7 @@ function TravelerChips({ travelers, who, onToggle }: { travelers: string[]; who:
         );
       })}
       <input
-        placeholder="Someone else"
+        placeholder="Someone else? Type a name, press Enter"
         onKeyDown={(e) => {
           const v = (e.target as HTMLInputElement).value.trim();
           if (e.key !== "Enter" || !v) return;
@@ -491,7 +491,8 @@ function TravelerChips({ travelers, who, onToggle }: { travelers: string[]; who:
           if (v && !who.some((p) => p.traveler === v)) onToggle(v);
           e.target.value = "";
         }}
-        className="min-w-0 flex-1 rounded-full bg-transparent px-2 py-1 text-[13px] outline-none placeholder:text-muted/60 focus:bg-surface-2"
+        // Its own line, full width: squeezed in after the chips it was only a few letters wide
+        className="w-full basis-full rounded-full border border-dashed border-line bg-transparent px-3 py-1.5 text-[13px] outline-none placeholder:text-muted/60 focus:border-accent focus:bg-surface-2"
       />
     </div>
   );
