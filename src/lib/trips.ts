@@ -6,6 +6,7 @@ import { nanoid } from "nanoid";
 import { db } from "./db";
 import { daysBetween } from "./dates";
 import { applyRevert, watchHistory, type HistoryEntry } from "./history";
+import type { TripStatus } from "./tripStatus";
 
 /*
  * Trip doc layout (one Y.Doc per trip, persisted offline in IndexedDB as `trip-<id>`):
@@ -112,6 +113,8 @@ export interface TripMeta {
   planNames?: Record<string, string>;
   /** Sections collapsed in the itinerary, for everyone on the trip (section keys). */
   collapsed?: string[];
+  /** Planning, booked or done. Unset: done once the end date has passed (see statusOf). */
+  status?: TripStatus;
 }
 
 export type ReservationType = "flight" | "lodging" | "car" | "train" | "restaurant" | "other";
@@ -307,6 +310,7 @@ function syncIndex(id: string, doc: Y.Doc) {
     destination: m.destination ?? "",
     startDate: m.startDate ?? "",
     endDate: m.endDate ?? "",
+    status: m.status,
     updatedAt: Date.now(),
   };
   // update() keeps shareToken/role on shared trips; put() only for trips not indexed yet

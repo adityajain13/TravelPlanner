@@ -2,15 +2,17 @@ import { Logo } from "../components/Logo";
 import { useCallback, useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useLiveQuery } from "dexie-react-hooks";
-import { CalendarDays, DoorOpen, FileUp, LogOut, MapPin, Plus, Trash2, Users, X } from "lucide-react";
+import { CalendarDays, ChevronDown, ChevronRight, DoorOpen, FileUp, LogOut, MapPin, Plus, Trash2, Users, X } from "lucide-react";
 import { askConfirm, ConfirmDialog } from "../components/ConfirmDialog";
 import { useSession } from "../lib/api";
-import { reconcileTrips } from "../lib/sync";
+import { pushTrip, reconcileTrips } from "../lib/sync";
 import { fetchInbox, type InboxItem } from "../lib/inbox";
 import { UnmatchedInbox } from "../components/UnmatchedInbox";
 import { db, type TripIndexRow } from "../lib/db";
 import { formatRange, todayISO } from "../lib/dates";
-import { deleteTrip } from "../lib/trips";
+import { deleteTrip, openTrip, updateMeta } from "../lib/trips";
+import { statusOf, type TripStatus } from "../lib/tripStatus";
+import { StatusMenu } from "../components/StatusMenu";
 import { useTheme } from "../lib/theme";
 import { SettingsDialog } from "../components/SettingsDialog";
 import { Settings as SettingsIcon } from "lucide-react";
@@ -62,8 +64,16 @@ export function Home() {
   const navigate = useNavigate();
   const trips = useLiveQuery(() => db.trips.orderBy("startDate").toArray(), []);
   const today = todayISO();
-  const upcoming = trips?.filter((t) => !t.endDate || t.endDate >= today) ?? [];
-  const past = (trips?.filter((t) => t.endDate && t.endDate < today) ?? []).reverse();
+  const groups: Record<TripStatus, TripIndexRow[]> = { planning: [], booked: [], done: [] };
+  for (const t of trips ?? []) groups[statusOf(t.status, t.endDate, today)].push(t);
+  // Undated trips sort last; planning and booked soonest first, done most recent first
+  const byStart = (desc: boolean) => (a: TripIndexRow, b: TripIndexRow) => {
+    if (!a.startDate || !b.startDate) return a.startDate ? -1 : b.startDate ? 1 : 0;
+    return desc ? b.startDate.localeCompare(a.startDate) : a.startDate.localeCompare(b.startDate);
+  };
+  const planning = groups.planning.sort(byStart(false));
+  const booked = groups.booked.sort(byStart(false));
+  const done = groups.done.sort(byStart(true));
 
   return (
     <div className="mx-auto min-h-full max-w-3xl px-5 pt-[max(env(safe-area-inset-top),1.5rem)] pb-16">
@@ -114,8 +124,9 @@ export function Home() {
         </div>
       )}
 
-      <TripGroup title="Upcoming" trips={upcoming} />
-      <TripGroup title="Past" trips={past} />
+      <TripGroup title="Planning" trips={planning} />
+      <TripGroup title="Booked" trips={booked} />
+      <TripGroup title="Done" trips={done} collapsible />
 
       {importing && <WanderlogImport onClose={() => setImporting(false)} />}
       {creating && <NewTripDialog onClose={() => setCreating(false)} onCreated={(id) => navigate(`/trip/${id}`)} />}
@@ -123,16 +134,61 @@ export function Home() {
   );
 }
 
-function TripGroup({ title, trips }: { title: string; trips: TripIndexRow[] }) {
+const DONE_OPEN_KEY = "tp-done-open";
+function readDoneOpen() {
+  try {
+    return localStorage.getItem(DONE_OPEN_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+function writeDoneOpen(open: boolean) {
+  try {
+    localStorage.setItem(DONE_OPEN_KEY, open ? "1" : "0");
+  } catch {
+    /* ignore */
+  }
+}
+
+function TripGroup({ title, trips, collapsible }: { title: string; trips: TripIndexRow[]; collapsible?: boolean }) {
   const { email } = useSession();
   const [pending, setPending] = useState<TripIndexRow | null>(null);
+  const [open, setOpen] = useState(() => !collapsible || readDoneOpen());
   if (trips.length === 0) return null;
+  const today = todayISO();
+  const toggle = () =>
+    setOpen((o) => {
+      writeDoneOpen(!o);
+      return !o;
+    });
+  const pick = async (t: TripIndexRow, status: TripStatus) => {
+    try {
+      const { doc, ready } = openTrip(t.id);
+      await ready;
+      updateMeta(doc, { status });
+      void pushTrip(t.id).catch(() => undefined);
+    } catch {
+      /* nothing was saved; the pill keeps its old status */
+    }
+  };
   return (
     <section className="mb-10">
-      <h2 className="mb-3 text-xs font-semibold tracking-widest text-muted uppercase">{title}</h2>
-      <ul className="divide-y divide-line overflow-hidden rounded-2xl border border-line bg-surface">
+      {collapsible ? (
+        <button
+          onClick={toggle}
+          aria-expanded={open}
+          className="mb-3 flex items-center gap-1.5 text-xs font-semibold tracking-widest text-muted uppercase transition-colors hover:text-fg"
+        >
+          {open ? <ChevronDown className="size-3.5" /> : <ChevronRight className="size-3.5" />}
+          {title} · {trips.length}
+        </button>
+      ) : (
+        <h2 className="mb-3 text-xs font-semibold tracking-widest text-muted uppercase">{title}</h2>
+      )}
+      {open && (
+      <ul className="divide-y divide-line rounded-2xl border border-line bg-surface">
         {trips.map((t) => (
-          <li key={t.id} className="group flex items-center transition-colors hover:bg-surface-2">
+          <li key={t.id} className="group flex items-center transition-colors hover:bg-surface-2 first:rounded-t-2xl last:rounded-b-2xl">
             <Link to={`/trip/${t.id}`} className="flex min-w-0 flex-1 items-center gap-4 py-4 pr-2 pl-5">
               <div className="min-w-0 flex-1">
                 <p className="truncate font-display text-lg">{t.title}</p>
@@ -155,6 +211,14 @@ function TripGroup({ title, trips }: { title: string; trips: TripIndexRow[] }) {
                 </p>
               </div>
             </Link>
+            <div className="shrink-0">
+              <StatusMenu
+                variant="card"
+                value={statusOf(t.status, t.endDate, today)}
+                disabled={t.role === "view"}
+                onPick={(status) => void pick(t, status)}
+              />
+            </div>
             {/* Only the trip's creator can delete it; people it's shared with leave or remove it from this device */}
             <button
               onClick={() => setPending(t)}
@@ -167,6 +231,7 @@ function TripGroup({ title, trips }: { title: string; trips: TripIndexRow[] }) {
           </li>
         ))}
       </ul>
+      )}
       {pending && (
         <ConfirmDialog
           icon={pending.owner ? <DoorOpen /> : pending.shareToken ? <X /> : <Trash2 />}
