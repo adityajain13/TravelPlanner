@@ -180,7 +180,7 @@ function useMapInstance({
       fadeDuration: 0,
       ...(mini ? { dragRotate: false, pitchWithRotate: false, cooperativeGestures: false } : {}),
     });
-    if (!mini) map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "bottom-right");
+    if (!mini) map.addControl(new maplibregl.NavigationControl({ showCompass: true, visualizePitch: true }) // compass: tap to face north again (and flatten a tilted map), "bottom-right");
     // Pins may have arrived (or the panel sized itself) while the map was loading: frame them now
     // The compact credits open expanded on wide maps; fold them into the (i) button once they've
     // been filled in (pressing it again shows them, as MapLibre's own toggle does)
