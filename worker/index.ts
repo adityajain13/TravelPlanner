@@ -8,6 +8,7 @@ import { handleEmail } from "./email";
 import { handlePhotos } from "./photos";
 import { handleMapsLink } from "./mapsLink";
 import { handleRoutes } from "./routes";
+import { archiveOldTrips } from "./archive";
 import { API, BASE, error, type Env } from "./util";
 
 export { TripRoom } from "./room";
@@ -49,5 +50,10 @@ export default {
   // Email Routing: trips@adityajain.ca → this Worker
   async email(message, env) {
     await handleEmail(message, env);
+  },
+
+  // Daily cron (wrangler.jsonc triggers): move year-old trips' emails and receipt photos to R2
+  async scheduled(_controller, env, ctx) {
+    ctx.waitUntil(archiveOldTrips(env));
   },
 } satisfies ExportedHandler<Env>;

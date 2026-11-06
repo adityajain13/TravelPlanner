@@ -10,6 +10,10 @@
   },
   "routes": [{ "pattern": "adityajain.ca/travelplanner*", "zone_name": "adityajain.ca" }],
 
+  "r2_buckets": [{ "binding": "ARCHIVE", "bucket_name": "travelplanner-archive" }],
+
+  "triggers": { "crons": ["17 8 * * *"] },
+
   "d1_databases": [
     {
       "binding": "DB",

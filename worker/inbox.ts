@@ -55,16 +55,23 @@ export async function handleInbox(req: Request, env: Env, url: URL): Promise<Res
 /** The forwarded email behind a booking: anyone who can see the booking (owner, trip editor, or the forwarder). */
 async function inboxMail(env: Env, email: string, id: string): Promise<Response> {
   const row = await env.DB.prepare(
-    `SELECT m.subject, m.sender, m.received_at, m.html, m.text, m.attachments
+    `SELECT m.id AS mail_id, m.archived, m.subject, m.sender, m.received_at, m.html, m.text, m.attachments
        FROM inbox i JOIN mail m ON m.id = i.mail_id
       WHERE i.id = ? AND (i.owner = ? OR json_extract(i.booking, '$.forwarded_by') = ? OR i.trip_id IN (${EDITABLE}))`,
   )
     .bind(id, email, email, email)
-    .first<{ subject: string | null; sender: string | null; received_at: number; html: string | null; text: string | null; attachments: string | null }>();
+    .first<{ mail_id: string; archived: number; subject: string | null; sender: string | null; received_at: number; html: string | null; text: string | null; attachments: string | null }>();
   if (!row) return error(404, "not kept");
+  let content = { html: row.html, text: row.text, attachments: row.attachments };
+  if (row.archived) {
+    // Moved to R2 by the daily archive (worker/archive.ts): same fields, stored as one JSON object
+    const obj = await env.ARCHIVE.get(`mail/${row.mail_id}.json`);
+    if (!obj) return error(404, "not kept");
+    content = (await obj.json()) as typeof content;
+  }
   // The stored email never changes, so the browser may keep it for an hour
   return json(
-    { subject: row.subject, sender: row.sender, received_at: row.received_at, html: row.html, text: row.text, attachments: JSON.parse(row.attachments ?? "[]") },
+    { subject: row.subject, sender: row.sender, received_at: row.received_at, html: content.html, text: content.text, attachments: JSON.parse(content.attachments ?? "[]") },
     { headers: { "Cache-Control": "private, max-age=3600" } },
   );
 }

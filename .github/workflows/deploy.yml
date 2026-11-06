@@ -36,5 +36,8 @@ jobs:
       - name: Migrate database
         run: npx wrangler d1 migrations apply travelplanner --remote
 
+      - name: Create archive bucket
+        run: npx wrangler r2 bucket list | grep -q travelplanner-archive || npx wrangler r2 bucket create travelplanner-archive
+
       - name: Deploy Worker
         run: npx wrangler deploy
