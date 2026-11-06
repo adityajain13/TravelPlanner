@@ -1,6 +1,6 @@
 import type { Item, Reservation, TripState } from "./trips";
 import { sortReservations } from "./trips";
-import { daysBetween, formatShort, parseISODate } from "./dates";
+import { addDays, daysBetween, formatShort, parseISODate } from "./dates";
 import { dtf } from "./intl";
 import type { Line } from "./budget";
 import type { LegState, TravelMode } from "./routing";
@@ -61,7 +61,13 @@ function lookOf(state: TripState, sections: SectionInfo[], days: string[]): Look
   // Stays: a night on an overnight flight or train counts as covered
   const nights = days.slice(0, -1);
   const lodging = reservations.filter((r) => r.type === "lodging" && r.startDate);
-  const overnight = (d: string) => reservations.some((r) => (r.type === "flight" || r.type === "train") && r.startDate === d && (r.endDate ?? r.startDate) > d);
+  // Travelling that night: a flight/train leaving that evening (or running past midnight), or one in the small hours after
+  const overnight = (d: string) =>
+    reservations.some(
+      (r) =>
+        (r.type === "flight" || r.type === "train") &&
+        ((r.startDate === d && ((r.endDate ?? r.startDate) > d || (r.startTime ?? "") >= "18:00")) || (r.startDate === addDays(d, 1) && !!r.startTime && r.startTime < "06:00")),
+    );
   const unbooked = nights.filter((d) => !overnight(d) && !lodging.some((h) => h.startDate! <= d && (h.endDate ?? h.startDate!) > d));
   if (nights.length)
     out.push(
