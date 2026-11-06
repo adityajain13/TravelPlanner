@@ -124,7 +124,14 @@ async function getPhoto(req: Request, env: Env, id: string): Promise<Response> {
   if (req.method !== "GET" && req.method !== "HEAD") return error(405, "GET only");
   const session = await getSession(req, env);
   if (!session) return error(401, "Sign in");
-  const row = await env.DB.prepare("SELECT trip_id, data FROM receipt_photos WHERE id = ?").bind(id).first<{ trip_id: string; data: ArrayBuffer }>();
+  const row = await env.DB.prepare("SELECT trip_id, archived, data FROM receipt_photos WHERE id = ?").bind(id).first<{ trip_id: string; archived: number; data: ArrayBuffer }>();
   if (!row || !(await access(env, session, row.trip_id))) return error(404, "Not found");
-  return new Response(row.data, { headers: { "Content-Type": "image/jpeg", "Cache-Control": "private, max-age=31536000, immutable" } });
+  const headers = { "Content-Type": "image/jpeg", "Cache-Control": "private, max-age=31536000, immutable" };
+  if (row.archived) {
+    // Moved to R2 by the daily archive (worker/archive.ts)
+    const obj = await env.ARCHIVE.get(`receipts/${id}.jpg`);
+    if (!obj) return error(404, "Not found");
+    return new Response(obj.body, { headers });
+  }
+  return new Response(new Uint8Array(row.data as ArrayLike<number> & ArrayBuffer), { headers }); // D1 BLOBs come back as a byte array
 }

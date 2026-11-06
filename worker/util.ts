@@ -3,6 +3,8 @@ import { EmailMessage } from "cloudflare:email";
 export interface Env {
   ASSETS: Fetcher;
   DB: D1Database;
+  /** Archive bucket: original emails (mail/<id>.json) and receipt photos (receipts/<id>.jpg) of old trips. */
+  ARCHIVE: R2Bucket;
   TRIP_ROOM: DurableObjectNamespace<import("./room").TripRoom>;
   EMAIL: SendEmail;
   ALLOWED_EMAILS: string;

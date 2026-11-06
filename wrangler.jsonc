@@ -11,6 +11,12 @@
   // More specific than the personal site's adityajain.ca/* route, so it wins for this path.
   "routes": [{ "pattern": "adityajain.ca/travelplanner*", "zone_name": "adityajain.ca" }],
 
+  // Originals of trips that ended over a year ago (forwarded emails, receipt photos) move to R2
+  "r2_buckets": [{ "binding": "ARCHIVE", "bucket_name": "travelplanner-archive" }],
+
+  // Daily at 08:17 UTC (03:17 Toronto in winter, 04:17 in summer): moves year-old trips' emails and receipt photos to R2
+  "triggers": { "crons": ["17 8 * * *"] },
+
   "d1_databases": [
     {
       "binding": "DB",

@@ -133,7 +133,11 @@ async function deleteTrip(env: Env, session: Session, id: string): Promise<Respo
   if (row && row.owner !== session.email) return error(403, "Not your trip");
   if (row) {
     await env.TRIP_ROOM.get(env.TRIP_ROOM.idFromName(id)).fetch("https://room/", { headers: { "X-Action": "destroy" } });
+    // Receipt photos go with the trip, including any already moved to the R2 archive
+    const { results: archived } = await env.DB.prepare("SELECT id FROM receipt_photos WHERE trip_id = ? AND archived = 1").bind(id).all<{ id: string }>();
+    if (archived.length) await env.ARCHIVE.delete(archived.map((p) => `receipts/${p.id}.jpg`));
     await env.DB.batch([
+      env.DB.prepare("DELETE FROM receipt_photos WHERE trip_id = ?").bind(id),
       env.DB.prepare("DELETE FROM trips WHERE id = ?").bind(id),
       env.DB.prepare("DELETE FROM trip_senders WHERE trip_id = ?").bind(id),
       env.DB.prepare("DELETE FROM trip_members WHERE trip_id = ?").bind(id),
