@@ -166,8 +166,8 @@ export class TripRoom extends DurableObject<Env> {
   async alarm() {
     if (!this.tripId) return;
     const m = this.doc.getMap("meta").toJSON() as Record<string, string | undefined>;
-    await this.env.DB.prepare("UPDATE trips SET title = ?, destination = ?, start_date = ?, end_date = ?, updated_at = ? WHERE id = ?")
-      .bind(m.title ?? null, m.destination ?? null, m.startDate ?? null, m.endDate ?? null, Date.now(), this.tripId)
+    await this.env.DB.prepare("UPDATE trips SET title = ?, destination = ?, start_date = ?, end_date = ?, status = ?, updated_at = ? WHERE id = ?")
+      .bind(m.title ?? null, m.destination ?? null, m.startDate ?? null, m.endDate ?? null, m.status ?? null, Date.now(), this.tripId)
       .run();
   }
 }

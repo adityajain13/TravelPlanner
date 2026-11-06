@@ -66,6 +66,7 @@ export async function reconcileTrips() {
         destination: t.destination ?? "",
         startDate: t.start_date ?? "",
         endDate: t.end_date ?? "",
+        status: t.status ?? undefined,
         updatedAt: t.updated_at,
         ...(t.owner ? { owner: t.owner, role: t.role } : {}),
       });
@@ -73,16 +74,32 @@ export async function reconcileTrips() {
   // Shared-with-me trips: keep role/owner current; drop ones you were removed from
   for (const t of remote.filter((t) => t.owner && localIds.has(t.id))) await db.trips.update(t.id, { owner: t.owner, role: t.role });
   for (const t of local.filter((t) => t.owner && !remoteIds.has(t.id))) await db.trips.delete(t.id);
+  // A status set on another device shows up here without opening the trip (newer server copy wins)
+  const localById = new Map(local.map((t) => [t.id, t]));
+  for (const t of remote) {
+    const l = localById.get(t.id);
+    if (l && t.status && t.status !== l.status && t.updated_at > l.updatedAt) await db.trips.update(t.id, { status: t.status });
+  }
 
   const toPush = local.filter((t) => !t.shareToken && !t.owner && !remoteIds.has(t.id));
-  for (const t of toPush) {
-    const { doc, ready } = openTrip(t.id);
-    await ready;
-    await new Promise<void>((resolve) => {
-      const p = connect(t.id, doc);
-      const done = () => (p.destroy(), resolve());
-      p.on("sync", (s: boolean) => s && setTimeout(done, 300));
-      setTimeout(done, 8000);
-    });
-  }
+  for (const t of toPush) await pushTrip(t.id);
+}
+
+/** Uploads one trip's local doc to its Durable Object and waits (up to 8 s) until the server has it. */
+export async function pushTrip(id: string): Promise<void> {
+  const local = await db.trips.get(id);
+  const { doc, ready } = openTrip(id);
+  await ready;
+  await new Promise<void>((resolve) => {
+    const p = connect(id, doc, local?.shareToken);
+    let finished = false;
+    const done = () => {
+      if (finished) return;
+      finished = true;
+      p.destroy();
+      resolve();
+    };
+    p.on("sync", (s: boolean) => s && setTimeout(done, 300));
+    setTimeout(done, 8000);
+  });
 }

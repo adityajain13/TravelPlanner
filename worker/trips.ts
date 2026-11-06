@@ -116,12 +116,12 @@ async function resolveShareLink(env: Env, token: string): Promise<Response> {
 
 async function listTrips(env: Env, session: Session): Promise<Response> {
   const { results } = await env.DB.prepare(
-    "SELECT id, title, destination, start_date, end_date, updated_at FROM trips WHERE owner = ? AND title IS NOT NULL ORDER BY start_date",
+    "SELECT id, title, destination, start_date, end_date, status, updated_at FROM trips WHERE owner = ? AND title IS NOT NULL ORDER BY start_date",
   )
     .bind(session.email)
     .all();
   const { results: shared } = await env.DB.prepare(
-    "SELECT t.id, t.title, t.destination, t.start_date, t.end_date, t.updated_at, t.owner, m.role FROM trip_members m JOIN trips t ON t.id = m.trip_id WHERE m.email = ? AND t.title IS NOT NULL ORDER BY t.start_date",
+    "SELECT t.id, t.title, t.destination, t.start_date, t.end_date, t.status, t.updated_at, t.owner, m.role FROM trip_members m JOIN trips t ON t.id = m.trip_id WHERE m.email = ? AND t.title IS NOT NULL ORDER BY t.start_date",
   )
     .bind(session.email)
     .all();

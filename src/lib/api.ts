@@ -1,5 +1,6 @@
 import { createContext, createElement, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
 import { setDefaultHistoryAuthor } from "./history";
+import type { TripStatus } from "./tripStatus";
 
 export const API = "/travelplanner/api";
 
@@ -94,6 +95,8 @@ export interface ServerTrip {
   destination: string | null;
   start_date: string | null;
   end_date: string | null;
+  /** planning | booked | done; null when nobody has set it (derived from the dates). */
+  status?: TripStatus | null;
   updated_at: number;
   /** Present on trips someone shared with your account. */
   owner?: string;

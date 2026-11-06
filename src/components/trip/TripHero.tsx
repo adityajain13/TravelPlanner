@@ -8,6 +8,9 @@ import { Photo } from "../Photo";
 import { PhotoCredit } from "../PhotoCredit";
 import { updateMeta, type TripMeta } from "../../lib/trips";
 import type { SyncStatus } from "../../lib/sync";
+import { todayISO } from "../../lib/dates";
+import { statusOf } from "../../lib/tripStatus";
+import { StatusMenu } from "../StatusMenu";
 
 /** The cover photo block at the top of the plan: title, dates, and the trip's header buttons. */
 export function TripHero({
@@ -77,6 +80,7 @@ export function TripHero({
               onChange={(startDate, endDate) => updateMeta(doc, { startDate, endDate })}
               className="rounded-full bg-black/35 px-3.5 py-1.5 font-semibold backdrop-blur transition-colors hover:bg-black/55 disabled:hover:bg-black/35"
             />
+            <StatusMenu variant="hero" value={statusOf(meta.status, meta.endDate, todayISO())} disabled={readOnly} onPick={(status) => updateMeta(doc, { status })} />
           </div>
         </div>
       </div>

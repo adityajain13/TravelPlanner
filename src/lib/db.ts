@@ -1,4 +1,5 @@
 import Dexie, { type EntityTable } from "dexie";
+import type { TripStatus } from "./tripStatus";
 
 // Dexie holds the device-local, non-collaborative data.
 // Trip contents live in per-trip Yjs docs (see trips.ts); `trips` here is just an index
@@ -10,6 +11,8 @@ export interface TripIndexRow {
   destination: string;
   startDate: string;
   endDate: string;
+  /** Planning, booked or done (unset: derived from the dates, see statusOf). Not indexed. */
+  status?: TripStatus;
   updatedAt: number;
   /** Set when this trip was opened from someone else's share link (no login needed). */
   shareToken?: string;
