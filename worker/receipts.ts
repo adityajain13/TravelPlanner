@@ -1,12 +1,18 @@
 import { askWithTool } from "./claude";
 import { getSession } from "./auth";
-import { API, error, type Env } from "./util";
+import { access } from "./trips";
+import { API, error, isValidTripId, json, type Env } from "./util";
 
 /*
  * POST /api/receipts/parse { image: base64 JPEG, trip?: { destination, currency } }
  * → the receipt as structured data: merchant, date, currency, every line item, tax, tip, total.
  * Claude reads the photo; the app does the splitting maths.
+ *
+ * POST /api/receipts/photo { tripId, image: base64 JPEG } → { id }   (keeps the photo; editors only)
+ * GET  /api/receipts/photo/:id → the JPEG, for anyone who can open the trip
  */
+
+const MAX_PHOTO_BYTES = 1_900_000; // under D1's 2 MB row limit
 
 const TOOL = {
   name: "record_receipt",
@@ -47,6 +53,8 @@ const TOOL = {
 };
 
 export async function handleReceipts(req: Request, env: Env, url: URL): Promise<Response | null> {
+  if (url.pathname === `${API}/receipts/photo`) return savePhoto(req, env);
+  if (url.pathname.startsWith(`${API}/receipts/photo/`)) return getPhoto(req, env, url.pathname.slice(`${API}/receipts/photo/`.length));
   if (url.pathname !== `${API}/receipts/parse`) return null;
   if (req.method !== "POST") return error(405, "POST only");
   if (!(await getSession(req, env))) return error(401, "Sign in");
@@ -79,4 +87,44 @@ export async function handleReceipts(req: Request, env: Env, url: URL): Promise<
   }
   if (unreadable) return error(422, "That doesn't look like a readable receipt");
   return error(502, `Couldn't reach the receipt reader (${lastFail || "no answer"})`);
+}
+
+/** Stores a scanned receipt's photo. Only the owner or an editor can add one (viewers can't). */
+async function savePhoto(req: Request, env: Env): Promise<Response> {
+  if (req.method !== "POST") return error(405, "POST only");
+  const session = await getSession(req, env);
+  if (!session) return error(401, "Sign in");
+  const body = (await req.json().catch(() => null)) as { tripId?: string; image?: string } | null;
+  if (!body?.tripId || !isValidTripId(body.tripId)) return error(400, "Bad trip id");
+  if (!body.image) return error(400, "Missing image");
+  // Base64 is 4/3 the size: skip decoding anything clearly over the limit
+  if (body.image.length > (MAX_PHOTO_BYTES * 4) / 3) return error(413, "Photo too big");
+  let bytes: Uint8Array;
+  try {
+    const bin = atob(body.image);
+    bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  } catch {
+    return error(400, "Bad image");
+  }
+  if (bytes.byteLength > MAX_PHOTO_BYTES) return error(413, "Photo too big");
+
+  const role = await access(env, session, body.tripId);
+  if (role !== "owner" && role !== "edit") return error(403, "No edit access to this trip");
+
+  const id = crypto.randomUUID();
+  await env.DB.prepare("INSERT INTO receipt_photos (id, trip_id, owner, data, created_at) VALUES (?, ?, ?, ?, ?)")
+    .bind(id, body.tripId, session.email, bytes.buffer, Date.now())
+    .run();
+  return json({ id });
+}
+
+/** The receipt's photo, if the viewer can open its trip (a missing photo and no access look the same). */
+async function getPhoto(req: Request, env: Env, id: string): Promise<Response> {
+  if (req.method !== "GET" && req.method !== "HEAD") return error(405, "GET only");
+  const session = await getSession(req, env);
+  if (!session) return error(401, "Sign in");
+  const row = await env.DB.prepare("SELECT trip_id, data FROM receipt_photos WHERE id = ?").bind(id).first<{ trip_id: string; data: ArrayBuffer }>();
+  if (!row || !(await access(env, session, row.trip_id))) return error(404, "Not found");
+  return new Response(row.data, { headers: { "Content-Type": "image/jpeg", "Cache-Control": "private, max-age=31536000, immutable" } });
 }

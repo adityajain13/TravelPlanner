@@ -62,7 +62,7 @@ async function getTrip(env: Env, id: string) {
 }
 
 /** Owner, or the role someone was given. */
-async function access(env: Env, s: Session, id: string): Promise<Role | "owner" | null> {
+export async function access(env: Env, s: Session, id: string): Promise<Role | "owner" | null> {
   const row = await getTrip(env, id);
   if (row?.owner === s.email) return "owner";
   const m = await env.DB.prepare("SELECT role FROM trip_members WHERE trip_id = ? AND email = ?").bind(id, s.email).first<{ role: Role }>();

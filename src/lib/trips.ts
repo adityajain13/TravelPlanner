@@ -237,6 +237,8 @@ export interface Receipt {
   taxIncluded?: boolean;
   /** How it's charged: the payer, evenly among splitWith, or by item. */
   split?: "payer" | "even" | "items";
+  /** The scanned photo (receipt photo id on the server), when it was kept. */
+  photoId?: string;
 }
 
 export interface ListMeta {

@@ -242,18 +242,39 @@ async function extractBookings(env: Env, sender: string, mail: Mail, trips: Trip
   }
 }
 
+const sizeOf = (c: ArrayBuffer | string | Uint8Array) => (typeof c === "string" ? new TextEncoder().encode(c).byteLength : c.byteLength);
+
+/**
+ * Keeps the original email so a booking can show where it came from. Best effort: a failure is
+ * logged and the import goes on without it (null).
+ */
+async function saveMail(env: Env, owner: string, sender: string, subject: string, mail: Mail): Promise<string | null> {
+  const id = crypto.randomUUID();
+  try {
+    const attachments = (mail.parsed.attachments ?? []).map((a) => ({ filename: a.filename ?? "attachment", mimeType: a.mimeType, size: sizeOf(a.content) }));
+    await env.DB.prepare("INSERT INTO mail (id, owner, subject, sender, received_at, html, text, attachments) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
+      .bind(id, owner, subject, sender, Date.now(), capBytes(mail.parsed.html, 1_300_000), capBytes(mail.parsed.text, 400_000), JSON.stringify(attachments))
+      .run();
+    return id;
+  } catch (e) {
+    console.error("mail not kept", e);
+    return null;
+  }
+}
+
 /** Parks the extracted bookings in the inbox as pending, for review in the app. */
-async function saveBookings(env: Env, owner: string, sender: string, subject: string, out: Extracted) {
+async function saveBookings(env: Env, owner: string, sender: string, subject: string, out: Extracted, mailId: string | null) {
   const now = Date.now();
   await env.DB.batch(
     out.bookings.map((b) =>
-      env.DB.prepare("INSERT INTO inbox (id, owner, trip_id, status, subject, booking, created_at) VALUES (?, ?, ?, 'pending', ?, ?, ?)").bind(
+      env.DB.prepare("INSERT INTO inbox (id, owner, trip_id, status, subject, booking, created_at, mail_id) VALUES (?, ?, ?, 'pending', ?, ?, ?, ?)").bind(
         crypto.randomUUID(),
         owner,
         out.trip_id,
         subject,
         JSON.stringify(owner === sender ? b : { ...b, forwarded_by: sender }),
         now,
+        mailId,
       ),
     ),
   );
@@ -306,7 +327,8 @@ export async function handleEmail(message: ForwardableEmailMessage, env: Env) {
     return;
   }
 
-  await saveBookings(env, owner, sender, mail.subject, out);
+  const mailId = await saveMail(env, owner, sender, mail.subject, mail);
+  await saveBookings(env, owner, sender, mail.subject, out, mailId);
   // Open copies of the trip refetch their inbox now instead of on the next reload
   if (out.trip_id) await env.TRIP_ROOM.get(env.TRIP_ROOM.idFromName(out.trip_id)).signal("inbox").catch(() => undefined);
   await sendReceipt(env, sender, owner, trips, out);
@@ -321,4 +343,11 @@ async function tripPeople(env: Env, tripId: string | null): Promise<string[]> {
   } catch {
     return [];
   }
+}
+
+/** D1 rows top out at 2 MB, counted in bytes (CJK text is 3 bytes a character): cut on a character boundary. */
+function capBytes(s: string | undefined, max: number): string | null {
+  if (!s) return null;
+  const bytes = new TextEncoder().encode(s);
+  return bytes.byteLength <= max ? s : new TextDecoder().decode(bytes.slice(0, max)).replace(/\uFFFD+$/, "");
 }

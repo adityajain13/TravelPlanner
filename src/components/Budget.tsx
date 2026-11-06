@@ -1,4 +1,4 @@
-import { useMemo, useState, type Dispatch, type SetStateAction } from "react";
+import { useEffect, useMemo, useState, type Dispatch, type SetStateAction } from "react";
 import { ReceiptButton, ReceiptFlow } from "./ReceiptFlow";
 import { Menu } from "./Menu";
 import { askConfirm } from "./ConfirmDialog";
@@ -7,9 +7,10 @@ import { BudgetCharts, CsvButton, exportBudgetCsv } from "./BudgetCharts";
 import { createPortal } from "react-dom";
 import { DateField } from "./DatePicker";
 import type * as Y from "yjs";
-import { ArrowLeft, ArrowRight, BedDouble, Camera, Car, ChevronRight, Fuel, Landmark, Pencil, Plane, Plus, Receipt, ShoppingBag, ShoppingCart, Ticket, TrainFront, Trash2, Users, Utensils, Wine, X } from "lucide-react";
+import { ArrowLeft, ArrowRight, BedDouble, Camera, Car, ChevronRight, Fuel, Image as ImageIcon, Landmark, Loader2, Pencil, Plane, Plus, Receipt, ShoppingBag, ShoppingCart, Ticket, TrainFront, Trash2, Users, Utensils, Wine, X } from "lucide-react";
 import { removeExpense, saveExpense, saveReservation, updateItem, updateMeta, type CostSplit, type Expense, type ExpenseCategory, type TripState } from "../lib/trips";
 import { formatMoney, useConverter } from "../lib/fx";
+import { API } from "../lib/api";
 import { budgetLines, CATEGORIES, CATEGORY_LABEL, settleUp, totals, travelersOf, type Line } from "../lib/budget";
 import { formatShort, todayISO } from "../lib/dates";
 
@@ -261,7 +262,9 @@ function ReceiptRow({
   const e = line.expense!;
   const stop = e.itemId ? items.find((i) => i.id === e.itemId) : undefined;
   const split = e.receipt?.split === "items" ? "by item" : e.receipt?.split === "payer" ? `${line.paidBy} only` : line.splitWith.length < travelers.length ? `split ${line.splitWith.length} ways` : travelers.length > 1 ? "split evenly" : "";
+  const [photoOpen, setPhotoOpen] = useState(false);
   return (
+    <>
     <li className="group flex items-center gap-3 px-3 py-2.5">
       <button onClick={() => !readOnly && onOpen(e)} className="flex min-w-0 flex-1 items-center gap-3 text-left">
         <span className="grid size-8 shrink-0 place-items-center rounded-full [&>svg]:size-4" style={{ background: `${CAT_COLOR[line.category]}26`, color: CAT_COLOR[line.category] }}>
@@ -278,6 +281,11 @@ function ReceiptRow({
           {line.currency !== currency && <span className="block text-xs text-muted tabular-nums">{formatMoney(line.amount, line.currency)}</span>}
         </span>
       </button>
+      {e.receipt?.photoId && (
+        <button onClick={() => setPhotoOpen(true)} className="grid size-7 shrink-0 place-items-center rounded-md text-muted hover:text-fg" title="View receipt photo" aria-label="View receipt photo">
+          <ImageIcon className="size-3.5" />
+        </button>
+      )}
       {!readOnly && (
         <button
           onClick={async () => (await askConfirm({ title: `Delete ${line.title}?`, body: "It leaves the budget and the split." })) && removeExpense(doc, line.id)}
@@ -288,6 +296,32 @@ function ReceiptRow({
         </button>
       )}
     </li>
+    {photoOpen && e.receipt?.photoId && <ReceiptPhoto photoId={e.receipt.photoId} onClose={() => setPhotoOpen(false)} />}
+    </>
+  );
+}
+
+/** A scanned receipt's photo, full size in a modal (the server only serves it to people who can open the trip). */
+function ReceiptPhoto({ photoId, onClose }: { photoId: string; onClose: () => void }) {
+  const [loaded, setLoaded] = useState(false);
+  const [failed, setFailed] = useState(false);
+  useEffect(() => {
+    const esc = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    window.addEventListener("keydown", esc);
+    return () => window.removeEventListener("keydown", esc);
+  }, [onClose]);
+  return createPortal(
+    <div className="fixed inset-0 z-[100] grid grid-cols-[minmax(0,1fr)] place-items-center bg-black/60 p-4 backdrop-blur-sm" onClick={onClose}>
+      <div role="dialog" aria-label="Receipt photo" onClick={(e) => e.stopPropagation()} className="relative max-w-2xl">
+        <button onClick={onClose} className="absolute top-2 right-2 z-10 grid size-9 place-items-center rounded-full bg-black/60 text-white hover:bg-black/80" aria-label="Close">
+          <X className="size-4" />
+        </button>
+        {!loaded && !failed && <Loader2 className="mx-auto my-16 size-6 animate-spin text-accent" />}
+        {failed && <p className="rounded-xl bg-surface p-6 text-center text-[14px] text-muted">Couldn't load the photo.</p>}
+        <img src={`${API}/receipts/photo/${photoId}`} alt="Receipt" onLoad={() => setLoaded(true)} onError={() => setFailed(true)} className={`max-h-[80vh] w-auto rounded-xl ${loaded ? "" : "hidden"}`} />
+      </div>
+    </div>,
+    document.body,
   );
 }
 
