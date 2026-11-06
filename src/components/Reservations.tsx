@@ -12,6 +12,7 @@ import type * as Y from "yjs";
 import { BedDouble, Car, ChevronDown, Inbox, Loader2, Mail, PenLine, Pencil, Plane, Plus, Ticket, TrainFront, Trash2, Utensils, X } from "lucide-react";
 import { PlaceSearch } from "./PlaceSearch";
 import { ForwardDialog } from "./ForwardDialog";
+import { MailViewer } from "./MailViewer";
 import { askConfirm } from "./ConfirmDialog";
 import { useLiveQuery } from "dexie-react-hooks";
 import { db } from "../lib/db";
@@ -167,7 +168,10 @@ function ReservationCard({ r, currency, readOnly, onEdit, onDelete, walkShown, o
   const f = FIELDS[r.type];
   const route = r.from || r.to ? [r.from, r.to].filter(Boolean).join(" → ") : null;
   const twoStep = r.type === "car" || r.type === "flight" || r.type === "train";
+  const [mailOpen, setMailOpen] = useState(false);
+  // The modal sits beside the card, not inside it: clicks in it would otherwise reach the card's edit handler
   return (
+    <>
     <li
       data-res={r.id}
       onClick={readOnly ? undefined : onEdit}
@@ -224,10 +228,22 @@ function ReservationCard({ r, currency, readOnly, onEdit, onDelete, walkShown, o
           )}
         </div>
       )}
-      {(!readOnly || onWalk) && (
+      {(!readOnly || onWalk || r.inboxId) && (
         <div className="absolute top-3 right-3 flex gap-0.5" onClick={(e) => e.stopPropagation()}>
-          {/* The eye stays visible (and works read-only); edit and delete show on hover */}
+          {/* The eye and the email stay visible (and work read-only); edit and delete show on hover */}
           {onWalk && <WalkButton on={!!walkShown} onToggle={onWalk} className="grid size-8 place-items-center rounded-full bg-surface" />}
+          {r.inboxId && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setMailOpen(true);
+              }}
+              className="grid size-8 place-items-center rounded-full bg-surface text-muted hover:text-fg"
+              title="View the email it came from"
+            >
+              <Mail className="size-4" />
+            </button>
+          )}
           {!readOnly && (
             <>
               <button onClick={onEdit} className="grid size-8 place-items-center rounded-full bg-surface text-muted opacity-0 transition-opacity group-hover:opacity-100 max-md:opacity-100 hover:text-fg" title="Edit">
@@ -241,6 +257,8 @@ function ReservationCard({ r, currency, readOnly, onEdit, onDelete, walkShown, o
         </div>
       )}
     </li>
+    {mailOpen && r.inboxId && <MailViewer inboxId={r.inboxId} onClose={() => setMailOpen(false)} />}
+    </>
   );
 }
 

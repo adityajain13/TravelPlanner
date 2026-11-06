@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import { createPortal } from "react-dom";
+import { useParams } from "react-router-dom";
 import { ArrowLeft, Camera, Check, Loader2, MapPin, Plus, Receipt as ReceiptIcon, Trash2, X } from "lucide-react";
 import type * as Y from "yjs";
 import { saveExpense, type Expense, type ExpenseCategory, type Item, type Receipt, type ReceiptItem, type TripState } from "../lib/trips";
 import { travelersOf } from "../lib/budget";
 import { formatMoney } from "../lib/fx";
-import { lineCosts, matchStop, parseReceipt, photoToJpeg, sharesByItem } from "../lib/receipt";
+import { lineCosts, matchStop, parseReceipt, photoToJpeg, sharesByItem, uploadReceiptPhoto } from "../lib/receipt";
 import { CurrencySelect } from "./CurrencySelect";
 import { DateField } from "./DatePicker";
 import { Menu } from "./Menu";
@@ -62,6 +63,10 @@ export function ReceiptFlow({ doc, state, file, expense, stop, onClose }: Props)
   const [split, setSplit] = useState<Receipt["split"]>(expense?.receipt?.split ?? (people.length > 1 ? "even" : "payer"));
   const [evenWith, setEvenWith] = useState<string[]>(expense?.splitWith?.length ? expense.splitWith : people);
   const started = useRef(false);
+  // The trip this receipt belongs to (its photo is stored under it), and the photo's JPEG until saved
+  const { id: tripId } = useParams();
+  const photo = useRef<string | null>(null);
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     const esc = (e: KeyboardEvent) => e.key === "Escape" && onClose();
@@ -75,7 +80,9 @@ export function ReceiptFlow({ doc, state, file, expense, stop, onClose }: Props)
     started.current = true;
     (async () => {
       try {
-        const { out, r: parsed, total: parsedTotal } = await readPhoto(file, state, currency0);
+        const img = await photoToJpeg(file);
+        photo.current = img;
+        const { out, r: parsed, total: parsedTotal } = await readPhoto(img, state, currency0);
         setR(parsed);
         setTotal(parsedTotal);
         if (out.currency) setCur(out.currency.toUpperCase());
@@ -98,9 +105,12 @@ export function ReceiptFlow({ doc, state, file, expense, stop, onClose }: Props)
   const linked = state.items.find((i) => i.id === itemId);
   const setItem: SetItem = (k, patch) => setR((x) => ({ ...x, items: x.items.map((it, j) => (j === k ? { ...it, ...patch } : it)) }));
 
-  const save = () => {
-    if (total == null || !Number.isFinite(total)) return;
-    saveReceipt(doc, { expense, people, r, total, cur, cat, date, paidBy, itemId, split, evenWith, itemShares });
+  const save = async () => {
+    if (total == null || !Number.isFinite(total) || saving) return;
+    setSaving(true);
+    // Keep the photo with the receipt when it can be stored; offline or on failure it saves without one
+    const photoId = photo.current && tripId ? await uploadReceiptPhoto(tripId, photo.current).then((x) => x.id, () => undefined) : undefined;
+    saveReceipt(doc, { expense, people, r: photoId ? { ...r, photoId } : r, total, cur, cat, date, paidBy, itemId, split, evenWith, itemShares });
     onClose();
   };
 
@@ -130,7 +140,7 @@ export function ReceiptFlow({ doc, state, file, expense, stop, onClose }: Props)
         </div>
 
         {step !== "reading" && (
-          <StepFooter step={step} setStep={setStep} save={save} people={people} total={total} split={split} evenWith={evenWith} lineCount={r.items.length} unassigned={unassigned} money={money} />
+          <StepFooter step={step} setStep={setStep} save={save} busy={saving} people={people} total={total} split={split} evenWith={evenWith} lineCount={r.items.length} unassigned={unassigned} money={money} />
         )}
       </div>
     </div>,
@@ -139,11 +149,10 @@ export function ReceiptFlow({ doc, state, file, expense, stop, onClose }: Props)
 }
 
 /**
- * Reads a receipt photo with Claude. Returns the raw read, the parsed receipt and its total
- * (worked out from the lines when the receipt doesn't print one).
+ * Reads a receipt photo (base64 JPEG) with Claude. Returns the raw read, the parsed receipt and
+ * its total (worked out from the lines when the receipt doesn't print one).
  */
-async function readPhoto(file: File, state: TripState, currency0: string) {
-  const img = await photoToJpeg(file);
+async function readPhoto(img: string, state: TripState, currency0: string) {
   const out = await parseReceipt(img, { destination: state.meta.destination, currency: currency0 });
   const items = (out.items ?? []).filter((i) => i && typeof i.price === "number");
   const r: Receipt = { merchant: out.merchant ?? "", items, subtotal: out.subtotal, tax: out.tax_included ? undefined : out.tax, tip: out.tip, taxIncluded: !!out.tax_included };
@@ -438,7 +447,7 @@ function ItemsStep({ r, people, costs, itemShares, unassigned, money, setItem }:
 }
 
 /** The bottom bar: the Next or Save button for the current step. */
-function StepFooter({ step, setStep, save, people, total, split, evenWith, lineCount, unassigned, money }: { step: Step; setStep: Setter<Step>; save: () => void; people: string[]; total: number | undefined; split: Receipt["split"]; evenWith: string[]; lineCount: number; unassigned: number; money: (n: number) => string }) {
+function StepFooter({ step, setStep, save, busy, people, total, split, evenWith, lineCount, unassigned, money }: { step: Step; setStep: Setter<Step>; save: () => void; busy: boolean; people: string[]; total: number | undefined; split: Receipt["split"]; evenWith: string[]; lineCount: number; unassigned: number; money: (n: number) => string }) {
   return (
     <div className="border-t border-line p-4">
       {step === "details" && (
@@ -453,16 +462,16 @@ function StepFooter({ step, setStep, save, people, total, split, evenWith, lineC
       )}
       {step === "split" && (
         <button
-          disabled={split === "even" && !evenWith.length}
+          disabled={busy || (split === "even" && !evenWith.length)}
           onClick={() => (split === "items" ? setStep("items") : save())}
           className="w-full rounded-xl bg-accent py-3 font-bold text-on-accent disabled:opacity-50"
         >
-          {split === "items" ? "Next: who had what" : `Save ${total != null ? money(total) : ""}`}
+          {split === "items" ? "Next: who had what" : busy ? "Saving…" : `Save ${total != null ? money(total) : ""}`}
         </button>
       )}
       {step === "items" && (
-        <button disabled={unassigned > 0 || !lineCount} onClick={save} className="w-full rounded-xl bg-accent py-3 font-bold text-on-accent disabled:opacity-50">
-          Save {total != null ? money(total) : ""}
+        <button disabled={busy || unassigned > 0 || !lineCount} onClick={save} className="w-full rounded-xl bg-accent py-3 font-bold text-on-accent disabled:opacity-50">
+          {busy ? "Saving…" : `Save ${total != null ? money(total) : ""}`}
         </button>
       )}
     </div>

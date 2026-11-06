@@ -6,6 +6,7 @@ import { API, error, json, type Env } from "./util";
  *   GET   /api/inbox?all=1    every forwarded booking (any status), for the "imported emails" list
  *   PATCH /api/inbox/:id      {status?: "added" | "dismissed" | "pending", trip_id?: string | null}
  *   DELETE /api/inbox/:id     forget a forwarded booking entirely
+ *   GET   /api/inbox/:id/mail the original email it came from (kept since mail storage began)
  */
 /** Trips the user can edit without owning them (a bound email parameter). */
 const EDITABLE = "SELECT trip_id FROM trip_members WHERE email = ? AND role = 'edit'";
@@ -14,7 +15,9 @@ export async function handleInbox(req: Request, env: Env, url: URL): Promise<Res
   if (!url.pathname.startsWith(`${API}/inbox`)) return null;
   const session = await getSession(req, env);
   if (!session) return error(401, "Not logged in");
-  const id = url.pathname.slice(`${API}/inbox/`.length);
+  const [id = "", sub] = url.pathname.slice(`${API}/inbox/`.length).split("/");
+  if (sub === "mail" && id && req.method === "GET") return inboxMail(env, session.email, id);
+  if (sub) return error(404, "Not found");
 
   if (!id && req.method === "GET") {
     const all = url.searchParams.get("all") === "1";
@@ -47,4 +50,21 @@ export async function handleInbox(req: Request, env: Env, url: URL): Promise<Res
     return json({ ok: true });
   }
   return error(404, "Not found");
+}
+
+/** The forwarded email behind a booking: anyone who can see the booking (owner, trip editor, or the forwarder). */
+async function inboxMail(env: Env, email: string, id: string): Promise<Response> {
+  const row = await env.DB.prepare(
+    `SELECT m.subject, m.sender, m.received_at, m.html, m.text, m.attachments
+       FROM inbox i JOIN mail m ON m.id = i.mail_id
+      WHERE i.id = ? AND (i.owner = ? OR json_extract(i.booking, '$.forwarded_by') = ? OR i.trip_id IN (${EDITABLE}))`,
+  )
+    .bind(id, email, email, email)
+    .first<{ subject: string | null; sender: string | null; received_at: number; html: string | null; text: string | null; attachments: string | null }>();
+  if (!row) return error(404, "not kept");
+  // The stored email never changes, so the browser may keep it for an hour
+  return json(
+    { subject: row.subject, sender: row.sender, received_at: row.received_at, html: row.html, text: row.text, attachments: JSON.parse(row.attachments ?? "[]") },
+    { headers: { "Cache-Control": "private, max-age=3600" } },
+  );
 }

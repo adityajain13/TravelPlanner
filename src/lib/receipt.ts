@@ -40,6 +40,10 @@ export async function photoToJpeg(file: File, max = 1600): Promise<string> {
 export const parseReceipt = (image: string, trip: { destination?: string; currency?: string }) =>
   api<ParsedReceipt>("/receipts/parse", { method: "POST", body: JSON.stringify({ image, trip }) });
 
+/** Keeps the receipt photo (base64 JPEG) for a trip; resolves to its id. */
+export const uploadReceiptPhoto = (tripId: string, image: string) =>
+  api<{ id: string }>("/receipts/photo", { method: "POST", body: JSON.stringify({ tripId, image }) });
+
 const round2 = (n: number) => Math.round(n * 100) / 100;
 
 /**
