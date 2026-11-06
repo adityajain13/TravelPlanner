@@ -124,8 +124,8 @@ export function Home() {
         </div>
       )}
 
-      <TripGroup title="Planning" trips={planning} />
       <TripGroup title="Booked" trips={booked} />
+      <TripGroup title="Planning" trips={planning} />
       <TripGroup title="Done" trips={done} collapsible />
 
       {importing && <WanderlogImport onClose={() => setImporting(false)} />}
