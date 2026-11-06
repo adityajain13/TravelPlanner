@@ -2,13 +2,12 @@ import type { Dispatch, SetStateAction } from "react";
 import type * as Y from "yjs";
 import { InboxPanel } from "../InboxPanel";
 import type { InboxItem } from "../../lib/inbox";
-import type { Reservation, ReservationType, TripState } from "../../lib/trips";
+import type { TripState } from "../../lib/trips";
 import { UnpinnedNotice } from "./UnpinnedNotice";
-import { ReservationQuickAdd } from "./ReservationQuickAdd";
 import { GettingAroundRow } from "./GettingAroundRow";
 import type { PhotoFill } from "./types";
 
-/** Above the days on the plan tab: unpinned notice, reservation quick-add, travel mode + photos, forwarded bookings. */
+/** Above the days on the plan tab: unpinned notice, travel mode + photos, forwarded bookings. */
 export function PlanTools({
   doc,
   state,
@@ -19,7 +18,6 @@ export function PlanTools({
   inbox,
   setInbox,
   autoExpandFirst,
-  setEditingRes,
   photoFill,
   setPhotoFill,
 }: {
@@ -33,16 +31,13 @@ export function PlanTools({
   setInbox: Dispatch<SetStateAction<InboxItem[]>>;
   /** Expand the first forwarded booking (opened from the "ready to review" email) */
   autoExpandFirst?: boolean;
-  setEditingRes: Dispatch<SetStateAction<Partial<Reservation> | null>>;
   photoFill: PhotoFill | null;
   setPhotoFill: Dispatch<SetStateAction<PhotoFill | null>>;
 }) {
   return (
     <>
       {unpinned.length > 0 && <UnpinnedNotice unpinned={unpinned} onDismiss={onDismissUnpinned} />}
-      {!readOnly && (
-        <ReservationQuickAdd onPick={(t: ReservationType) => setEditingRes({ type: t, startDate: state.meta.startDate })} />
-      )}
+      {/* Adding bookings by hand lives in the Bookings tab (most arrive by email) */}
       <GettingAroundRow doc={doc} state={state} readOnly={readOnly} photoFill={photoFill} setPhotoFill={setPhotoFill} />
       {canReview && <InboxPanel items={inbox} doc={doc} state={state} autoExpandFirst={autoExpandFirst} onDone={(itemId) => setInbox((xs) => xs.filter((x) => x.id !== itemId))} />}
     </>
