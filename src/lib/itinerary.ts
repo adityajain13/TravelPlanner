@@ -7,7 +7,7 @@ import { flightAirports, flightArc, flightInstant, type Airport, type AirportDb 
 import { departureTime, legKey, type LegRequest, type LegState, type TravelMode } from "./routing";
 import { RES_GLYPH } from "./pinArt";
 import { autoTimes, DEFAULT_DAY_START, DEFAULT_STAY, fixedBlocks } from "./autoTime";
-import { draftSection, isDraftSection, mainPlanName, sectionsFor, type Item, type Reservation, type TripState } from "./trips";
+import { dayStartOf, draftSection, isDraftSection, mainPlanName, sectionsFor, type Item, type Reservation, type TripState } from "./trips";
 import { goesTo, isRideStop, stopLabels, visibleTo, withRides } from "./branches";
 
 export const ORPHAN = "orphan";
@@ -396,7 +396,7 @@ export function withAutoTimes(view: Itinerary | null, state: TripState | null, a
     const blocks = fixedBlocks(state.reservations, s.date!).map((b) => (b.id && between?.has(b.id) ? { ...b, beforeId: between.get(b.id) } : b));
     const people = state.meta.travelers ?? [];
     const expanded = withRides(s.items, people);
-    const t = autoTimes(expanded, legsBySection.get(ver), state.meta.dayStarts?.[s.date!] ?? DEFAULT_DAY_START, view.landings.get(ver), people, blocks);
+    const t = autoTimes(expanded, legsBySection.get(ver), dayStartOf(state, s.date!, s.draftId) ?? DEFAULT_DAY_START, view.landings.get(ver), people, blocks);
     // The drop-offs and pick-ups get their times here too (the section's items stay the real stops)
     const rideTimes = new Map(
       expanded.filter((it) => isRideStop(it) && t.has(it.id)).map((it) => {

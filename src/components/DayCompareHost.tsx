@@ -2,7 +2,7 @@ import type * as Y from "yjs";
 import { DayCompare } from "./DayCompare";
 import type { Pin } from "./TripMap";
 import type { LegState } from "../lib/routing";
-import { adoptDraft, deleteDraft, draftSection, forkDay, mainPlanName, nextDraftName, renameDraft, updateMeta, type TripState } from "../lib/trips";
+import { adoptDraft, dayStartOf, deleteDraft, draftSection, forkDay, mainPlanName, nextDraftName, renameDraft, updateMeta, type TripState } from "../lib/trips";
 import { autoTimes, DEFAULT_DAY_START, fixedBlocks } from "../lib/autoTime";
 import { planMapData, type Itinerary, type PlanLegs } from "../lib/itinerary";
 import { withRides } from "../lib/branches";
@@ -44,7 +44,7 @@ export function DayCompareHost(p: {
         const raw = of(ver);
         const travelers = p.state.meta.travelers ?? [];
         // Drop-offs and pick-ups take time on the driver's route, as in the day's own view
-        const at = p.autoOn ? autoTimes(withRides(raw, travelers), p.legsBySection.get(ver), p.state.meta.dayStarts?.[p.date] ?? DEFAULT_DAY_START, p.view.landings.get(ver), travelers, fixedBlocks(p.state.reservations, p.date)) : null;
+        const at = p.autoOn ? autoTimes(withRides(raw, travelers), p.legsBySection.get(ver), dayStartOf(p.state, p.date, v.id) ?? DEFAULT_DAY_START, p.view.landings.get(ver), travelers, fixedBlocks(p.state.reservations, p.date)) : null;
         const items = at ? raw.map((it) => (at.get(it.id) ? { ...it, startTime: at.get(it.id)!.start, endTime: at.get(it.id)!.end } : it)) : raw;
         const map = planMapData(p.view, p.flightPins, p.legResults, ver, items, sec.color, { includeGhost: true, numberedPins: true, people: p.state.meta.travelers ?? [] });
         return {

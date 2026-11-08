@@ -3,7 +3,7 @@ import { Section } from "../Section";
 import { askConfirm } from "../ConfirmDialog";
 import { DEFAULT_DAY_START } from "../../lib/autoTime";
 import { setMetaEntry } from "../../lib/itemActions";
-import { adoptDraft, forkDay, nextDraftName } from "../../lib/trips";
+import { adoptDraft, dayStartOf, forkDay, nextDraftName, setDraftStart } from "../../lib/trips";
 import type { PlanContext, PlanSection } from "./types";
 
 type DayOnlyProps = Pick<
@@ -49,12 +49,14 @@ export function dayProps(c: PlanContext, s: PlanSection): DayOnlyProps {
     dayStart:
       autoOn && s.kind === "day"
         ? {
-            value: state.meta.dayStarts?.[s.date!] ?? DEFAULT_DAY_START,
-            isDefault: !state.meta.dayStarts?.[s.date!],
+            value: dayStartOf(state, s.date!, s.draftId) ?? DEFAULT_DAY_START,
+            isDefault: !dayStartOf(state, s.date!, s.draftId),
             landed: view.landings.get(s.writeKey ?? s.key),
             onChange: readOnly
               ? undefined
-              : (t) => setMetaEntry(doc, state, "dayStarts", s.date!, t),
+              : s.draftId
+                ? (t) => setDraftStart(doc, s.draftId!, t)
+                : (t) => setMetaEntry(doc, state, "dayStarts", s.date!, t),
           }
         : undefined,
   };

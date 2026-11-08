@@ -227,6 +227,7 @@ export interface ChangeView {
 const NOUN_BY_KIND: Record<string, string> = { place: "stop", note: "note", checklist: "checklist" };
 const FIELD_LABEL: Record<string, string> = {
   status: "status",
+  dayStart: "day start",
   startTime: "time",
   endTime: "time",
   stay: "duration",

@@ -256,6 +256,8 @@ export interface DayDraft {
   date: string;
   name: string;
   createdAt: number;
+  /** "HH:MM"; unset = the day's own start (meta.dayStarts). */
+  dayStart?: string;
 }
 
 export interface TripState {
@@ -622,6 +624,10 @@ export function copyItems(doc: Y.Doc, ids: string[], section: string, origin: Ed
 export function forkDay(doc: Y.Doc, date: string, fromSection: string, name: string, origin: EditOrigin = ME): string {
   const id = nanoid(8);
   const items = doc.getMap<Y.Map<unknown>>("items");
+  const drafts = doc.getMap<Y.Map<unknown>>("drafts");
+  const dayStarts = doc.getMap("meta").get("dayStarts") as Record<string, string> | undefined;
+  const fromDraft = isDraftSection(fromSection) ? drafts.get(fromSection.slice("draft:".length)) : undefined;
+  const start = (fromDraft?.get("dayStart") as string | undefined) ?? dayStarts?.[date];
   edit(
     doc,
     () => {
@@ -629,7 +635,8 @@ export function forkDay(doc: Y.Doc, date: string, fromSection: string, name: str
       d.set("date", date);
       d.set("name", name);
       d.set("createdAt", Date.now());
-      doc.getMap<Y.Map<unknown>>("drafts").set(id, d);
+      if (start) d.set("dayStart", start);
+      drafts.set(id, d);
       for (const it of itemsIn(doc, fromSection)) {
         const m = new Y.Map<unknown>();
         const copy = { ...it, id: nanoid(10), section: draftSection(id), createdAt: Date.now() };
@@ -649,6 +656,26 @@ export const mainPlanName = (meta: TripMeta, date: string) => meta.planNames?.[d
 export function nextDraftName(drafts: DayDraft[], date: string) {
   const used = drafts.filter((d) => d.date === date).map((d) => Number(/^Draft (\d+)$/.exec(d.name)?.[1] ?? 0));
   return `Draft ${Math.max(0, ...used) + 1}`;
+}
+
+/** The start time set for a day's plan: the draft's own, else the day's. Undefined = the default. */
+export function dayStartOf(state: Pick<TripState, "meta" | "drafts">, date: string, draftId?: string): string | undefined {
+  if (draftId) return state.drafts.find((d) => d.id === draftId)?.dayStart ?? state.meta.dayStarts?.[date];
+  return state.meta.dayStarts?.[date];
+}
+
+/** Sets (or clears, with undefined) the start time of one draft's plan. */
+export function setDraftStart(doc: Y.Doc, id: string, time: string | undefined, origin: EditOrigin = ME) {
+  const d = doc.getMap<Y.Map<unknown>>("drafts").get(id);
+  if (!d) return;
+  edit(
+    doc,
+    () => {
+      if (time) d.set("dayStart", time);
+      else d.delete("dayStart");
+    },
+    origin,
+  );
 }
 
 export function renameDraft(doc: Y.Doc, id: string, name: string, origin: EditOrigin = ME) {
@@ -682,18 +709,25 @@ export function adoptDraft(doc: Y.Doc, id: string, origin: EditOrigin = ME) {
   const tripMeta = doc.getMap("meta");
   const names = { ...((tripMeta.get("planNames") as Record<string, string> | undefined) ?? {}) };
   const keepAs = names[meta.date] || DEFAULT_PLAN_NAME;
+  const starts = { ...((tripMeta.get("dayStarts") as Record<string, string> | undefined) ?? {}) };
+  const mainStart = starts[meta.date];
+  const draftStart = meta.dayStart ?? mainStart;
   edit(
     doc,
     () => {
       const current = itemsIn(doc, day);
       names[meta.date] = meta.name;
       tripMeta.set("planNames", names);
+      if (draftStart) starts[meta.date] = draftStart;
+      else delete starts[meta.date];
+      tripMeta.set("dayStarts", starts);
       if (current.length) {
         const keepId = nanoid(8);
         const d = new Y.Map<unknown>();
         d.set("date", meta.date);
         d.set("name", keepAs);
         d.set("createdAt", Date.now());
+        if (mainStart) d.set("dayStart", mainStart);
         drafts.set(keepId, d);
         for (const it of current) items.get(it.id)!.set("section", draftSection(keepId));
       } else for (const it of current) items.delete(it.id);
