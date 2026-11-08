@@ -8,7 +8,7 @@ import { budgetLines, totals } from "../lib/budget";
 import { setShareToken } from "../lib/shareToken";
 import { copiesByItem, copyItems, isDraftSection, removeItems, setReadOnly, type Item, type Reservation } from "../lib/trips";
 import { setHistoryAuthor } from "../lib/history";
-import { setCollapsed } from "../lib/itemActions";
+import { addPlace, setCollapsed } from "../lib/itemActions";
 import { daysBetween, todayISO } from "../lib/dates";
 import { scrollToEl, scrollToId } from "../lib/scroll";
 import { useUndo } from "../lib/undo";
@@ -45,6 +45,7 @@ import { TripUnavailable } from "../components/trip/TripUnavailable";
 import { PlaceCardOverlay } from "../components/trip/PlaceCardOverlay";
 import { MapPane } from "../components/trip/MapPane";
 import { MapOverlays } from "../components/trip/MapOverlays";
+import { MapPlaceCard } from "../components/trip/MapPlaceCard";
 import { TravelModeView } from "../components/trip/TravelModeView";
 import { TripDialogs } from "../components/trip/TripDialogs";
 import { HistoryDialog } from "../components/HistoryDialog";
@@ -79,6 +80,8 @@ export function TripPage() {
   const [showHistory, setShowHistory] = useState(false);
   const [mapPicked, setMapPicked] = useState<string | null>(null);
   const [dayFrame, setDayFrame] = useState<DayFrame | null>(null);
+  // A spot picked by a long press on the map (its place card is open)
+  const [held, setHeld] = useState<{ at: [number, number]; zoom: number } | null>(null);
   const [showOverview, setShowOverview] = useState(false);
   const headerRef = useRef<HTMLElement>(null);
   const fx = useConverter(state?.meta.currency ?? "CAD");
@@ -207,6 +210,7 @@ export function TripPage() {
     return true;
   };
   const selectFromMap = (itemId: string) => {
+    setHeld(null); // a trip pin picked: the place card for the spot goes
     if (itemId.startsWith("apt:")) {
       setTab("bookings");
       setMobileView("plan");
@@ -492,6 +496,8 @@ export function TripPage() {
         pinClick={settings.pinClick}
         mapPicked={mapPicked}
         walkAreas={walkAreas}
+        onHold={(at, zoom) => (setHeld({ at, zoom }), setSelectedId(null))}
+        held={held?.at ?? null}
       >
         <MapOverlays
           doc={doc}
@@ -534,6 +540,22 @@ export function TripPage() {
           walkOn={walk.on}
           toggleWalk={toggleWalk}
         />
+        {held && (
+          <MapPlaceCard
+            at={held.at}
+            zoom={held.zoom}
+            targets={targets}
+            writeOf={writeOf}
+            readOnly={readOnly}
+            onClose={() => setHeld(null)}
+            onAdd={(key, p) => {
+              const newId = addPlace(doc, key, p, undefined, { destination: state.meta.destination, near });
+              setHeld(null);
+              setSelectedId(newId);
+              if (mobileView === "plan") revealAdded(newId);
+            }}
+          />
+        )}
       </MapPane>
 
       <TripDialogs

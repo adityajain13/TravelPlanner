@@ -20,12 +20,14 @@ interface Props {
   children: ReactNode; // trigger contents
   className?: string;
   align?: "left" | "right";
+  /** Open the list above the trigger (a trigger near the bottom of the screen). */
+  up?: boolean;
   disabled?: boolean;
   title?: string;
 }
 
 /** Wanderlog's "Added ▾" menu: every day and list, with the current one ticked. */
-export function SectionPicker({ targets, current, onPick, children, className = "", align = "left", disabled, title, selected, here }: Props) {
+export function SectionPicker({ targets, current, onPick, children, className = "", align = "left", up, disabled, title, selected, here }: Props) {
   const multi = !!selected;
   const [open, setOpen] = useState(false);
   const [nudge, setNudge] = useState(0);
@@ -62,7 +64,7 @@ export function SectionPicker({ targets, current, onPick, children, className = 
           ref={listRef}
           aria-multiselectable={multi || undefined}
           style={{ transform: `translateX(${nudge}px)` }}
-          className={`absolute top-full z-50 mt-1.5 max-h-80 min-w-52 max-w-[calc(100vw-1rem)] overflow-y-auto rounded-xl border border-line bg-surface py-1.5 shadow-2xl ${align === "right" ? "right-0" : "left-0"}`}
+          className={`absolute ${up ? "bottom-full mb-1.5" : "top-full mt-1.5"} z-50 max-h-80 min-w-52 max-w-[calc(100vw-1rem)] overflow-y-auto rounded-xl border border-line bg-surface py-1.5 shadow-2xl ${align === "right" ? "right-0" : "left-0"}`}
         >
           {targets.map((t) => {
             // The only ticked day or list can't be unticked: it's the last copy

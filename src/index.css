@@ -113,6 +113,17 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   color: var(--muted);
 }
 
+/* 3D terrain button (TripMap), stacked under the compass; accent while terrain is on.
+   Uses --accent (the runtime variable), not --color-accent (an inlined @theme token). */
+.maplibregl-ctrl-group .tp-terrain-btn {
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+}
+.tp-terrain-on svg {
+  color: var(--accent);
+}
+
 /* Map popup for the selected stop */
 .tp-popup-wrap .maplibregl-popup-content {
   padding: 0;

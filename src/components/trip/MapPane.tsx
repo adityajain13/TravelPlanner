@@ -32,6 +32,8 @@ export function MapPane({
   pinClick,
   mapPicked,
   walkAreas,
+  onHold,
+  held,
   children,
 }: {
   planHidden: boolean;
@@ -54,6 +56,8 @@ export function MapPane({
   pinClick: "focus" | "card";
   mapPicked: string | null;
   walkAreas: WalkArea[];
+  onHold?: (at: [number, number], zoom: number) => void;
+  held?: [number, number] | null;
   children?: ReactNode;
 }) {
   return (
@@ -84,6 +88,8 @@ export function MapPane({
           // Settings → "Just open the card": a pin clicked on the map doesn't move the map
           holdView={pinClick === "card" && !!selectedId && mapPicked === selectedId}
           walkAreas={walkAreas}
+          onHold={onHold}
+          held={held}
         />
       </Suspense>
       {children}

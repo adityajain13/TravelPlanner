@@ -195,3 +195,49 @@ export async function suggestionPlace(placeId: string): Promise<{
     countryCode: p.addressComponents?.find((c) => c.types?.includes("country"))?.shortText?.toLowerCase(),
   };
 }
+
+export interface NearbyPlace {
+  id: string;
+  name: string;
+  lat: number;
+  lng: number;
+  type?: string;
+  address?: string;
+}
+
+/** Google places closest to a spot (Places API (New) searchNearby, ranked by distance). `at` is [lng, lat]. */
+export async function nearbyPlaces(at: [number, number], radiusM: number, signal?: AbortSignal): Promise<NearbyPlace[]> {
+  if (!GOOGLE_KEY) return [];
+  const radius = Math.round(Math.min(50000, Math.max(1, radiusM)));
+  type P = {
+    id: string;
+    displayName?: { text: string };
+    location?: { latitude: number; longitude: number };
+    primaryTypeDisplayName?: { text: string };
+    formattedAddress?: string;
+  };
+  const json = await call<{ places?: P[] }>(
+    `${API}/places:searchNearby`,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        locationRestriction: { circle: { center: { latitude: at[1], longitude: at[0] }, radius } },
+        maxResultCount: 6,
+        rankPreference: "DISTANCE",
+        languageCode: "en",
+      }),
+      signal,
+    },
+    "places.id,places.displayName,places.location,places.primaryTypeDisplayName,places.formattedAddress",
+  );
+  return (json.places ?? [])
+    .filter((p): p is P & { location: { latitude: number; longitude: number } } => !!p.location)
+    .map((p) => ({
+      id: p.id,
+      name: p.displayName?.text ?? "",
+      lat: p.location.latitude,
+      lng: p.location.longitude,
+      type: p.primaryTypeDisplayName?.text,
+      address: p.formattedAddress,
+    }));
+}

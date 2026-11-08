@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type RefObject } from "react";
 import * as maplibregl from "maplibre-gl";
-import type { GeoJSONSource, LngLatLike, MapLayerMouseEvent } from "maplibre-gl";
+import type { GeoJSONSource, LngLatLike, MapLayerMouseEvent, MapMouseEvent, MapTouchEvent } from "maplibre-gl";
 import type { FeatureCollection } from "geojson";
 import "maplibre-gl/dist/maplibre-gl.css";
 // MapLibre 6 runs tile decoding in a separate module worker. Let Vite emit it as an asset and
@@ -56,6 +56,10 @@ interface Props {
   frameAll?: boolean;
   /** "How far can I walk" areas (shaded rings), drawn under the routes and pins. */
   walkAreas?: { id: string; color: string; ring: [number, number][] }[];
+  /** A long press (or right-click) on empty map: lng/lat of the spot and the zoom it was made at. */
+  onHold?: (at: [number, number], zoom: number) => void;
+  /** Spot a long press picked (shown as a small dot until the card is closed). */
+  held?: [number, number] | null;
 }
 
 maplibregl.setWorkerUrl(workerUrl);
@@ -100,16 +104,25 @@ const readMode = (): MapMode => {
   }
 };
 
-type Latest = { pins: Pin[]; routes: Route[]; selectedId: string | null; onSelect: (id: string) => void; focusColor?: string; walkAreas?: Props["walkAreas"] };
+type Latest = {
+  pins: Pin[];
+  routes: Route[];
+  selectedId: string | null;
+  onSelect: (id: string) => void;
+  focusColor?: string;
+  walkAreas?: Props["walkAreas"];
+  onHold?: Props["onHold"];
+  theme: Theme;
+};
 type MapRef = RefObject<maplibregl.Map | null>;
 type LatestRef = RefObject<Latest>;
 
-export function TripMap({ pins, routes, selectedId, onSelect, theme, fitKey, fallbackCenter, inset, frame, focusColor, holdView, mini, frameAll, walkAreas }: Props) {
+export function TripMap({ pins, routes, selectedId, onSelect, theme, fitKey, fallbackCenter, inset, frame, focusColor, holdView, mini, frameAll, walkAreas, onHold, held }: Props) {
   const container = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const [mode, setMode] = useState<MapMode>(readMode);
-  const latest = useRef<Latest>({ pins, routes, selectedId, onSelect, focusColor, walkAreas });
-  latest.current = { pins, routes, selectedId, onSelect, focusColor, walkAreas };
+  const latest = useRef<Latest>({ pins, routes, selectedId, onSelect, focusColor, walkAreas, onHold, theme });
+  latest.current = { pins, routes, selectedId, onSelect, focusColor, walkAreas, onHold, theme };
   const firstStyle = useRef(true);
   const popup = useRef<maplibregl.Popup | null>(null);
   const centered = useRef<{ id: string; insetKnown: boolean } | null>(null);
@@ -119,6 +132,7 @@ export function TripMap({ pins, routes, selectedId, onSelect, theme, fitKey, fal
   useMapData({ mapRef, latest, pins, routes, selectedId, focusColor, walkAreas });
   useMapFraming({ mapRef, latest, pins, routes, fitKey, frame, inset, mini, frameAll });
   useSelectionPopup({ mapRef, popup, centered, pins, selectedId, inset, holdView });
+  useHeldMarker({ mapRef, held: mini ? null : held ?? null });
 
   if (!PROTOMAPS_KEY) {
     return (
@@ -178,10 +192,26 @@ function useMapInstance({
         : { center: (fallbackCenter ?? [139.69, 35.68]) as LngLatLike, zoom: fallbackCenter ? 6 : 2 }),
       attributionControl: { compact: true },
       fadeDuration: 0,
+      maxPitch: 70,
       ...(mini ? { dragRotate: false, pitchWithRotate: false, cooperativeGestures: false } : {}),
     });
     // Compass: tap to face north again (and flatten a tilted map)
     if (!mini) map.addControl(new maplibregl.NavigationControl({ showCompass: true, visualizePitch: true }), "bottom-right");
+    // 3D terrain on/off, stacked under the compass (remembered per device)
+    let terrainOn = !mini && readTerrain();
+    const terrainButton = mini
+      ? null
+      : new TerrainControl(terrainOn, () => {
+          terrainOn = !terrainOn;
+          writeTerrain(terrainOn);
+          applyTerrain(map, terrainOn, latest.current.theme);
+          terrainButton?.set(terrainOn);
+          if (terrainOn && map.getPitch() < 20) map.easeTo({ pitch: 60, duration: 600 });
+          if (!terrainOn) map.easeTo({ pitch: 0, duration: 600 });
+        });
+    if (terrainButton) map.addControl(terrainButton, "bottom-right");
+    // Long press (or right-click) on the map picks a spot for the place card
+    const unhold = mini ? () => undefined : wireHold(map, latest);
     // Pins may have arrived (or the panel sized itself) while the map was loading: frame them now
     // The compact credits open expanded on wide maps; fold them into the (i) button once they've
     // been filled in (pressing it again shows them, as MapLibre's own toggle does)
@@ -207,6 +237,7 @@ function useMapInstance({
     map.on("style.load", () => {
       addOverlay(map);
       pushData(map, latest.current);
+      if (!mini) applyTerrain(map, terrainOn, latest.current.theme); // a theme switch rebuilds the style
     });
     map.on("click", "trip-pins", (e: MapLayerMouseEvent) => {
       const id = e.features?.[0]?.properties?.id as string | undefined;
@@ -220,6 +251,7 @@ function useMapInstance({
     ro.observe(container.current);
     return () => {
       ro.disconnect();
+      unhold();
       map.remove();
       if (!mini) setMapView(null); // leaving the trip: the next one searches near its own centre until its map reports
       mapRef.current = null;
@@ -364,6 +396,216 @@ function popupElement(p: Pin): HTMLDivElement {
     el.append(c);
   }
   return el;
+}
+
+/** A small accent dot where a long press picked a spot; it stays until the place card closes. */
+function useHeldMarker({ mapRef, held }: { mapRef: MapRef; held: [number, number] | null }) {
+  const marker = useRef<maplibregl.Marker | null>(null);
+  const key = held ? held.join() : "";
+  useEffect(() => {
+    marker.current?.remove();
+    marker.current = null;
+    const map = mapRef.current;
+    if (!map || !held) return;
+    const el = document.createElement("div");
+    el.style.cssText =
+      "width:14px;height:14px;border-radius:50%;background:var(--accent);border:2px solid #fff;box-shadow:0 0 0 1px rgb(0 0 0 / .35);pointer-events:none";
+    marker.current = new maplibregl.Marker({ element: el }).setLngLat(held).addTo(map);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key]);
+  useEffect(
+    () => () => {
+      marker.current?.remove();
+    },
+    [],
+  );
+}
+
+const HOLD_MS = 550;
+
+/**
+ * A long press (one finger, or a mouse button held) or a right-click on the map passes the spot to
+ * onHold. A press that moves, zooms, rotates or tilts the map is a gesture, not a hold, and a hold
+ * that starts on a trip pin is left to the pin. The click that ends a mouse hold is swallowed.
+ * Returns the function that removes the container listener.
+ */
+function wireHold(map: maplibregl.Map, latest: LatestRef): () => void {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let press: { x: number; y: number; lng: number; lat: number; slop: number } | null = null;
+  let fired = false; // a hold fired during this press
+  let swallow = false; // the click that follows a mouse hold
+  let swallowTimer: ReturnType<typeof setTimeout> | undefined;
+  let lastFire = 0;
+
+  const cancel = () => {
+    clearTimeout(timer);
+    timer = undefined;
+    press = null;
+  };
+  const fire = (x: number, y: number, lng: number, lat: number): boolean => {
+    cancel();
+    if (Date.now() - lastFire < 600) return false; // a touch long press can also send a contextmenu
+    if (map.getLayer("trip-pins") && map.queryRenderedFeatures([x, y], { layers: ["trip-pins"] }).length) return false;
+    lastFire = Date.now();
+    latest.current.onHold?.([lng, lat], map.getZoom());
+    navigator.vibrate?.(15);
+    return true;
+  };
+  const begin = (x: number, y: number, lng: number, lat: number, slop: number) => {
+    fired = false;
+    press = { x, y, lng, lat, slop };
+    timer = setTimeout(() => {
+      const p = press;
+      timer = undefined;
+      press = null;
+      if (p && fire(p.x, p.y, p.lng, p.lat)) fired = true;
+    }, HOLD_MS);
+  };
+  const release = () => {
+    cancel();
+    if (!fired) return;
+    fired = false;
+    swallow = true;
+    clearTimeout(swallowTimer);
+    swallowTimer = setTimeout(() => (swallow = false), 300);
+  };
+  const moved = (e: MapMouseEvent | MapTouchEvent) => {
+    if (press && Math.hypot(e.point.x - press.x, e.point.y - press.y) > press.slop) cancel();
+  };
+
+  map.on("mousedown", (e: MapMouseEvent) => {
+    if (e.originalEvent.button !== 0) return cancel();
+    begin(e.point.x, e.point.y, e.lngLat.lng, e.lngLat.lat, 6);
+  });
+  map.on("mousemove", moved);
+  map.on("mouseup", release);
+  map.on("touchstart", (e: MapTouchEvent) => {
+    if (e.originalEvent.touches.length !== 1) return cancel(); // a second finger is a pinch
+    begin(e.point.x, e.point.y, e.lngLat.lng, e.lngLat.lat, 10);
+  });
+  map.on("touchmove", moved);
+  map.on("touchend", release);
+  map.on("touchcancel", release);
+  map.on("contextmenu", (e: MapMouseEvent) => {
+    fire(e.point.x, e.point.y, e.lngLat.lng, e.lngLat.lat);
+  });
+  map.on("dragstart", cancel);
+  map.on("zoomstart", cancel);
+  map.on("rotatestart", cancel);
+  map.on("pitchstart", cancel);
+
+  // Capture phase on the container: the click never reaches MapLibre (or anything under it)
+  const container = map.getContainer();
+  const eat = (e: MouseEvent) => {
+    if (!swallow) return;
+    swallow = false;
+    e.stopPropagation();
+  };
+  container.addEventListener("click", eat, true);
+  return () => {
+    cancel();
+    clearTimeout(swallowTimer);
+    container.removeEventListener("click", eat, true);
+  };
+}
+
+const readTerrain = (): boolean => {
+  try {
+    return localStorage.getItem("tp-terrain") === "1";
+  } catch {
+    return false;
+  }
+};
+const writeTerrain = (on: boolean) => {
+  try {
+    localStorage.setItem("tp-terrain", on ? "1" : "0");
+  } catch {
+    /* ignore */
+  }
+};
+
+const DEM_TILES = "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png";
+
+/** Terrain on: the elevation source, hillshade under the labels and setTerrain. Off: both removed (the source stays). */
+function applyTerrain(map: maplibregl.Map, on: boolean, theme: Theme) {
+  if (!on) {
+    map.setTerrain(null);
+    if (map.getLayer("terrain-hillshade")) map.removeLayer("terrain-hillshade");
+    return;
+  }
+  if (!map.getSource("dem"))
+    map.addSource("dem", {
+      type: "raster-dem",
+      tiles: [DEM_TILES],
+      encoding: "terrarium",
+      tileSize: 256,
+      maxzoom: 15,
+      attribution: "Terrain: Mapzen / AWS Open Data",
+    });
+  if (!map.getLayer("terrain-hillshade")) {
+    const firstSymbol = map.getStyle().layers.find((l) => l.type === "symbol")?.id;
+    const dark = theme !== "light";
+    map.addLayer(
+      {
+        id: "terrain-hillshade",
+        type: "hillshade",
+        source: "dem",
+        paint: {
+          "hillshade-exaggeration": 0.35,
+          "hillshade-shadow-color": dark ? "#070908" : "#cfcec6", // a shade darker than the background
+          "hillshade-highlight-color": dark ? "#2a322d" : "#ffffff",
+        },
+      },
+      firstSymbol,
+    );
+  }
+  map.setTerrain({ source: "dem", exaggeration: 1.4 });
+}
+
+/** The mountain button under the compass; its svg takes the accent colour while terrain is on. */
+class TerrainControl implements maplibregl.IControl {
+  private button: HTMLButtonElement | null = null;
+  private on: boolean;
+  private readonly onClick: () => void;
+  constructor(on: boolean, onClick: () => void) {
+    this.on = on;
+    this.onClick = onClick;
+  }
+  onAdd(): HTMLElement {
+    const group = document.createElement("div");
+    group.className = "maplibregl-ctrl maplibregl-ctrl-group";
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "tp-terrain-btn";
+    button.title = "3D terrain";
+    button.setAttribute("aria-label", "3D terrain");
+    button.append(mountainIcon());
+    button.addEventListener("click", this.onClick);
+    group.append(button);
+    this.button = button;
+    this.set(this.on);
+    return group;
+  }
+  onRemove(): void {
+    this.button = null;
+  }
+  set(on: boolean) {
+    this.on = on;
+    this.button?.classList.toggle("tp-terrain-on", on);
+    this.button?.setAttribute("aria-pressed", String(on));
+  }
+}
+
+/** The lucide "mountain" icon (ISC licence), built as SVG DOM. */
+function mountainIcon(): SVGSVGElement {
+  const NS = "http://www.w3.org/2000/svg";
+  const svg = document.createElementNS(NS, "svg");
+  for (const [k, v] of Object.entries({ width: "18", height: "18", viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", "stroke-width": "2", "stroke-linecap": "round", "stroke-linejoin": "round", "aria-hidden": "true" }))
+    svg.setAttribute(k, v);
+  const path = document.createElementNS(NS, "path");
+  path.setAttribute("d", "m8 3 4 8 5-5 5 15H2L8 3z");
+  svg.append(path);
+  return svg;
 }
 
 function ModeButton(props: { active: boolean; onClick: () => void; icon: React.ReactNode; children: React.ReactNode }) {
