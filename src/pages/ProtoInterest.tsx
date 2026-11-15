@@ -3,7 +3,7 @@
 // answer in one shows up in all of them. To try another idea, add a component to VARIANTS.
 //
 // Answers per person: null = hasn't weighed in · 0 = happy to tag along · 1 = must do · -1 = sitting out
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { CalendarPlus, Check, ChevronDown, CircleAlert, GitFork, Star, Trash2, X } from "lucide-react";
 
 type Answer = -1 | 0 | 1 | null;
@@ -319,6 +319,136 @@ function PersonSlider({ a, editable, onSet }: { a: Answer; editable: boolean; on
   );
 }
 
+/* ---------- more ways to show direction + agreement ---------- */
+
+const counts = (people: string[], ans: Answers) => {
+  const c = { out: 0, along: 0, must: 0, none: 0 };
+  for (const p of people) {
+    const a = ans[p] ?? null;
+    if (a === -1) c.out++;
+    else if (a === 0) c.along++;
+    else if (a === 1) c.must++;
+    else c.none++;
+  }
+  return c;
+};
+/** Mixed = the answers reach both ends of the scale */
+const isMixed = (people: string[], ans: Answers) => {
+  const a = answered(people, ans);
+  return a.includes(-1) && a.includes(1);
+};
+const Mixed = () => <span className="text-[11.5px] font-semibold text-red-600 dark:text-red-400">Mixed</span>;
+
+/** H: your average knob, plus a soft band from the lowest to the highest answer (wide band = scattered) */
+function KnobBand(props: VariantProps) {
+  const a = answered(props.people, props.answers);
+  if (!a.length)
+    return (
+      <TrackButton props={props}>
+        <Track faint />
+      </TrackButton>
+    );
+  const lo = Math.min(...a);
+  const hi = Math.max(...a);
+  const mean = a.reduce((x, y) => x + y, 0) / a.length;
+  return (
+    <TrackButton props={props} extra={isMixed(props.people, props.answers) ? <Mixed /> : undefined}>
+      <Track faint>
+        <span className="absolute top-1/2 h-3 -translate-y-1/2 rounded-full bg-fg/12" style={{ left: posX(lo) - 7, width: posX(hi) - posX(lo) + 14 }} />
+        <span
+          className="absolute top-1/2 size-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full ring-2 ring-surface"
+          style={{ left: posX(mean), background: mean > 0.15 ? "#22a35a" : mean < -0.15 ? "#ef4444" : "#8a918d" }}
+        />
+      </Track>
+    </TrackButton>
+  );
+}
+
+/** I: everyone's answers melted into one blob at the average: round = agreed, peanut = two camps, lumpy = scattered */
+function GooBlob(props: VariantProps) {
+  const id = useId().replace(/:/g, "");
+  const c = counts(props.people, props.answers);
+  const a = answered(props.people, props.answers);
+  const mean = a.length ? a.reduce((x, y) => x + y, 0) / a.length : 0;
+  const lobes = (
+    [
+      [-1, c.out],
+      [0, c.along],
+      [1, c.must],
+    ] as const
+  ).filter(([, n]) => n > 0);
+  const SPREAD = 11; // px between lobes: close enough to melt together
+  return (
+    <TrackButton props={props} extra={isMixed(props.people, props.answers) ? <Mixed /> : undefined}>
+      <Track faint={!a.length}>
+        {a.length > 0 && (
+          <svg className="absolute top-1/2 -translate-y-1/2 overflow-visible" width={TRACK_W} height={28} style={{ left: 0 }}>
+            <defs>
+              <filter id={`goo${id}`}>
+                <feGaussianBlur in="SourceGraphic" stdDeviation="2.6" result="b" />
+                <feColorMatrix in="b" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 22 -9" />
+              </filter>
+            </defs>
+            <g filter={`url(#goo${id})`}>
+              {lobes.map(([v, n]) => (
+                <circle key={v} cx={posX(mean) + (v - mean) * SPREAD} cy={14} r={4.2 + 2.3 * Math.sqrt(n)} fill={DOT(v)} />
+              ))}
+            </g>
+          </svg>
+        )}
+      </Track>
+    </TrackButton>
+  );
+}
+
+/** J: the standard survey chart (a diverging/stacked Likert bar): one segment per answer, sized by how many */
+function StackedBar(props: VariantProps) {
+  const c = counts(props.people, props.answers);
+  const total = props.people.length;
+  const seg = (n: number, bg: string, title: string) =>
+    n > 0 && <span title={`${n} ${title}`} className="h-full" style={{ width: `${(n / total) * 100}%`, background: bg }} />;
+  return (
+    <TrackButton props={props} extra={isMixed(props.people, props.answers) ? <Mixed /> : undefined}>
+      <span className="flex items-center gap-1.5">
+        <X className="size-3 text-red-500" />
+        <span className="flex h-2.5 w-24 overflow-hidden rounded-full bg-surface-2 ring-1 ring-line">
+          {seg(c.out, "#ef4444", "sitting out")}
+          {seg(c.along, "#a3aaa6", "tagging along")}
+          {seg(c.must, "#f59e0b", "must do")}
+          {c.none > 0 && <span className="h-full" style={{ width: `${(c.none / total) * 100}%`, background: "repeating-linear-gradient(45deg,transparent 0 3px,rgb(0 0 0/.12) 3px 4px)" }} />}
+        </span>
+        <Star className="size-3 text-amber-500" />
+      </span>
+    </TrackButton>
+  );
+}
+
+/** K: a small donut, as consensus tools (e.g. Loomio's proposal results) show votes */
+function Donut(props: VariantProps) {
+  const c = counts(props.people, props.answers);
+  const total = props.people.length;
+  let at = 0;
+  const stop = (n: number, col: string) => {
+    const from = at;
+    at += (n / total) * 360;
+    return n ? `${col} ${from}deg ${at}deg` : "";
+  };
+  const bg = [stop(c.must, "#f59e0b"), stop(c.along, "#a3aaa6"), stop(c.out, "#ef4444"), stop(c.none, "rgb(0 0 0/.08)")].filter(Boolean).join(",");
+  return (
+    <TrackButton props={props} extra={isMixed(props.people, props.answers) ? <Mixed /> : undefined}>
+      <span className="relative grid size-6 place-items-center rounded-full" style={{ background: `conic-gradient(${bg})` }}>
+        <span className="grid size-3.5 place-items-center rounded-full bg-surface">
+          {c.must > 0 && <Star className="size-2 fill-amber-500 text-amber-500" />}
+        </span>
+      </span>
+      <span className="text-[11.5px] text-muted">
+        {c.must > 0 && <>★{c.must} </>}
+        {c.out > 0 && <>✕{c.out}</>}
+      </span>
+    </TrackButton>
+  );
+}
+
 const VARIANTS: { id: string; name: string; note: string; where: "top" | "bottom"; sliders?: boolean; C: (p: VariantProps) => ReactNode }[] = [
   { id: "A", name: "Avatar strip", note: "Who and what at once. Click your own avatar to answer.", where: "top", C: AvatarStrip },
   { id: "B", name: "Counts", note: "Smallest. Says how many, not who (hover/expand for names).", where: "top", C: Counts },
@@ -327,6 +457,10 @@ const VARIANTS: { id: string; name: string; note: string; where: "top" | "bottom
   { id: "E", name: "Average knob", note: "Your Figma draft: one knob at the group's average. Click it to answer.", where: "bottom", sliders: true, C: MeanKnob },
   { id: "F", name: "Dot plot", note: "One dot per person at their answer, so a split shows as dots at both ends. Yours has a dark ring.", where: "bottom", sliders: true, C: DotPlot },
   { id: "G", name: "Range", note: "Highlights lowest → highest answer, tick at the average; says “split?” when it spans the whole scale.", where: "bottom", sliders: true, C: RangeBar },
+  { id: "H", name: "Knob + agreement band", note: "Your knob = direction; the soft band behind it = how spread out people are. “Mixed” when it spans both ends.", where: "bottom", sliders: true, C: KnobBand },
+  { id: "I", name: "Gooey blob", note: "Answers melt into one blob at the average: round = agreed, peanut = two camps, lumpy = scattered.", where: "bottom", sliders: true, C: GooBlob },
+  { id: "J", name: "Stacked bar (survey standard)", note: "The usual Likert chart: red / grey / amber segments sized by count; hatched = not answered.", where: "bottom", sliders: true, C: StackedBar },
+  { id: "K", name: "Donut (consensus tools)", note: "How decision tools like Loomio show a vote: a small ring split by answer, ★ in the middle if anyone must-dos it.", where: "bottom", sliders: true, C: Donut },
 ];
 
 /* ---------- the card shell around a variant ---------- */
