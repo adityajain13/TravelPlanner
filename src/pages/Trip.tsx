@@ -51,6 +51,13 @@ import { TripDialogs } from "../components/trip/TripDialogs";
 import { HistoryDialog } from "../components/HistoryDialog";
 import { MobileViewSwitch } from "../components/trip/MobileViewSwitch";
 import type { DayFrame, PhotoFill, PlanContext, ReceiptTarget } from "../components/trip/types";
+// PROTOTYPE (proto/trip-focus)
+import { useTripLayout } from "../lib/protoTripLayout";
+import { LayoutSwitch } from "../components/trip/proto/LayoutSwitch";
+import { ScopeNav, type Scope } from "../components/trip/proto/ScopeNav";
+import { ScopeHeader } from "../components/trip/proto/ScopeHeader";
+import { SelectionBar } from "../components/trip/SelectionBar";
+import { UndoBar } from "../components/trip/UndoBars";
 
 const LOADING = "loading" as const;
 
@@ -170,6 +177,18 @@ export function TripPage() {
   const walk = useMemo(() => walkPlan(state, view?.sections ?? [], focus, walkToggles), [state, view, focus, walkToggles]);
   const walkAreas = useWalkAreas(walk.targets, settings.walkMinutes);
   const toggleWalk = (itemId: string) => setWalk(walk.copies.get(itemId) ?? [itemId], !walk.on.has(itemId));
+  // PROTOTYPE (proto/trip-focus): variant A scopes the plan and map to one day or list (the map's
+  // existing `focus`). During the trip it opens on today; ?today=2026-12-02 tries that.
+  const [layout] = useTripLayout();
+  const scoped = layout === "a";
+  const autoScoped = useRef<string | null>(null);
+  useEffect(() => {
+    if (!scoped || !view || !id || autoScoped.current === id) return;
+    autoScoped.current = id;
+    const t = new URLSearchParams(location.search).get("today")?.slice(0, 10) || todayISO();
+    const d = view.sections.find((s) => s.kind === "day" && s.date === t);
+    if (d) setFocus(d.key);
+  }, [scoped, view, id]);
   if (row !== LOADING && !shareToken && auth === "out") return <Navigate to="/login" replace />;
   if (!ready || row === LOADING) return <div className="grid h-full place-items-center text-muted">Loading…</div>;
   if (!state || !doc || !view) return <TripUnavailable canSync={canSync} syncStatus={syncStatus} synced={synced} waited={waited} />;
@@ -308,8 +327,25 @@ export function TripPage() {
   const today = overviewNow ? localISO(overviewNow) : todayISO();
   const overviewSections = view.sections.filter((s) => s.key !== ORPHAN);
   const overview = overviewOf(state, overviewSections, today);
+  // PROTOTYPE (proto/trip-focus): pick what the plan and map show (variant A)
+  const pickScope = (s: Scope) => {
+    const key = s.tab === "plan" ? s.key : null;
+    if (key !== focus) setSelectedId(null);
+    setTab(s.tab);
+    setFocus(key);
+    setMobileView("plan");
+    setContentsDrawer(false);
+    requestAnimationFrame(() => scrollRef.current?.scrollTo({ top: 0 }));
+  };
+  const scopedSection = scoped && tab === "plan" && focus ? view.sections.find((s) => s.key === focus) : undefined;
   const onOverviewGo = (t: OverviewTarget) => {
     setShowOverview(false);
+    if (scoped && t.kind === "section") return pickScope({ tab: "plan", key: t.key });
+    if (scoped && t.kind === "item") {
+      const sec = view.sections.find((s) => s.items.some((i) => i.id === t.id));
+      if (sec) pickScope({ tab: "plan", key: sec.key });
+      return void setTimeout(() => goTo(t.id), 60);
+    }
     if (t.kind === "addRes") return void (!readOnly && setEditingRes(t.res));
     if (t.kind === "section") return go("plan", `sec-${t.key}`);
     if (t.kind === "item") return (setSelectedId(t.id), requestAnimationFrame(() => scrollToId(scrollRef.current, `item-${t.id}`, "center")));
@@ -397,14 +433,35 @@ export function TripPage() {
   return (
     <div className="flex h-full flex-col md:flex-row">
       {/* Contents column (wide screens); a drawer below that */}
-      <ContentsColumn
-        collapsed={planHidden || contentsHidden}
-        thin={settings.contentsWidth === "thin"}
-        contents={contentsProps}
-        history={history}
-        readOnly={readOnly}
-        onHide={() => hideContents(true)}
-      />
+      {scoped ? (
+        // PROTOTYPE (proto/trip-focus): variant A's sidebar picks the scope instead of scrolling
+        <div className={`hidden shrink-0 border-r border-line bg-bg ${planHidden || contentsHidden ? "" : "lg:block"}`}>
+          <div className="h-full w-[250px] xl:w-[280px]">
+            <ScopeNav
+              sections={overviewSections}
+              reservations={state.reservations}
+              tab={tab}
+              focus={focus}
+              today={today}
+              subtitles={state.meta.subtitles}
+              budgetTotal={contentsProps.budgetTotal}
+              header={<UndoBar history={history} readOnly={readOnly} />}
+              onPick={pickScope}
+              onOverview={() => setShowOverview(true)}
+              onHide={() => hideContents(true)}
+            />
+          </div>
+        </div>
+      ) : (
+        <ContentsColumn
+          collapsed={planHidden || contentsHidden}
+          thin={settings.contentsWidth === "thin"}
+          contents={contentsProps}
+          history={history}
+          readOnly={readOnly}
+          onHide={() => hideContents(true)}
+        />
+      )}
       {contentsDrawer && <ContentsDrawer contents={contentsProps} history={history} readOnly={readOnly} onClose={() => setContentsDrawer(false)} />}
       {/* Plan panel */}
       <aside
@@ -414,6 +471,25 @@ export function TripPage() {
       >
         <CollapsedContentsBar hidden={contentsHidden} readOnly={readOnly} history={history} onShow={showContents} />
         <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto pb-28 md:pb-10">
+          {/* PROTOTYPE (proto/trip-focus): one day or list on its own, under a slim bar */}
+          {scopedSection ? (
+            <>
+              <ScopeHeader title={state.meta.title} sections={overviewSections} focus={scopedSection.key} onPick={(key) => pickScope({ tab: "plan", key })}>
+                {checked.size > 0 && (
+                  <SelectionBar doc={doc} checked={checked} checkedIds={checkedIds} here={checkedHere} targets={targets} writeOf={writeOf} selectedId={selectedId} setSelectedId={setSelectedId} onClear={clearChecked} />
+                )}
+              </ScopeHeader>
+              <div className="px-3 pt-2">
+                <ItineraryDays
+                  c={{ ...plan, state: { ...state, meta: { ...state.meta, collapsed: (state.meta.collapsed ?? []).filter((k) => k !== scopedSection.key) } } }}
+                  only={scopedSection.key}
+                  sensors={sensors}
+                  dragging={dragging}
+                  setDragging={setDragging}
+                />
+              </div>
+            </>
+          ) : (<>
           <TripHero
             headerRef={headerRef}
             doc={doc}
@@ -447,6 +523,7 @@ export function TripPage() {
             selectedId={selectedId}
             setSelectedId={setSelectedId}
             onOpenContents={() => setContentsDrawer(true)}
+            hideNavOnWide={scoped}
           />
           <div className="px-3">
             {tab === "bookings" && <ReservationsPanel doc={doc} state={state} readOnly={readOnly} tripId={id} canForward={canReview} walkOn={walk.on} onToggleWalk={toggleWalk} />}
@@ -472,6 +549,7 @@ export function TripPage() {
             </p>
             </>)}
           </div>
+          </>)}
         </div>
       </aside>
 
@@ -582,6 +660,7 @@ export function TripPage() {
       )}
       {showHistory && <HistoryDialog doc={doc} state={state} readOnly={readOnly} myEmail={myEmail ?? undefined} onClose={() => setShowHistory(false)} />}
       <MobileViewSwitch mobileView={mobileView} setMobileView={setMobileView} />
+      <LayoutSwitch />
     </div>
   );
 }

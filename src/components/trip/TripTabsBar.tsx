@@ -30,6 +30,7 @@ export function TripTabsBar({
   selectedId,
   setSelectedId,
   onOpenContents,
+  hideNavOnWide,
 }: {
   doc: Y.Doc;
   state: TripState;
@@ -51,10 +52,12 @@ export function TripTabsBar({
   selectedId: string | null;
   setSelectedId: Dispatch<SetStateAction<string | null>>;
   onOpenContents: () => void;
+  /** PROTOTYPE (proto/trip-focus): the sidebar does tabs and days on wide screens */
+  hideNavOnWide?: boolean;
 }) {
   // Tabs + day jump chips stay pinned while the plan scrolls
   return (
-    <div className="sticky top-0 z-30 border-b border-line bg-bg/95 px-5 backdrop-blur">
+    <div className={`sticky top-0 z-30 border-b border-line bg-bg/95 px-5 backdrop-blur ${hideNavOnWide && checked.size === 0 ? "lg:hidden" : ""}`}>
       {checked.size > 0 && (
         <SelectionBar
           doc={doc}
@@ -68,6 +71,7 @@ export function TripTabsBar({
           onClear={clearChecked}
         />
       )}
+      <div className={hideNavOnWide ? "lg:hidden" : ""}>
       <TabNav state={state} tripId={tripId} tab={tab} setTab={setTab} onOpenContents={onOpenContents} />
       {tab === "plan" && view.sections.some((s) => s.kind === "day") && <DayChips view={view} scrollRef={scrollRef} setDayFrame={setDayFrame} />}
       {focus && tab === "plan" && (
@@ -75,6 +79,7 @@ export function TripTabsBar({
           <Eye className="size-3.5" /> Showing one day on the map · show all
         </button>
       )}
+      </div>
     </div>
   );
 }

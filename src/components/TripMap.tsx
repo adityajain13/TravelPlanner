@@ -7,7 +7,14 @@ import "maplibre-gl/dist/maplibre-gl.css";
 // point MapLibre at it; otherwise it looks for an unbundled file next to the chunk and fails.
 import workerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?url";
 import { Layers, Map as MapIcon, Satellite } from "lucide-react";
-import { buildStyle, MAPTILER_KEY, PROTOMAPS_KEY, type MapMode } from "../lib/mapStyle";
+import { buildStyle as buildKeyedStyle, MAPTILER_KEY, PROTOMAPS_KEY as KEY, type MapMode } from "../lib/mapStyle";
+import type { StyleSpecification } from "maplibre-gl";
+
+// PROTOTYPE (proto/trip-focus): local dev without VITE_PROTOMAPS_KEY falls back to OpenFreeMap (keyless)
+const KEYLESS = !KEY && import.meta.env.DEV;
+const PROTOMAPS_KEY = KEY || (KEYLESS ? "keyless" : undefined);
+const buildStyle = (theme: Parameters<typeof buildKeyedStyle>[0], mode: MapMode): StyleSpecification | string =>
+  KEYLESS ? `https://tiles.openfreemap.org/styles/${theme === "light" ? "positron" : "dark"}` : buildKeyedStyle(theme, mode);
 import type { Theme } from "../lib/theme";
 import { drawPin, PIN, type Glyph } from "../lib/pinArt";
 import { distanceKm } from "../lib/geocode";
