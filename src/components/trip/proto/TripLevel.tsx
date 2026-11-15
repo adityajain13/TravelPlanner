@@ -1,13 +1,9 @@
 // PROTOTYPE (proto/trip-focus): variant B's Itinerary and Prep areas (the rail picks the area). Itinerary:
-// compact trip header, overview, one row per day. Prep: notes and checklists. A row drills in.
-import { ChevronRight, ImagePlus, LayoutDashboard, ListChecks, Ticket } from "lucide-react";
+// overview, one row per day (the trip bar above holds the trip's name and dates). Prep: notes and checklists. A row drills in.
+import { ChevronRight, LayoutDashboard, ListChecks, Ticket } from "lucide-react";
 import type { ReactNode } from "react";
-import type * as Y from "yjs";
 import type { SectionInfo } from "../../Section";
-import { updateMeta, type TripState } from "../../../lib/trips";
-import { DateRangeField } from "../../DatePicker";
-import { Photo } from "../../Photo";
-import { OfflineMapButton } from "../../OfflineMapButton";
+import type { TripState } from "../../../lib/trips";
 import { dtf } from "../../../lib/intl";
 import { parseISODate } from "../../../lib/dates";
 import { inkOn } from "../../../lib/colors";
@@ -16,35 +12,22 @@ import type { Scope } from "./ScopeNav";
 
 export function TripLevel({
   area,
-  doc,
   state,
-  tripId,
-  readOnly,
   sections,
   today,
-  countdown,
   attention,
   bookingsByDay,
   onPick,
   onOverview,
-  onPickCover,
-  tools,
 }: {
   area: "itinerary" | "prep";
-  doc: Y.Doc;
   state: TripState;
-  tripId: string;
-  readOnly: boolean;
   sections: SectionInfo[];
   today: string;
-  countdown: string;
   attention: number;
   bookingsByDay: Map<string, number>;
   onPick: (s: Scope) => void;
   onOverview: () => void;
-  onPickCover: () => void;
-  /** Travel mode, photos, forwarded bookings */
-  tools: ReactNode;
 }) {
   const { meta } = state;
   const days = sections.filter((s) => s.kind === "day");
@@ -88,39 +71,13 @@ export function TripLevel({
     );
 
   return (
-    <div className="px-4 pt-5 pb-10">
-      {/* Compact trip header: small cover, title, dates */}
-      <header className="flex items-center gap-4 px-2">
-        <button
-          onClick={readOnly ? undefined : onPickCover}
-          title={readOnly ? undefined : "Change cover"}
-          className="group relative size-[72px] shrink-0 overflow-hidden rounded-2xl bg-surface-2"
-        >
-          {meta.cover ? <Photo srcs={[meta.cover.thumb, meta.cover.url]} className="size-full object-cover" /> : <ImagePlus className="m-auto size-5 text-muted" />}
-        </button>
-        <div className="min-w-0 flex-1">
-          <input
-            disabled={readOnly}
-            key={meta.title}
-            defaultValue={meta.title}
-            onBlur={(e) => e.target.value.trim() && e.target.value !== meta.title && updateMeta(doc, { title: e.target.value.trim() })}
-            onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()}
-            className="w-full bg-transparent font-display text-[28px] leading-tight outline-none"
-          />
-          <div className="mt-1 flex flex-wrap items-center gap-2 text-[14px] text-muted">
-            <DateRangeField
-              disabled={readOnly}
-              start={meta.startDate}
-              end={meta.endDate}
-              onChange={(startDate, endDate) => updateMeta(doc, { startDate, endDate })}
-              className="rounded-full px-0 py-0.5 font-semibold text-fg hover:text-accent"
-            />
-            <span className="rounded-full bg-accent/15 px-2 py-0.5 text-[12px] font-semibold text-accent">{countdown}</span>
-          </div>
-        </div>
-      </header>
+    <div className="px-4 pt-6 pb-10">
+      <h1 className="px-2 font-display text-[28px] leading-tight">Itinerary</h1>
+      <p className="mt-1 px-2 text-[14px] text-muted">
+        {days.length} days · {days.reduce((n, d) => n + placesIn(d).length, 0)} stops
+      </p>
 
-      <button onClick={onOverview} className="mt-5 flex w-full items-center gap-2.5 rounded-2xl border border-line bg-surface px-3.5 py-3 text-left hover:border-accent">
+      <button onClick={onOverview} className="mt-4 flex w-full items-center gap-2.5 rounded-2xl border border-line bg-surface px-3.5 py-3 text-left hover:border-accent">
         <LayoutDashboard className="size-5 shrink-0 text-accent" />
         <span className="font-semibold">Overview</span>
         <span className="ml-auto flex items-center gap-1 text-[12.5px] text-muted">
@@ -163,15 +120,6 @@ export function TripLevel({
         );
       })}
 
-      <div className="mt-8 border-t border-line pt-4">
-        <div className="mb-2 flex items-center px-2">
-          <span className="text-[11px] font-semibold tracking-wider text-muted/80 uppercase">Tools</span>
-          <span className="ml-auto">
-            <OfflineMapButton tripId={tripId} state={state} />
-          </span>
-        </div>
-        {tools}
-      </div>
     </div>
   );
 }

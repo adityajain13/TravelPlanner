@@ -59,6 +59,8 @@ import { ScopeHeader } from "../components/trip/proto/ScopeHeader";
 import { SelectionBar } from "../components/trip/SelectionBar";
 import { UndoBar } from "../components/trip/UndoBars";
 import { Rail, AREA_LABEL, type Area } from "../components/trip/proto/Rail";
+import { TripBar } from "../components/trip/proto/TripBar";
+import { OfflineMapButton } from "../components/OfflineMapButton";
 import { IdeasHome } from "../components/trip/proto/IdeasHome";
 import { TripLevel } from "../components/trip/proto/TripLevel";
 import { IdeasShelf, type Idea } from "../components/trip/proto/IdeasShelf";
@@ -461,55 +463,8 @@ export function TripPage() {
       </>
     );
 
-  return (
-    <div className="flex h-full flex-col md:flex-row">
-      {/* Contents column (wide screens); a drawer below that */}
-      {layoutB ? (
-        // PROTOTYPE (proto/trip-focus): variant B's thin rail
-        <Rail
-          area={railArea}
-          onArea={pickArea}
-          counts={{ ideas: ideas.filter((i) => !i.days.length).length, bookings: state.reservations.length }}
-          history={history}
-          readOnly={readOnly}
-          canSync={canSync}
-          syncStatus={syncStatus}
-          isOwner={isOwner}
-          onShare={() => setSharing(true)}
-          onHistory={() => setShowHistory(true)}
-          onSettings={() => setShowSettings(true)}
-        />
-      ) : scoped ? (
-        // PROTOTYPE (proto/trip-focus): variant A's sidebar picks the scope instead of scrolling
-        <div className={`hidden shrink-0 border-r border-line bg-bg ${planHidden || contentsHidden ? "" : "lg:block"}`}>
-          <div className="h-full w-[250px] xl:w-[280px]">
-            <ScopeNav
-              sections={overviewSections}
-              reservations={state.reservations}
-              tab={tab}
-              focus={focus}
-              today={today}
-              subtitles={state.meta.subtitles}
-              budgetTotal={contentsProps.budgetTotal}
-              header={<UndoBar history={history} readOnly={readOnly} />}
-              onPick={pickScope}
-              onOverview={() => setShowOverview(true)}
-              onHide={() => hideContents(true)}
-            />
-          </div>
-        </div>
-      ) : (
-        <ContentsColumn
-          collapsed={planHidden || contentsHidden}
-          thin={settings.contentsWidth === "thin"}
-          contents={contentsProps}
-          history={history}
-          readOnly={readOnly}
-          onHide={() => hideContents(true)}
-        />
-      )}
-      {contentsDrawer && <ContentsDrawer contents={contentsProps} history={history} readOnly={readOnly} onClose={() => setContentsDrawer(false)} />}
-      {/* Plan panel */}
+  // Plan panel (all variants)
+  const planPanel = (
       <aside
         className={`flex min-h-0 flex-col border-line bg-bg md:w-[480px] md:shrink-0 md:border-r ${layoutB ? (scopedSection?.kind === "day" ? "lg:w-[480px] xl:w-[540px]" : "lg:w-[600px] xl:w-[700px] 2xl:w-[780px]") : "lg:w-[540px] xl:w-[620px] 2xl:w-[680px]"} ${planHidden ? "md:hidden" : ""} ${
           mobileView === "map" ? "max-md:hidden" : "flex-1 md:flex-none"
@@ -548,21 +503,13 @@ export function TripPage() {
           ) : layoutB && tab === "plan" ? (
             <TripLevel
               area={area === "prep" ? "prep" : "itinerary"}
-              doc={doc}
               state={state}
-              tripId={id!}
-              readOnly={readOnly}
               sections={overviewSections}
               today={today}
-              countdown={overview.countdown}
               attention={overview.attention}
               bookingsByDay={new Map([...chipsByDay].map(([d, c]) => [d, c.length]))}
               onPick={pickScope}
               onOverview={() => setShowOverview(true)}
-              onPickCover={() => setPickingCover(true)}
-              tools={
-                <PlanTools doc={doc} state={state} readOnly={readOnly} unpinned={unpinned} onDismissUnpinned={dismissUnpinned} canReview={canReview} inbox={inbox} setInbox={setInbox} autoExpandFirst={reviewing} photoFill={photoFill} setPhotoFill={setPhotoFill} />
-              }
             />
           ) : layoutB ? (
             <>
@@ -634,8 +581,9 @@ export function TripPage() {
           </>)}
         </div>
       </aside>
-      {/* PROTOTYPE (proto/trip-focus): variant B's ideas shelf beside a day */}
-      {layoutB && scopedSection?.kind === "day" && !planHidden && (
+  );
+  // PROTOTYPE (proto/trip-focus): variant B's ideas shelf beside a day
+  const ideasShelf = layoutB && scopedSection?.kind === "day" && !planHidden && (
         <div className="hidden shrink-0 border-r border-line bg-bg lg:block">
           <IdeasShelf
             day={scopedSection}
@@ -646,7 +594,76 @@ export function TripPage() {
             onPickDay={(key) => pickScope({ tab: "plan", key })}
           />
         </div>
+      );
+
+  return (
+    <div className="flex h-full flex-col md:flex-row">
+
+      {/* PROTOTYPE (proto/trip-focus): variant B puts a trip bar over the rail, plan pane and ideas shelf */}
+      {layoutB ? (
+        <div className={`flex min-h-0 flex-col md:shrink-0 ${mobileView === "map" ? "max-md:hidden" : "flex-1 md:flex-none"}`}>
+          <TripBar
+            doc={doc}
+            meta={state.meta}
+            countdown={overview.countdown}
+            readOnly={readOnly}
+            history={history}
+            canSync={canSync}
+            syncStatus={syncStatus}
+            isOwner={isOwner}
+            onShare={() => setSharing(true)}
+            onHistory={() => setShowHistory(true)}
+            onSettings={() => setShowSettings(true)}
+            onPickCover={() => setPickingCover(true)}
+            defaults={
+              <>
+                <PlanTools doc={doc} state={state} readOnly={readOnly} unpinned={unpinned} onDismissUnpinned={dismissUnpinned} canReview={canReview} inbox={inbox} setInbox={setInbox} autoExpandFirst={reviewing} photoFill={photoFill} setPhotoFill={setPhotoFill} />
+                <div className="mt-2 px-1">
+                  <OfflineMapButton tripId={id!} state={state} />
+                </div>
+              </>
+            }
+          />
+          <div className="flex min-h-0 flex-1">
+            <Rail area={railArea} onArea={pickArea} counts={{ ideas: ideas.filter((i) => !i.days.length).length, bookings: state.reservations.length }} />
+            {planPanel}
+            {ideasShelf}
+          </div>
+        </div>
+      ) : (<>
+      {/* Contents column (wide screens); a drawer below that */}
+      {scoped ? (
+        // PROTOTYPE (proto/trip-focus): variant A's sidebar picks the scope instead of scrolling
+        <div className={`hidden shrink-0 border-r border-line bg-bg ${planHidden || contentsHidden ? "" : "lg:block"}`}>
+          <div className="h-full w-[250px] xl:w-[280px]">
+            <ScopeNav
+              sections={overviewSections}
+              reservations={state.reservations}
+              tab={tab}
+              focus={focus}
+              today={today}
+              subtitles={state.meta.subtitles}
+              budgetTotal={contentsProps.budgetTotal}
+              header={<UndoBar history={history} readOnly={readOnly} />}
+              onPick={pickScope}
+              onOverview={() => setShowOverview(true)}
+              onHide={() => hideContents(true)}
+            />
+          </div>
+        </div>
+      ) : (
+        <ContentsColumn
+          collapsed={planHidden || contentsHidden}
+          thin={settings.contentsWidth === "thin"}
+          contents={contentsProps}
+          history={history}
+          readOnly={readOnly}
+          onHide={() => hideContents(true)}
+        />
       )}
+      {planPanel}
+      </>)}
+      {contentsDrawer && <ContentsDrawer contents={contentsProps} history={history} readOnly={readOnly} onClose={() => setContentsDrawer(false)} />}
 
       <MapPane
         planHidden={planHidden}
