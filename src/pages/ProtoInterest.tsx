@@ -448,17 +448,26 @@ const EndOut = ({ size = 13 }: { size?: number }) => (
 );
 const EndMust = ({ size = 14 }: { size?: number }) => <Star style={{ width: size, height: size, color: P.must, fill: P.must }} />;
 
-function SoftTrack({ children, faint, w = TRACK_W }: { children?: ReactNode; faint?: boolean; w?: number }) {
+function SoftTrack({ children, faint, w = TRACK_W, chosen }: { children?: ReactNode; faint?: boolean; w?: number; /** One person's answer: the other ends go quiet and the line fills towards it */ chosen?: Answer }) {
+  const single = chosen !== undefined;
+  const quiet = (end: -1 | 1) => single && chosen !== end;
   return (
     <span className="relative mx-2 inline-block h-5 shrink-0" style={{ width: w }}>
       <span
         className={`absolute inset-x-0 top-1/2 h-[3px] -translate-y-1/2 rounded-full ${faint ? "opacity-70" : ""}`}
-        style={{ background: `linear-gradient(90deg,${P.out}99,${P.line} 22%,${P.line} 78%,${P.must}99)` }}
+        style={{ background: single ? P.line : `linear-gradient(90deg,${P.out}99,${P.line} 22%,${P.line} 78%,${P.must}99)` }}
       />
-      <span className="absolute top-1/2 left-0 -translate-x-1/2 -translate-y-1/2">
+      {/* filled from the middle to the chosen end, like a slider's fill */}
+      {single && chosen !== null && chosen !== 0 && (
+        <span
+          className="absolute top-1/2 h-[3px] -translate-y-1/2 rounded-full"
+          style={chosen === 1 ? { left: "50%", right: 0, background: P.must } : { left: 0, right: "50%", background: P.out }}
+        />
+      )}
+      <span className={`absolute top-1/2 left-0 -translate-x-1/2 -translate-y-1/2 transition-opacity ${quiet(-1) ? "opacity-30 grayscale" : ""}`}>
         <EndOut />
       </span>
-      <span className="absolute top-1/2 right-0 translate-x-1/2 -translate-y-1/2">
+      <span className={`absolute top-1/2 right-0 translate-x-1/2 -translate-y-1/2 transition-opacity ${quiet(1) ? "opacity-30 grayscale" : ""}`}>
         <EndMust />
       </span>
       {children}
@@ -467,14 +476,15 @@ function SoftTrack({ children, faint, w = TRACK_W }: { children?: ReactNode; fai
 }
 
 /** The knob: at an end it takes over that end's mark (✕ or ★ inside it) */
-function Knob({ value, x }: { value: number; x: number }) {
+function Knob({ value, x, big }: { value: number; x: number; big?: boolean }) {
+  const col = meanCol(value);
   return (
     <span
-      className="absolute top-1/2 z-10 grid size-4 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full ring-2 ring-surface shadow-sm"
-      style={{ left: x, background: meanCol(value) }}
+      className={`absolute top-1/2 z-10 grid -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full ring-2 ring-surface shadow-sm ${big ? "size-5" : "size-4"}`}
+      style={{ left: x, background: col, ...(big ? { boxShadow: `0 0 0 5px ${col}33` } : {}) }}
     >
-      {value <= -0.99 && <X className="size-2.5 text-white" strokeWidth={3.5} />}
-      {value >= 0.99 && <Star className="size-2.5 fill-white text-white" />}
+      {value <= -0.99 && <X className={`${big ? "size-3" : "size-2.5"} text-white`} strokeWidth={3.5} />}
+      {value >= 0.99 && <Star className={`${big ? "size-3" : "size-2.5"} fill-white text-white`} />}
     </span>
   );
 }
@@ -563,8 +573,8 @@ function PersonTrack({ a, editable, onSet }: { a: Answer; editable: boolean; onS
   const W = 132;
   const x = (v: number) => ((v + 1) / 2) * W;
   return (
-    <SoftTrack w={W} faint={a === null}>
-      {a !== null && <Knob value={a} x={x(a)} />}
+    <SoftTrack w={W} faint={a === null} chosen={a}>
+      {a !== null && <Knob value={a} x={x(a)} big />}
       {a === null && <span className="absolute top-1/2 size-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full border border-dashed border-muted/60 bg-surface" style={{ left: x(0) }} />}
       {editable &&
         ([-1, 0, 1] as const).map((v) => (
@@ -739,7 +749,12 @@ function Card({ v, props, expanded }: { v: (typeof VARIANTS)[number]; props: Var
                 {v.sliders ? (
                   <span className="flex items-center gap-2.5">
                     <PersonTrack a={answers[p] ?? null} editable={p === me} onSet={set} />
-                    <span className={`text-[12px] ${(answers[p] ?? null) === null ? "text-muted italic" : "text-muted"}`}>{LABEL[key(answers[p] ?? null)]}</span>
+                    <span
+                      className={`text-[12px] ${(answers[p] ?? null) === null ? "text-muted italic" : answers[p] === 0 ? "text-muted" : "font-semibold"}`}
+                      style={answers[p] === 1 ? { color: P.must } : answers[p] === -1 ? { color: P.out } : undefined}
+                    >
+                      {LABEL[key(answers[p] ?? null)]}
+                    </span>
                   </span>
                 ) : p === me ? (
                   <Choices value={answers[p] ?? null} set={set} />
