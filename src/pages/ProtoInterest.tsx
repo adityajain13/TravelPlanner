@@ -298,9 +298,9 @@ function PersonSlider({ a, editable, onSet }: { a: Answer; editable: boolean; on
   const W = 150;
   return (
     <span className="flex items-center gap-1.5">
-      <X className="size-3 text-red-500" />
+      <X className="size-3" style={{ color: P.out }} />
       <span className="relative h-5" style={{ width: W }}>
-        <span className="absolute inset-x-0 top-1/2 h-1 -translate-y-1/2 rounded-full opacity-60" style={{ background: "linear-gradient(90deg,#ef4444,#9ca3a0 50%,#22a35a)" }} />
+        <span className="absolute inset-x-0 top-1/2 h-1 -translate-y-1/2 rounded-full" style={{ background: `linear-gradient(90deg,${P.out}99,${P.line} 22%,${P.line} 78%,${P.must}99)` }} />
         {stops.map((v) => (
           <button
             key={v}
@@ -310,11 +310,11 @@ function PersonSlider({ a, editable, onSet }: { a: Answer; editable: boolean; on
             className={`absolute top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full transition-all ${
               a === v ? "size-4 ring-2 ring-surface" : `size-2 bg-surface ring-1 ring-line ${editable ? "hover:size-3 hover:ring-fg" : ""}`
             } ${editable ? "cursor-pointer" : "cursor-default"}`}
-            style={{ left: ((v + 1) / 2) * W, ...(a === v ? { background: DOT(v) } : {}) }}
+            style={{ left: ((v + 1) / 2) * W, ...(a === v ? { background: pcol(v) } : {}) }}
           />
         ))}
       </span>
-      <Star className="size-3 text-amber-500" />
+      <Star className="size-3" style={{ color: P.must }} />
     </span>
   );
 }
@@ -449,20 +449,32 @@ function Donut(props: VariantProps) {
   );
 }
 
-/* ---------- round 2 of the shortlist: one calm diverging palette ----------
-   sit out = muted terracotta · tag along = light neutral · must do = the app's green.
-   Never colour alone: ✕ and ★ sit at the ends and "Mixed" is written out. */
-const P = { out: "#d4775c", along: "#c6ccc8", must: "#1f9d55", none: "transparent" };
+/* ---------- palettes for the shortlist (switchable on the page) ----------
+   sit out · tag along · must do. The neutral middle is never mixed straight from the two ends (that gave a
+   muddy brown-grey); colours only meet through the neutral. ✕ and ★ at the ends keep it readable without colour. */
+type Palette = { name: string; out: string; along: string; must: string; line: string };
+const PALETTES: Record<string, Palette> = {
+  coral: { name: "Coral / green", out: "#e07a5f", along: "#d3d9d5", must: "#2a9d63", line: "#dfe3e0" },
+  blue: { name: "Orange / blue (colour-blind safe)", out: "#e69a3a", along: "#d5d8dc", must: "#3a78c2", line: "#e0e3e6" },
+  teal: { name: "Brick / teal", out: "#c8604a", along: "#d5dbd8", must: "#178a7c", line: "#dfe4e2" },
+  mono: { name: "One green, by strength", out: "#b9bfbb", along: "#a7d7b8", must: "#1f9d55", line: "#e2e6e3" },
+};
+let P: Palette = PALETTES.coral; // set by the page's palette picker on each render
 const pcol = (v: number) => (v === -1 ? P.out : v === 1 ? P.must : P.along);
-const GRAD = `linear-gradient(90deg,${P.out},${P.along} 50%,${P.must})`;
-const meanCol = (m: number) => (m > 0.2 ? P.must : m < -0.2 ? P.out : "#8f9792");
+const meanCol = (m: number) => (m > 0.33 ? P.must : m < -0.33 ? P.out : "#8c938f");
+/** Colours from lo to hi on the scale, meeting only through the neutral middle */
+const stopsBetween = (lo: number, hi: number, alpha = "") =>
+  lo === hi ? `${pcol(lo)}${alpha}` : lo === -1 && hi === 1 ? `${P.out}${alpha},${P.along}${alpha} 50%,${P.must}${alpha}` : `${pcol(lo)}${alpha},${pcol(hi)}${alpha}`;
 
 function SoftTrack({ children, faint }: { children?: ReactNode; faint?: boolean }) {
   return (
     <span className="flex items-center gap-1.5">
       <X className="size-3 shrink-0" style={{ color: P.out }} />
       <span className="relative h-4 shrink-0" style={{ width: TRACK_W }}>
-        <span className={`absolute inset-x-0 top-1/2 h-[3px] -translate-y-1/2 rounded-full ${faint ? "opacity-30" : "opacity-55"}`} style={{ background: GRAD }} />
+        <span
+          className={`absolute inset-x-0 top-1/2 h-[3px] -translate-y-1/2 rounded-full ${faint ? "opacity-70" : ""}`}
+          style={{ background: `linear-gradient(90deg,${P.out}99,${P.line} 22%,${P.line} 78%,${P.must}99)` }}
+        />
         {children}
       </span>
       <Star className="size-3 shrink-0" style={{ color: P.must }} />
@@ -499,11 +511,11 @@ function StackedDiverging(props: VariantProps) {
   const HALF = 48;
   const w = (n: number) => (n / answeredN) * HALF;
   return (
-    <TrackButton props={props} extra={isMixed(props.people, props.answers) ? <Mixed /> : undefined}>
+    <TrackButton props={props}>
       <span className="flex items-center gap-1.5">
         <X className="size-3" style={{ color: P.out }} />
         <span className="relative h-2.5" style={{ width: HALF * 2 }}>
-          <span className="absolute inset-y-0 left-0 right-0 rounded-full bg-surface-2" />
+          <span className="absolute inset-y-0 left-0 right-0 rounded-full" style={{ background: P.line }} />
           {/* left of centre: sit-outs, then half the tag-alongs */}
           <span className="absolute inset-y-0 flex" style={{ right: HALF }}>
             {c.out > 0 && <span className="rounded-l-full" style={{ width: w(c.out), background: P.out }} />}
@@ -535,12 +547,12 @@ function KnobBand2(props: VariantProps) {
   const mean = a.reduce((x, y) => x + y, 0) / a.length;
   const wide = hi - lo;
   return (
-    <TrackButton props={props} extra={isMixed(props.people, props.answers) ? <Mixed /> : undefined}>
+    <TrackButton props={props}>
       <SoftTrack faint>
         {wide > 0 && (
           <span
             className="absolute top-1/2 h-3 -translate-y-1/2 rounded-full"
-            style={{ left: posX(lo) - 6, width: posX(hi) - posX(lo) + 12, background: `linear-gradient(90deg,${pcol(lo)}55,${pcol(hi)}55)`, maskImage: "linear-gradient(90deg,transparent,#000 22%,#000 78%,transparent)" }}
+            style={{ left: posX(lo) - 6, width: posX(hi) - posX(lo) + 12, background: `linear-gradient(90deg,${stopsBetween(lo, hi, "66")})`, maskImage: "linear-gradient(90deg,transparent,#000 22%,#000 78%,transparent)" }}
           />
         )}
         <span className="absolute top-1/2 size-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full ring-2 ring-surface shadow-sm" style={{ left: posX(mean), background: meanCol(mean) }} />
@@ -740,7 +752,9 @@ export function ProtoInterest() {
   const [answers, setAnswers] = useState<Answers>(START);
   const [expanded, setExpanded] = useState(false);
   const [shortlist, setShortlist] = useState(true);
-  const SHORTLIST = ["H3", "H2", "J2", "J3", "I2"];
+  const SHORTLIST = ["J3", "H2"];
+  const [palette, setPalette] = useState("coral");
+  P = PALETTES[palette];
   const people = ALL_PEOPLE.slice(0, count);
   const props: VariantProps = { people, me, answers, set: (a) => setAnswers((x) => ({ ...x, [me]: a })) };
 
@@ -774,6 +788,16 @@ export function ProtoInterest() {
           </label>
           <label className="flex items-center gap-2">
             <input type="checkbox" checked={expanded} onChange={(e) => setExpanded(e.target.checked)} /> Show expanded
+          </label>
+          <label className="flex items-center gap-2">
+            Colours
+            <select value={palette} onChange={(e) => setPalette(e.target.value)} className="rounded-lg border border-line bg-bg px-2 py-1">
+              {Object.entries(PALETTES).map(([k, v]) => (
+                <option key={k} value={k}>
+                  {v.name}
+                </option>
+              ))}
+            </select>
           </label>
           <label className="flex items-center gap-2">
             <input type="checkbox" checked={shortlist} onChange={(e) => setShortlist(e.target.checked)} /> Shortlist only
