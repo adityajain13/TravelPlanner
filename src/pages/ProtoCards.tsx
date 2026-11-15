@@ -131,16 +131,18 @@ const Ava = ({ name, size = 20 }: { name: string; size?: number }) => (
   </span>
 );
 
-function People({ idea, me, setMine, w = 120 }: { idea: Demo; me: string; setMine: (a: Answer) => void; w?: number }) {
+function People({ idea, me, setMine, w = 120, compact }: { idea: Demo; me: string; setMine: (a: Answer) => void; w?: number; /** No answer labels: the knob says it */ compact?: boolean }) {
   const people = Object.keys(idea.answers).sort((a, b) => (a === me ? -1 : b === me ? 1 : 0));
   return (
     <ul className="space-y-1">
       {people.map((p) => (
         <li key={p} className="flex items-center gap-2 text-[12.5px]">
           <Ava name={p} size={18} />
-          <span className={`w-12 truncate ${p === me ? "font-semibold" : ""}`}>{p === me ? "You" : p}</span>
+          <span className={`${compact ? "w-11" : "w-12"} truncate ${p === me ? "font-semibold" : ""}`} title={LABEL[key(idea.answers[p])]}>
+            {p === me ? "You" : p}
+          </span>
           <PersonTrackW a={idea.answers[p]} editable={p === me} onSet={setMine} w={w} />
-          <span className="truncate text-[11.5px] text-muted">{LABEL[key(idea.answers[p])].replace("Hasn't weighed in", "—")}</span>
+          {!compact && <span className="truncate text-[11.5px] text-muted">{LABEL[key(idea.answers[p])].replace("Hasn't weighed in", "—")}</span>}
         </li>
       ))}
     </ul>
@@ -566,12 +568,116 @@ function SideRail({ idea, open, toggle, me, setMine }: Props) {
   );
 }
 
-const VARIANTS: { id: string; name: string; note: string; wideOpen?: boolean; C: (p: Props) => ReactNode }[] = [
-  { id: "Q1", name: "Four quadrants", note: "2×2 grid; each quadrant grows in place", C: Quadrants },
-  { id: "Q2", name: "Corners", note: "regions pinned to the four corners; they grow towards the middle", C: Corners },
-  { id: "Q3", name: "Bento", note: "soft tiles; expanded re-flows into a 3-column bento with a photo", wideOpen: true, C: Bento },
-  { id: "Q4", name: "Week strip", note: "the decision is the week: dots that grow into day columns", C: WeekStrip },
-  { id: "Q5", name: "Side rail", note: "best day + group on a left rail that widens", wideOpen: true, C: SideRail },
+/* ---------- round 2: Corners, cleaned up ----------
+   Same organisation as Q2 (identity ↖, group ↗, why and fit ↙, decision ↘), drawn on a real grid: a wide left
+   column and a fixed right column, rows that line up across both, everything left-aligned, one spacing scale,
+   the name as the only strong text and the day button as the only filled thing. The variants differ only in how
+   the regions are separated. */
+
+type Sep = "space" | "line" | "tint" | "cross";
+
+function groupSummary(a: Answers) {
+  const v = Object.values(a);
+  const must = v.filter((x) => x === 1).length;
+  const along = v.filter((x) => x === 0).length;
+  const out = v.filter((x) => x === -1).length;
+  const none = v.filter((x) => x === null).length;
+  return [must && `${must} must do`, along && `${along} along`, out && `${out} out`, none && `${none} to answer`].filter(Boolean).join(" · ");
+}
+
+function CleanCorners({ idea, open, toggle, me, setMine, sep }: Props & { sep: Sep }) {
+  const RIGHT = 212;
+  const pad = "px-4 py-3.5";
+  // the right column: separated by whitespace, a line, a tint, or a line plus a row rule
+  const right = sep === "tint" ? "bg-surface-2/60" : sep === "line" || sep === "cross" ? "border-l border-line" : "";
+  const rowRule = sep === "cross" ? "border-t border-line" : "";
+  const gutter = sep === "space" ? "gap-x-2" : "";
+  const b = idea.booking;
+  return (
+    <Shell idea={idea}>
+      <div className={`relative grid ${gutter}`} style={{ gridTemplateColumns: `minmax(0,1fr) ${RIGHT}px` }}>
+        <span className="absolute top-2 right-2">
+          <More />
+        </span>
+
+        {/* ↖ What it is */}
+        <div className={`${pad} min-w-0 ${open ? "pb-4" : "pb-2"}`}>
+          <Title idea={idea} size={16.5} />
+          {open && (
+            <div className="mt-3">
+              <Facts idea={idea} />
+            </div>
+          )}
+        </div>
+
+        {/* ↗ How the group feels */}
+        <div className={`${pad} ${right} min-w-0 pr-9 ${open ? "pb-4" : "pb-2"}`}>
+          <p className="mb-1 text-[10.5px] font-semibold tracking-wider text-muted uppercase">Group</p>
+          {open ? (
+            <People idea={idea} me={me} setMine={setMine} w={70} compact />
+          ) : (
+            <>
+              <span className="-ml-2 block">
+                <Band answers={idea.answers} w={110} />
+              </span>
+              <p className="mt-0.5 truncate text-[11.5px] text-muted">{groupSummary(idea.answers)}</p>
+            </>
+          )}
+        </div>
+
+        {/* ↙ Why and fit */}
+        <div className={`${pad} ${rowRule} min-w-0 ${open ? "pt-4" : "pt-2"} space-y-2`}>
+          <Why idea={idea} clamp={!open} />
+          {open ? <FitList idea={idea} /> : <Glance idea={idea} />}
+        </div>
+
+        {/* ↘ Decision: what's settled (tickets), then the one filled button */}
+        <div className={`${pad} ${right} ${rowRule} flex min-w-0 flex-col justify-end gap-2 ${open ? "pt-4" : "pt-2"}`}>
+          {b && (
+            <p className={`flex items-start gap-1.5 text-[12px] ${b.kind === "booked" ? "text-accent" : "text-amber-700 dark:text-amber-300"}`}>
+              <Ticket className="mt-px size-3.5 shrink-0" />
+              <span>
+                {b.kind === "booked" ? `Booked ${b.text}` : "Book ahead"}
+                {open && b.kind === "booked" && b.conf && <span className="block text-muted">#{b.conf}</span>}
+                {open && b.kind === "needed" && <span className="block text-muted">Not booked yet</span>}
+              </span>
+            </p>
+          )}
+          {open && idea.best && (
+            <p className="text-[12px] text-muted">
+              Other days: {idea.days.filter((d) => d.state === "good").map((d) => d.d).join(", ") || "none fit well"}
+            </p>
+          )}
+          <DayBtnFull idea={idea} />
+        </div>
+      </div>
+      <Toggle open={open} toggle={toggle} />
+    </Shell>
+  );
+}
+
+function DayBtnFull({ idea }: { idea: Demo }) {
+  const label = idea.best ? `Add to ${idea.best.day}` : idea.where === "Needs a place" ? "Find a place" : "Add to a day";
+  return (
+    <span className={`flex w-full items-center overflow-hidden rounded-full text-[12.5px] font-semibold ${idea.best ? "bg-accent text-on-accent" : "border border-line text-fg"}`}>
+      <span className="flex-1 px-3 py-1.5 text-center">{label}</span>
+      <span className={`border-l px-2 py-1.5 ${idea.best ? "border-white/30" : "border-line"}`}>
+        <ChevronDown className="size-3.5" />
+      </span>
+    </span>
+  );
+}
+
+const VARIANTS: { id: string; name: string; note: string; wideOpen?: boolean; round: 1 | 2; C: (p: Props) => ReactNode }[] = [
+  { id: "C1", round: 2, name: "Corners · whitespace", note: "no lines; a gutter and the grid do the separating", C: (p) => <CleanCorners {...p} sep="space" /> },
+  { id: "C2", round: 2, name: "Corners · column line", note: "one hairline between the columns", C: (p) => <CleanCorners {...p} sep="line" /> },
+  { id: "C3", round: 2, name: "Corners · tinted side", note: "the group + decision column sits on a faint tint", C: (p) => <CleanCorners {...p} sep="tint" /> },
+  { id: "C4", round: 2, name: "Corners · cross rule", note: "column line plus a rule between the rows", C: (p) => <CleanCorners {...p} sep="cross" /> },
+  { id: "Q1", round: 1, name: "Four quadrants", note: "2×2 grid; each quadrant grows in place", C: Quadrants },
+  { id: "Q2", round: 1, name: "Corners", note: "regions pinned to the four corners; they grow towards the middle", C: Corners },
+  { id: "Q3", round: 1, name: "Bento", note: "soft tiles; expanded re-flows into a 3-column bento with a photo", wideOpen: true, C: Bento },
+  { id: "Q4", round: 1, name: "Week strip", note: "the decision is the week: dots that grow into day columns", C: WeekStrip },
+  { id: "Q5", round: 1, name: "Side rail", note: "best day + group on a left rail that widens", wideOpen: true, C: SideRail },
 ];
 
 export function ProtoCards() {
@@ -581,6 +687,7 @@ export function ProtoCards() {
   const [mine, setMineMap] = useState<Record<string, Answer>>({});
   const [live, setLive] = useState<Record<string, boolean>>({});
   const [mode, setMode] = useState<"pair" | "live">("pair");
+  const [earlier, setEarlier] = useState(false);
   const base = IDEAS.find((i) => i.id === ideaId)!;
   const idea: Demo = { ...base, answers: { ...base.answers, ...(ideaId in mine ? { [me]: mine[ideaId] } : {}) } };
   const setMine = (a: Answer) => setMineMap((m) => ({ ...m, [ideaId]: a }));
@@ -610,11 +717,14 @@ export function ProtoCards() {
               </button>
             ))}
           </span>
+          <label className="flex items-center gap-2">
+            <input type="checkbox" checked={earlier} onChange={(e) => setEarlier(e.target.checked)} /> Show round 1 (Q1–Q5)
+          </label>
           <span className="text-muted">Colours: {PALETTES.teal.name}</span>
         </div>
 
         <div className="mt-6 space-y-10">
-          {VARIANTS.map((v) => (
+          {VARIANTS.filter((v) => v.round === 2 || earlier).map((v) => (
             <section key={v.id}>
               <p className="mb-2 text-[14px]">
                 <b>
