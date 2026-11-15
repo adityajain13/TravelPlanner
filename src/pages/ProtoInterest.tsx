@@ -6,20 +6,20 @@
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { CalendarPlus, Check, ChevronDown, Star, Trash2, X } from "lucide-react";
 
-type Answer = -1 | 0 | 1 | null;
-type Answers = Record<string, Answer>;
+export type Answer = -1 | 0 | 1 | null;
+export type Answers = Record<string, Answer>;
 type VariantProps = { people: string[]; me: string; answers: Answers; set: (a: Answer) => void };
 
 const ALL_PEOPLE = ["Vishal", "Maya", "Sam", "Aditya", "Priya", "Leo"];
-const LABEL: Record<string, string> = { "1": "Must do", "0": "Tag along", "-1": "Sitting out", null: "Hasn't weighed in" };
+export const LABEL: Record<string, string> = { "1": "Must do", "0": "Tag along", "-1": "Sitting out", null: "Hasn't weighed in" };
 const ORDER: Answer[] = [1, 0, -1, null];
-const key = (a: Answer) => String(a);
+export const key = (a: Answer) => String(a);
 const sorted = (people: string[], ans: Answers) => [...people].sort((a, b) => ORDER.indexOf(ans[a] ?? null) - ORDER.indexOf(ans[b] ?? null));
 
 /* ---------- shared bits ---------- */
 
 const HUES = [150, 210, 25, 280, 340, 45, 190];
-const hue = (name: string) => HUES[[...name].reduce((n, c) => n + c.charCodeAt(0), 0) % HUES.length];
+export const hue = (name: string) => HUES[[...name].reduce((n, c) => n + c.charCodeAt(0), 0) % HUES.length];
 
 /** An avatar that carries the person's answer: ★ badge, ✕ badge + faded, dashed grey when unanswered */
 function AnswerAvatar({ name, a, size = 22, me }: { name: string; a: Answer; size?: number; me?: boolean }) {
@@ -427,17 +427,19 @@ function Donut(props: VariantProps) {
    sit out · tag along · must do. The neutral middle is never mixed straight from the two ends (that gave a
    muddy brown-grey); colours only meet through the neutral. ✕ and ★ at the ends keep it readable without colour. */
 type Palette = { name: string; out: string; along: string; must: string; line: string };
-const PALETTES: Record<string, Palette> = {
+export const PALETTES: Record<string, Palette> = {
   coral: { name: "Coral / green", out: "#e07a5f", along: "#d3d9d5", must: "#2a9d63", line: "#dfe3e0" },
   blue: { name: "Orange / blue (colour-blind safe)", out: "#e69a3a", along: "#d5d8dc", must: "#3a78c2", line: "#e0e3e6" },
   teal: { name: "Brick / teal", out: "#c8604a", along: "#d5dbd8", must: "#178a7c", line: "#dfe4e2" },
   mono: { name: "One green, by strength", out: "#b9bfbb", along: "#a7d7b8", must: "#1f9d55", line: "#e2e6e3" },
 };
-let P: Palette = PALETTES.coral; // set by the page's palette picker on each render
+let P: Palette = PALETTES.teal; // set by the page's palette picker on each render
+/** For other playgrounds that reuse the track */
+export const usePalette = (k: string) => void (P = PALETTES[k] ?? P);
 const pcol = (v: number) => (v === -1 ? P.out : v === 1 ? P.must : P.along);
 const meanCol = (m: number) => (m > 0.33 ? P.must : m < -0.33 ? P.out : "#8c938f");
 /** Colours from lo to hi on the scale, meeting only through the neutral middle */
-const stopsBetween = (lo: number, hi: number, alpha = "") =>
+export const stopsBetween = (lo: number, hi: number, alpha = "") =>
   lo === hi ? `${pcol(lo)}${alpha}` : lo === -1 && hi === 1 ? `${P.out}${alpha},${P.along}${alpha} 50%,${P.must}${alpha}` : `${pcol(lo)}${alpha},${pcol(hi)}${alpha}`;
 
 /** Filled end marks that sit on the line's ends: ✕ in a disc, a solid ★ */
@@ -448,7 +450,7 @@ const EndOut = ({ size = 13 }: { size?: number }) => (
 );
 const EndMust = ({ size = 14 }: { size?: number }) => <Star style={{ width: size, height: size, color: P.must, fill: P.must }} />;
 
-function SoftTrack({ children, faint, w = TRACK_W, chosen }: { children?: ReactNode; faint?: boolean; w?: number; /** One person's answer: the other ends go quiet and the line fills towards it */ chosen?: Answer }) {
+export function SoftTrack({ children, faint, w = TRACK_W, chosen }: { children?: ReactNode; faint?: boolean; w?: number; /** One person's answer: the other ends go quiet and the line fills towards it */ chosen?: Answer }) {
   const single = chosen !== undefined;
   const quiet = (end: -1 | 1) => single && chosen !== end;
   return (
@@ -476,7 +478,7 @@ function SoftTrack({ children, faint, w = TRACK_W, chosen }: { children?: ReactN
 }
 
 /** The knob: at an end it takes over that end's mark (✕ or ★ inside it) */
-function Knob({ value, x, big }: { value: number; x: number; big?: boolean }) {
+export function Knob({ value, x, big }: { value: number; x: number; big?: boolean }) {
   const col = meanCol(value);
   return (
     <span
@@ -569,7 +571,7 @@ function KnobBand2(props: VariantProps) {
 }
 
 /** One person's row in the expanded view: the same track and knob as the summary. Yours is clickable at the three stops. */
-function PersonTrack({ a, editable, onSet }: { a: Answer; editable: boolean; onSet: (a: Answer) => void }) {
+export function PersonTrack({ a, editable, onSet }: { a: Answer; editable: boolean; onSet: (a: Answer) => void }) {
   const W = 132;
   const x = (v: number) => ((v + 1) / 2) * W;
   return (
