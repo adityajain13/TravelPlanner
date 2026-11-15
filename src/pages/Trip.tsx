@@ -6,7 +6,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useConverter } from "../lib/fx";
 import { budgetLines, totals } from "../lib/budget";
 import { setShareToken } from "../lib/shareToken";
-import { copiesByItem, copyItems, isDraftSection, removeItems, setReadOnly, type Item, type Reservation } from "../lib/trips";
+import { addItem, addList, copiesByItem, copyItems, isDraftSection, removeItem, removeItems, setReadOnly, updateItem, type Item, type Reservation } from "../lib/trips";
 import { setHistoryAuthor } from "../lib/history";
 import { addPlace, setCollapsed } from "../lib/itemActions";
 import { daysBetween, todayISO } from "../lib/dates";
@@ -62,6 +62,7 @@ import { Rail, AREA_LABEL, type Area } from "../components/trip/proto/Rail";
 import { TripBar } from "../components/trip/proto/TripBar";
 import { OfflineMapButton } from "../components/OfflineMapButton";
 import { IdeasHome } from "../components/trip/proto/IdeasHome";
+import { groupOf, isIdeaItem, isRough, setWhy, toggleVote } from "../lib/protoIdeas";
 import { TripLevel } from "../components/trip/proto/TripLevel";
 import { IdeasShelf, type Idea } from "../components/trip/proto/IdeasShelf";
 import { isPrep } from "../components/trip/proto/kinds";
@@ -190,6 +191,15 @@ export function TripPage() {
   const scoped = layout !== "current";
   const layoutB = layout === "b";
   const [area, setArea] = useState<Area>("itinerary"); // variant B: which rail area is open
+  const [justAdded, setJustAdded] = useState<string | null>(null); // the idea whose "why" field is open
+  // Who "I" am among the trip's people, for votes (prototype: picked in Ideas, kept per browser)
+  const [meStored, setMeStored] = useState<string | null>(() => {
+    try {
+      return localStorage.getItem("proto:me");
+    } catch {
+      return null;
+    }
+  });
   const autoScoped = useRef<string | null>(null);
   useEffect(() => {
     if (!scoped || !view || !id || autoScoped.current === id) return;
@@ -357,20 +367,43 @@ export function TripPage() {
   };
   const railArea: Area = tab === "bookings" ? "bookings" : tab === "budget" ? "budget" : area;
   const scopedSection = scoped && tab === "plan" && focus ? view.sections.find((s) => s.key === focus) : undefined;
-  // Variant B: ideas = places in lists that aren't prep (Notes, Packing…); "planned" when a copy is on a day
+  // Variant B: ideas = places and rough notes in lists that aren't prep (Notes, Packing…); "planned" when a copy is on a day
+  const ideaLists = overviewSections.filter((s) => s.kind === "list" && !isPrep(s));
   const ideas: Idea[] = layoutB
-    ? overviewSections
-        .filter((s) => s.kind === "list" && !isPrep(s))
-        .flatMap((s) =>
-          s.items
-            .filter((i) => i.kind === "place" && !i.waypoint)
-            .map((item) => ({ item, list: s.title ?? "List", days: sectionsOf(item.id).filter((k) => k.startsWith("day:")) })),
-        )
+    ? ideaLists.flatMap((s) =>
+        s.items
+          .filter(isIdeaItem)
+          .map((item) => ({ item, list: s.title ?? "List", days: sectionsOf(item.id).filter((k) => k.startsWith("day:")), group: groupOf(item), rough: isRough(item) })),
+      )
     : [];
+  const people = state.meta.travelers ?? [];
+  const me = meStored && people.includes(meStored) ? meStored : (people[0] ?? null);
+  const setMe = (who: string) => {
+    setMeStored(who);
+    try {
+      localStorage.setItem("proto:me", who);
+    } catch {
+      /* private mode */
+    }
+  };
+  // New ideas go into the first idea list (the pool); one is made if there's none
+  const poolKey = () => ideaLists[0]?.key ?? `list:${addList(doc, "Ideas")}`;
+  const captured = (id: string) => {
+    if (me) updateItem(doc, id, { votes: [me] } as Partial<Item>);
+    setJustAdded(id);
+  };
   const addIdea = (itemId: string, dayKey: string) => {
     const [newId] = copyItems(doc, [itemId], writeOf(dayKey));
     if (newId) revealAdded(newId);
   };
+  const ideaMapView = (() => {
+    if (!layoutB || area !== "ideas" || tab !== "plan" || focus) return null;
+    const openIds = new Set(ideas.filter((i) => !i.days.length && !i.rough).map((i) => i.item.id));
+    const dayIds = new Set(overviewSections.filter((s) => s.kind === "day").flatMap((s) => s.items.map((i) => i.id)));
+    // Ideas in amber; planned stops stay as faint context
+    const pins = view.pins.flatMap((p) => (openIds.has(p.id) ? [{ ...p, color: "#f59e0b", label: "" }] : dayIds.has(p.id) ? [{ ...p, color: "#b8beba", label: "" }] : []));
+    return { ...view, pins };
+  })();
   const onOverviewGo = (t: OverviewTarget) => {
     setShowOverview(false);
     if (scoped && t.kind === "section") return pickScope({ tab: "plan", key: t.key });
@@ -494,11 +527,40 @@ export function TripPage() {
             <IdeasHome
               ideas={ideas}
               days={overviewSections.filter((s) => s.kind === "day")}
-              lists={overviewSections.filter((s) => s.kind === "list" && !isPrep(s))}
+              people={people}
+              me={me}
+              setMe={setMe}
               readOnly={readOnly}
+              near={near}
+              countryCode={state.meta.countryCode}
+              justAdded={justAdded}
+              onCapturePlace={(p) => captured(addPlace(doc, poolKey(), p, undefined, { destination: state.meta.destination, near }))}
+              onCaptureRough={(text) => captured(addItem(doc, poolKey(), { kind: "note", name: text }))}
+              onFindPlace={(itemId, p) => {
+                const it = state.items.find((x) => x.id === itemId);
+                const was = it?.name ?? "";
+                updateItem(doc, itemId, {
+                  kind: "place",
+                  name: p.name,
+                  address: p.address || undefined,
+                  category: p.category || undefined,
+                  lat: p.lat,
+                  lng: p.lng,
+                  osmId: p.osmId,
+                  // Keep the original thought (or link) as the why, unless there's one already
+                  notes: it?.notes || (was && was !== p.name ? was : undefined),
+                });
+              }}
               onAdd={addIdea}
-              onOpenList={(key) => pickScope({ tab: "plan", key })}
               onOpenDay={(key) => pickScope({ tab: "plan", key })}
+              onOpen={(itemId) => setSelectedId(itemId)}
+              onVote={(itemId) => {
+                const it = state.items.find((x) => x.id === itemId);
+                if (it && me) toggleVote(doc, it, me);
+              }}
+              onWhy={(itemId, text) => setWhy(doc, itemId, text)}
+              onRemove={(itemId) => removeItem(doc, itemId)}
+              onDoneWhy={() => setJustAdded(null)}
             />
           ) : layoutB && tab === "plan" ? (
             <TripLevel
@@ -670,15 +732,15 @@ export function TripPage() {
         planHidden={planHidden}
         togglePlan={togglePlan}
         mobileView={mobileView}
-        view={view}
-        flights={flights}
-        routes={routes}
+        view={ideaMapView ?? view}
+        flights={ideaMapView ? { pins: [], arcs: [] } : flights}
+        routes={ideaMapView ? [] : routes}
         flightPaths={settings.flightPaths}
         selectedId={selectedId}
         onSelect={selectFromMap}
         theme={theme}
         tripId={id}
-        focus={focus}
+        focus={ideaMapView ? "ideas" : focus}
         dayFrame={dayFrame}
         near={near}
         openItem={openItem}

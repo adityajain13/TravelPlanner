@@ -6,8 +6,10 @@ import type { Item } from "../../../lib/trips";
 import type { SectionInfo } from "../../Section";
 import { bestDay, fitFor } from "../../../lib/protoFit";
 import { formatChip } from "../DayChips";
+import { votesOf, type Group } from "../../../lib/protoIdeas";
+import { Avatar } from "./MentionInput";
 
-export type Idea = { item: Item; list: string; days: string[] };
+export type Idea = { item: Item; list: string; days: string[]; group: Group; rough: boolean };
 
 export function IdeasShelf({
   day,
@@ -26,7 +28,7 @@ export function IdeasShelf({
 }) {
   const [showPlanned, setShowPlanned] = useState(false);
   const dayInputs = useMemo(() => days.map((d) => ({ key: d.key, date: d.date!, items: d.items })), [days]);
-  const open = ideas.filter((i) => !i.days.length);
+  const open = ideas.filter((i) => !i.days.length && !i.rough);
   const planned = ideas.filter((i) => i.days.length);
   const ranked = open
     .map((idea) => {
@@ -36,7 +38,7 @@ export function IdeasShelf({
       const better = best && best.day.key !== day.key && best.fit.score - fit.score >= 15 ? best.day : null;
       return { idea, fit, better };
     })
-    .sort((a, b) => Number(a.fit.out) - Number(b.fit.out) || b.fit.score - a.fit.score);
+    .sort((a, b) => Number(a.fit.out) - Number(b.fit.out) || b.fit.score + votesOf(b.idea.item).length * 8 - (a.fit.score + votesOf(a.idea.item).length * 8));
 
   return (
     <div className="flex h-full w-[320px] flex-col xl:w-[340px]">
@@ -57,7 +59,16 @@ export function IdeasShelf({
               <div className="flex items-start gap-2">
                 <div className="min-w-0 flex-1">
                   <p className="truncate font-semibold">{idea.item.name}</p>
-                  <p className="text-[11.5px] text-muted">{idea.list}</p>
+                  <p className="flex items-center gap-1.5 text-[11.5px] text-muted">
+                    {votesOf(idea.item).length > 0 && (
+                      <span className="flex -space-x-1">
+                        {votesOf(idea.item).map((n) => (
+                          <Avatar key={n} name={n} size={16} />
+                        ))}
+                      </span>
+                    )}
+                    {idea.item.notes ? <span className="truncate italic">“{idea.item.notes}”</span> : idea.list}
+                  </p>
                 </div>
                 {!readOnly && !fit.out && (
                   <button
