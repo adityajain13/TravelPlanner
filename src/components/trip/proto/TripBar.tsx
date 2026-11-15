@@ -2,7 +2,6 @@
 // photo with the trip's name and dates, plus everything that acts on the whole trip. Full height on the area
 // pages; a slim strip of the same photo once you're inside a day or list.
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { Link } from "react-router-dom";
 import { ArrowLeft, Cloud, CloudOff, History as HistoryIcon, ImagePlus, Loader2, Redo2, Settings as SettingsIcon, Share2, SlidersHorizontal, Undo2 } from "lucide-react";
 import type * as Y from "yjs";
 import { updateMeta, type TripMeta } from "../../../lib/trips";
@@ -117,32 +116,29 @@ export function TripBar(p: {
           <PhotoCredit img={meta.cover} className="absolute right-2 bottom-0.5 max-w-[50%] truncate text-right text-[10px] leading-tight text-white/70 [text-shadow:0_1px_3px_rgb(0_0_0/.7)]" />
         )}
       </div>
-      {/* The left cell is the rail's width, so "Trips" sits in the rail's column; the text lines up with the pane's content */}
-      <div className="relative flex h-full">
-        <div className={`flex w-[76px] shrink-0 justify-center ${compact ? "items-center" : "pt-3"}`}>
-          <Link to="/" title="All trips" className="flex w-[60px] flex-col items-center gap-1 rounded-xl py-1.5 text-[11px] font-semibold text-white/85 hover:bg-black/30 hover:text-white">
-            <ArrowLeft className="size-5" /> Trips
-          </Link>
+      {/* The banner sits above the rail, so it keeps its own padding instead of the rail's column */}
+      {compact ? (
+        <div className="relative flex h-full min-w-0 items-center gap-3 px-4">
+          <HeroPill to="/" icon={<ArrowLeft />} label="Trips" />
+          <div className="min-w-0 flex-1">{title}</div>
+          {dates}
+          {actions}
         </div>
-        {compact ? (
-          <div className="flex min-w-0 flex-1 items-center gap-3 pr-3 pl-6">
-            <div className="min-w-0 flex-1">{title}</div>
-            {dates}
+      ) : (
+        <div className="relative flex h-full min-w-0 flex-col px-5 pt-3 pb-4">
+          <div className="flex items-center justify-between gap-3">
+            <HeroPill to="/" icon={<ArrowLeft />} label="Trips" />
             {actions}
           </div>
-        ) : (
-          <div className="flex min-w-0 flex-1 flex-col pt-3 pr-3 pb-4 pl-6">
-            <div className="flex justify-end">{actions}</div>
-            <div className="mt-auto flex items-end gap-3">
-              <div className="min-w-0 flex-1">
-                {title}
-                <div className="mt-2">{dates}</div>
-              </div>
-              {!p.readOnly && <HeroPill icon={<ImagePlus />} label="Change cover" onClick={p.onPickCover} />}
+          <div className="mt-auto flex items-end gap-3">
+            <div className="min-w-0 flex-1">
+              {title}
+              <div className="mt-2">{dates}</div>
             </div>
+            {!p.readOnly && <HeroPill icon={<ImagePlus />} label="Change cover" onClick={p.onPickCover} />}
           </div>
-        )}
-      </div>
+        </div>
+      )}
     </header>
   );
 }
