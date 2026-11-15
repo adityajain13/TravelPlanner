@@ -108,6 +108,11 @@ export function IdeaCard({
   const bookedDay = booked?.date ? days.find((d) => d.date === booked.date) : undefined;
   const bookedText = booked ? (booked.date ? `${dayShort(booked.date)}${booked.time ? `, ${booked.time}` : ""}` : "no date yet") : "";
   const ruledOut = days.filter((d) => d.fit.out);
+  // The badge already says it's booked, so the glance line says how that day works out instead
+  const glanceDay = bookedDay ?? (best && isGoodFit(best.fit) ? best : null);
+  const glanceGood = glanceDay?.fit.reasons[0] ? `${dayShort(glanceDay.date)} · ${glanceDay.fit.reasons[0].text}` : null;
+  const firstWarn = warn.find((b) => b.text !== "Book ahead");
+  const glanceBad = ruledOut.length ? { text: `${ruledOut[0].fit.blockers[0].text} (${ruledOut.map((d) => dayShort(d.date)).join(", ")})`, out: true } : firstWarn ? { text: firstWarn.text, out: false } : null;
   const line = (kind: "good" | "warn" | "out", text: string, key: string) => (
     <li key={key} className={`flex items-start gap-2 ${kind === "good" ? "text-accent" : kind === "out" ? "text-red-600 dark:text-red-400" : "text-amber-700 dark:text-amber-300"}`}>
       {kind === "good" ? <Check className="mt-0.5 size-3.5 shrink-0" /> : kind === "out" ? <X className="mt-0.5 size-3.5 shrink-0" /> : <CircleAlert className="mt-0.5 size-3.5 shrink-0" />}
@@ -210,13 +215,25 @@ export function IdeaCard({
           )
         )}
 
-        <div
-          onClick={(e) => {
-            e.stopPropagation();
-            if (!(e.target as HTMLElement).closest("button")) setOpen((o) => !o);
-          }}
-          className="-mx-3.5 -mb-3.5 mt-1.5 flex items-center gap-1.5 rounded-b-2xl px-3.5 pt-1 pb-2.5 hover:bg-surface-2/50"
-        >
+        {/* At a glance: the strongest reason for and the strongest concern (the badge already covers booking) */}
+        {(glanceGood || glanceBad) && (
+          <div className="mt-2 flex min-w-0 items-center gap-x-4 text-[12.5px]">
+            {glanceGood && (
+              <span className="flex min-w-0 items-center gap-1.5 text-accent">
+                <Check className="size-3.5 shrink-0" />
+                <span className="truncate">{glanceGood}</span>
+              </span>
+            )}
+            {glanceBad && (
+              <span className={`flex min-w-0 shrink-0 items-center gap-1.5 ${glanceBad.out ? "text-red-600 dark:text-red-400" : "text-amber-700 dark:text-amber-300"}`}>
+                {glanceBad.out ? <X className="size-3.5 shrink-0" /> : <CircleAlert className="size-3.5 shrink-0" />}
+                <span className="truncate">{glanceBad.text}</span>
+              </span>
+            )}
+          </div>
+        )}
+
+        <div className="mt-2 flex items-center gap-1.5">
           {(!readOnly || mustOn) && (
             <button
               onClick={() => !readOnly && onMustDo()}
@@ -246,15 +263,21 @@ export function IdeaCard({
               )}
             </div>
           )}
-          <button onClick={() => setOpen((o) => !o)} aria-expanded={open} className="ml-auto flex items-center gap-1 rounded-full px-2 py-1 text-[12px] text-muted hover:bg-surface-2 hover:text-fg">
-            {open ? "Less" : "Details"}
-            <ChevronDown className={`size-3.5 transition-transform ${open ? "rotate-180" : ""}`} />
-          </button>
         </div>
       </div>
 
+      {/* Its own full-width strip, apart from ★ and 👍, so unfolding is never a mis-click */}
+      <button
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+        className={`flex w-full items-center justify-center gap-1 border-t border-line py-1.5 text-[12px] text-muted hover:bg-surface-2/60 hover:text-fg ${open ? "" : "rounded-b-2xl"}`}
+      >
+        {open ? "Less" : "Details"}
+        <ChevronDown className={`size-3.5 transition-transform ${open ? "rotate-180" : ""}`} />
+      </button>
+
       {open && (
-        <div className="space-y-4 border-t border-line px-3.5 py-3 text-[13px]">
+        <div className="space-y-4 border-t border-line px-3.5 py-3 text-[13px]" onClick={(e) => e.stopPropagation()}>
           <section>
             <h3 className="mb-1.5 text-[11px] font-semibold tracking-wider text-muted uppercase">Recommendation</h3>
             {best && isGoodFit(best.fit) ? (
