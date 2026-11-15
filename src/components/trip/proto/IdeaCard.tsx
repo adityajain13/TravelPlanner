@@ -165,7 +165,6 @@ export function IdeaCard({
           </div>
           {!readOnly && (
             <div ref={menu === "main" ? box : undefined} className="relative flex shrink-0 items-center gap-1">
-              <DayMenu days={days} best={best} booked={bookedDay} onAdd={onAdd} />
               <button onClick={() => setMenu(menu === "main" ? null : "main")} aria-label="More" className="grid size-8 place-items-center rounded-full text-muted hover:bg-surface-2 hover:text-fg">
                 <MoreHorizontal className="size-4" />
               </button>
@@ -233,7 +232,8 @@ export function IdeaCard({
           </div>
         )}
 
-        <div className="mt-2 flex items-center gap-1.5">
+        {/* Read top to bottom, then decide: the day button closes the card at the bottom right */}
+        <div className="mt-2.5 flex items-center gap-1.5">
           {(!readOnly || mustOn) && (
             <button
               onClick={() => !readOnly && onMustDo()}
@@ -263,21 +263,17 @@ export function IdeaCard({
               )}
             </div>
           )}
+          {!readOnly && (
+            <div className="ml-auto">
+              <DayMenu days={days} best={best} booked={bookedDay} onAdd={onAdd} />
+            </div>
+          )}
         </div>
       </div>
 
-      {/* Its own full-width strip, apart from ★ and 👍, so unfolding is never a mis-click */}
-      <button
-        onClick={() => setOpen((o) => !o)}
-        aria-expanded={open}
-        className={`flex w-full items-center justify-center gap-1 border-t border-line py-1.5 text-[12px] text-muted hover:bg-surface-2/60 hover:text-fg ${open ? "" : "rounded-b-2xl"}`}
-      >
-        {open ? "Less" : "Details"}
-        <ChevronDown className={`size-3.5 transition-transform ${open ? "rotate-180" : ""}`} />
-      </button>
 
       {open && (
-        <div className="space-y-4 border-t border-line px-3.5 py-3 text-[13px]" onClick={(e) => e.stopPropagation()}>
+        <div className="space-y-4 border-t border-line px-3.5 pt-3 pb-1 text-[13px]" onClick={(e) => e.stopPropagation()}>
           <section>
             <h3 className="mb-1.5 text-[11px] font-semibold tracking-wider text-muted uppercase">Recommendation</h3>
             {best && isGoodFit(best.fit) ? (
@@ -348,6 +344,16 @@ export function IdeaCard({
           </section>
         </div>
       )}
+      {/* Its own full-width strip at the bottom, apart from the actions, so unfolding is never a mis-click.
+          Open, the details carry the one divider and the strip sits under them without another. */}
+      <button
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+        className={`flex w-full items-center justify-center gap-1 rounded-b-2xl py-1.5 text-[12px] text-muted hover:bg-surface-2/60 hover:text-fg ${open ? "" : "border-t border-line"}`}
+      >
+        {open ? "Less" : "Details"}
+        <ChevronDown className={`size-3.5 transition-transform ${open ? "rotate-180" : ""}`} />
+      </button>
     </div>
   );
 }
