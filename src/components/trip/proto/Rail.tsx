@@ -16,7 +16,7 @@ export function Rail(p: {
   counts: Partial<Record<Area, number>>;
 }) {
   return (
-    <nav aria-label="This trip" className="hidden w-[76px] shrink-0 flex-col items-center border-r border-line bg-bg py-3 md:flex">
+    <nav aria-label="This trip" className="hidden w-[76px] shrink-0 flex-col items-center border-r border-line bg-accent/[0.07] py-3 md:flex">
       <div className="flex w-full flex-col gap-1 px-2">
         {ORDER.map((a) => {
           const on = p.area === a;
@@ -27,7 +27,7 @@ export function Rail(p: {
               onClick={() => p.onArea(a)}
               aria-current={on || undefined}
               className={`relative flex w-full flex-col items-center gap-1 rounded-xl py-2 text-[11px] font-semibold transition-colors [&>svg]:size-5 ${
-                on ? "bg-accent/15 text-accent" : "text-muted hover:bg-surface-2/60 hover:text-fg"
+                on ? "bg-bg text-accent shadow-[0_1px_3px_rgb(0_0_0/.08)] ring-1 ring-line" : "text-muted hover:bg-bg/60 hover:text-fg"
               }`}
             >
               {AREA_ICON[a]}

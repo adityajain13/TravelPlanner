@@ -43,11 +43,15 @@ export function TripBar(p: {
   }, [open]);
 
   return (
-    <header className="flex shrink-0 items-center gap-3 border-b border-line bg-bg px-3 py-2.5">
-      <Link to="/" title="All trips" className="flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1.5 text-[13px] font-semibold text-muted hover:bg-surface-2 hover:text-fg">
-        <ArrowLeft className="size-4" /> Trips
-      </Link>
-      <span className="h-6 w-px shrink-0 bg-line" />
+    // Same tint as the rail: together they frame the plan pane as this trip's chrome. The left cell is the
+    // rail's width, so "Trips" sits in the rail's column and the cover lines up with the pane's content.
+    <header className="flex shrink-0 items-stretch border-b border-line bg-accent/[0.07]">
+      <div className="grid w-[76px] shrink-0 place-items-center border-r border-line">
+        <Link to="/" title="All trips" className="flex w-[60px] flex-col items-center gap-1 rounded-xl py-1.5 text-[11px] font-semibold text-muted hover:bg-bg/70 hover:text-fg">
+          <ArrowLeft className="size-5" /> Trips
+        </Link>
+      </div>
+      <div className="flex min-w-0 flex-1 items-center gap-3 py-2.5 pr-3 pl-6">
       <button
         onClick={p.readOnly ? undefined : p.onPickCover}
         title={p.readOnly ? undefined : "Change cover"}
@@ -114,6 +118,7 @@ export function TripBar(p: {
         <button className={btn} onClick={p.onSettings} title="Settings" aria-label="Settings">
           <SettingsIcon />
         </button>
+      </div>
       </div>
     </header>
   );
