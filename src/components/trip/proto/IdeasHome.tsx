@@ -3,15 +3,15 @@
 // (Suggested picks by area, or most wanted once several people vote), ★ must-dos, votes on group trips,
 // and one tap to put an idea on a day. Rough ideas (no place yet) wait at the top under "Needs a place".
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { AlertTriangle, Check, ChevronDown, Info, Lightbulb, MapPin, MoreHorizontal, Plus, RotateCcw, Star, ThumbsUp, Trash2 } from "lucide-react";
+import { Check, ChevronDown, Info, Lightbulb, MapPin, RotateCcw, Star, ThumbsUp, Trash2 } from "lucide-react";
 import type { SectionInfo } from "../../Section";
 import type { PlaceResult } from "../../../lib/photon";
-import { bestDay, type Fit } from "../../../lib/protoFit";
-import { addedByOf, clusterAreas, GROUP_LABEL, GROUP_ORDER, isMustDo, mentionParts, removedByOf, useAreaNames, votesOf, type Group } from "../../../lib/protoIdeas";
-import { dtf } from "../../../lib/intl";
-import { parseISODate } from "../../../lib/dates";
+import { fitFor, isGoodFit } from "../../../lib/protoFit";
+import { addedByOf, clusterAreas, GROUP_LABEL, GROUP_ORDER, isMustDo, mentionParts, placeLine, removedByOf, useAreaNames, votesOf, type Group } from "../../../lib/protoIdeas";
+import { IdeaCard } from "./IdeaCard";
+import { dayShort, type DayFit } from "./DayMenu";
 import { formatChip } from "../DayChips";
-import { CaptureBox } from "./CaptureBox";
+import { CaptureBox, type Existing } from "./CaptureBox";
 import { Avatar, MentionInput } from "./MentionInput";
 import { placesIn } from "./kinds";
 import type { Idea } from "./IdeasShelf";
@@ -24,12 +24,6 @@ const SORT_HELP: Record<Exclude<Sort, "suggested">, string> = {
   wanted: "Most 👍 from the group first, must-dos on top.",
   newest: "Most recently added first.",
 };
-/** "Thu 17" */
-const dayShort = (iso: string) => {
-  const d = parseISODate(iso);
-  return `${dtf(undefined, { weekday: "short", timeZone: "UTC" }).format(d)} ${d.getUTCDate()}`;
-};
-
 export function IdeasHome({
   ideas,
   removed,
@@ -53,6 +47,12 @@ export function IdeasHome({
   onRemove,
   onRestore,
   onDoneWhy,
+  onGroup,
+  onFillDay,
+  subtitles,
+  country,
+  existing,
+  onExisting,
 }: {
   ideas: Idea[];
   /** Ideas someone removed that another person added: kept so they can be restored */
@@ -80,6 +80,14 @@ export function IdeasHome({
   onRemove: (itemId: string) => void;
   onRestore: (itemId: string) => void;
   onDoneWhy: () => void;
+  onGroup: (itemId: string, g: Group | undefined) => void;
+  /** Put several ideas on one (empty) day */
+  onFillDay: (itemIds: string[], dayKey: string) => void;
+  subtitles?: Record<string, string>;
+  /** The trip's country, for ideas without an address */
+  country?: string;
+  existing?: (text: string) => Existing[];
+  onExisting?: (e: Existing) => void;
 }) {
   const [filter, setFilter] = useState<Group | "rough" | null>(null);
   const [sort, setSort] = useState<Sort>("suggested");
@@ -87,17 +95,22 @@ export function IdeasHome({
   const [showRemoved, setShowRemoved] = useState(false);
   const [editing, setEditing] = useState<string | null>(null);
   const [finding, setFinding] = useState<string | null>(null);
-  const [menu, setMenu] = useState<string | null>(null);
   const [lit, setLit] = useState<string | null>(null);
   const group = people.length >= 2;
-  const dayInputs = useMemo(() => days.map((d) => ({ key: d.key, date: d.date!, items: d.items })), [days]);
   const anyStops = days.some((d) => placesIn(d).length > 0);
 
   const open = ideas.filter((i) => !i.days.length);
   const rough = open.filter((i) => i.rough);
   const placeIdeas = open.filter((i) => !i.rough);
   const planned = ideas.filter((i) => i.days.length);
-  const fits = new Map(placeIdeas.map((i) => [i.item.id, bestDay(i.item, dayInputs)]));
+  const dayFits = (i: Idea): DayFit[] =>
+    days.map((d, n) => ({ key: d.key, date: d.date!, title: subtitles?.[d.key] || (placesIn(d).length ? placesIn(d).map((x) => x.name).slice(0, 2).join(" · ") : `Day ${n + 1} · nothing planned`), fit: fitFor(i.item, { date: d.date!, items: d.items }) }));
+  const fits = new Map(
+    placeIdeas.map((i) => {
+      const all = dayFits(i);
+      return [i.item.id, all.reduce<DayFit | null>((b, d) => (!b || d.fit.score > b.fit.score ? d : b), null)];
+    }),
+  );
   const areas = useMemo(() => clusterAreas(placeIdeas.map((i) => i.item)).sort((a, b) => b.ids.length - a.ids.length), [placeIdeas.map((i) => i.item.id).join()]); // eslint-disable-line react-hooks/exhaustive-deps
   const areaNames = useAreaNames(areas);
   const areaOf = new Map(areas.flatMap((a) => a.ids.map((id) => [id, a.key] as const)));
@@ -227,120 +240,6 @@ export function IdeasHome({
     );
   };
 
-  const reason = (best: ReturnType<typeof bestDay>) => {
-    const fit: Fit | undefined = best?.fit;
-    if (!fit || !anyStops) return null;
-    const w = (fit.blockers[0]?.weight ?? 0) >= 40 ? undefined : fit.reasons[0];
-    const b = fit.blockers[0];
-    if (!w && !b) return null;
-    return (
-      <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[12.5px]">
-        {w && (
-          <span className="flex items-center gap-1.5 text-accent">
-            <Check className="size-3.5 shrink-0" /> {dayShort(best!.day.date)} · {w.text}
-          </span>
-        )}
-        {b && (
-          <span className="flex items-center gap-1.5 text-amber-600 dark:text-amber-400">
-            <AlertTriangle className="size-3.5 shrink-0" /> {b.text}
-          </span>
-        )}
-      </div>
-    );
-  };
-
-  const dayPicker = (idea: Idea, label: string, primary: boolean) => (
-    <select
-      aria-label={label}
-      title={label}
-      value=""
-      onChange={(e) => e.target.value && onAdd(idea.item.id, e.target.value)}
-      className={
-        primary
-          ? "cursor-pointer appearance-none rounded-full bg-accent px-3 py-1.5 text-[12.5px] font-semibold text-on-accent hover:opacity-90"
-          : "w-8 cursor-pointer appearance-none rounded-full border border-line bg-transparent py-1.5 text-center text-[12px] text-muted hover:border-accent"
-      }
-    >
-      <option value="">{primary ? "+ Add to a day ▾" : "⋯"}</option>
-      {days.map((d) => (
-        <option key={d.key} value={d.key}>
-          {formatChip(d.date!)}
-        </option>
-      ))}
-    </select>
-  );
-
-  const card = (idea: Idea) => {
-    const best = fits.get(idea.item.id) ?? null;
-    const by = addedByOf(idea.item);
-    const mustOn = isMustDo(idea.item);
-    return (
-      <div
-        key={idea.item.id}
-        id={`idea-${idea.item.id}`}
-        className={`rounded-2xl border bg-surface p-3.5 transition-all duration-500 ${
-          lit === idea.item.id ? "border-accent ring-4 ring-accent/20" : justAdded === idea.item.id ? "border-accent" : mustOn ? "border-amber-400/70" : "border-line"
-        }`}
-      >
-        <div className="flex items-start gap-3">
-          <button onClick={() => onOpen(idea.item.id)} className="min-w-0 flex-1 text-left">
-            <p className="truncate text-[16px] font-semibold hover:underline">{idea.item.name}</p>
-            <p className="text-[12px] text-muted">
-              {GROUP_LABEL[idea.group]}
-              {group && by && <> · {by === me ? "your idea" : `${by}'s idea`}</>}
-            </p>
-          </button>
-          {!readOnly && (
-            <div className="flex shrink-0 items-center gap-1.5">
-              {anyStops && best ? (
-                <>
-                  <button
-                    onClick={() => onAdd(idea.item.id, best.day.key)}
-                    title={`Add to ${formatChip(best.day.date!)}`}
-                    className="flex items-center gap-1 rounded-full bg-accent px-3 py-1.5 text-[12.5px] font-semibold text-on-accent hover:opacity-90"
-                  >
-                    <Plus className="size-3.5" /> {formatChip(best.day.date!)}
-                  </button>
-                  {dayPicker(idea, "Another day", false)}
-                </>
-              ) : (
-                dayPicker(idea, "Add to a day", true)
-              )}
-              <div className="relative">
-                <button onClick={() => setMenu(menu === idea.item.id ? null : idea.item.id)} aria-label="More" className="grid size-8 place-items-center rounded-full text-muted hover:bg-surface-2 hover:text-fg">
-                  <MoreHorizontal className="size-4" />
-                </button>
-                {menu === idea.item.id && (
-                  <div className="absolute top-full right-0 z-30 mt-1 w-44 rounded-xl border border-line bg-surface p-1 shadow-xl" onMouseLeave={() => setMenu(null)}>
-                    {!idea.item.notes && (
-                      <button onClick={() => (setEditing(idea.item.id), setMenu(null))} className="w-full rounded-lg px-2.5 py-1.5 text-left text-[13px] hover:bg-surface-2">
-                        Add why
-                      </button>
-                    )}
-                    <button onClick={() => (onRemove(idea.item.id), setMenu(null))} className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-[13px] text-red-500 hover:bg-surface-2">
-                      <Trash2 className="size-3.5" /> Remove idea
-                    </button>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-        </div>
-        {reason(best)}
-        {why(idea)}
-        <div className="mt-2 flex items-center gap-1.5">
-          {mustBtn(idea)}
-          {votes(idea)}
-          {!idea.item.notes && !whyOpen(idea.item.id) && !readOnly && (
-            <button onClick={() => setEditing(idea.item.id)} className="ml-auto text-[12.5px] text-muted hover:text-fg">
-              + Why this?
-            </button>
-          )}
-        </div>
-      </div>
-    );
-  };
-
   // In "By area", a heading wherever the area changes
   const list: ReactNode[] = [];
   let lastArea: string | undefined;
@@ -348,16 +247,49 @@ export function IdeasHome({
     const a = areaOf.get(idea.item.id);
     if (mode === "area" && a !== lastArea) {
       const n = shown.filter((x) => areaOf.get(x.item.id) === a).length;
+      // A cluster of ideas nowhere near the plan, and a day with nothing on it: offer to make that its day
+      const members = shown.filter((x) => areaOf.get(x.item.id) === a);
+      const free = days.find((d) => !placesIn(d).length);
+      const farFromPlan = anyStops && members.every((x) => !(fits.get(x.item.id) && isGoodFit(fits.get(x.item.id)!.fit)));
+      const name = (a && areaNames.get(a)) || "Nearby";
       list.push(
-        <p key={`h-${a}`} className="flex items-baseline gap-2 px-1 pt-3 text-[13px] font-semibold">
-          <MapPin className="size-3.5 self-center text-muted" />
-          {(a && areaNames.get(a)) || "Nearby"}
-          <span className="font-normal text-muted">{n}</span>
-        </p>,
+        <div key={`h-${a}`} className="flex flex-wrap items-baseline gap-x-2 gap-y-1 px-1 pt-3 text-[13px]">
+          <span className="flex items-baseline gap-2 font-semibold">
+            <MapPin className="size-3.5 self-center text-muted" />
+            {name}
+            <span className="font-normal text-muted">{n}</span>
+          </span>
+          {!readOnly && free && farFromPlan && members.length >= 2 && (
+            <button onClick={() => onFillDay(members.map((x) => x.item.id), free.key)} className="ml-auto rounded-full px-2 py-0.5 text-[12.5px] text-accent hover:bg-accent/10">
+              {dayShort(free.date!)} is still open: make it a {name} day →
+            </button>
+          )}
+        </div>,
       );
       lastArea = a;
     }
-    list.push(card(idea));
+    list.push(
+      <IdeaCard
+        key={idea.item.id}
+        idea={idea}
+        where={placeLine(idea.item, areaNames.get(areaOf.get(idea.item.id) ?? ""), country)}
+        days={dayFits(idea)}
+        best={fits.get(idea.item.id) ?? null}
+        people={people}
+        me={me}
+        readOnly={readOnly}
+        highlight={lit === idea.item.id ? "lit" : justAdded === idea.item.id ? "new" : null}
+        startWhy={justAdded === idea.item.id}
+        onAdd={(k) => onAdd(idea.item.id, k)}
+        onOpen={() => onOpen(idea.item.id)}
+        onVote={() => onVote(idea.item.id)}
+        onMustDo={() => onMustDo(idea.item.id)}
+        onWhy={(t) => onWhy(idea.item.id, t)}
+        onGroup={(g) => onGroup(idea.item.id, g)}
+        onRemove={() => onRemove(idea.item.id)}
+        onDoneWhy={onDoneWhy}
+      />,
+    );
   }
 
   return (
@@ -370,7 +302,7 @@ export function IdeasHome({
 
       {!readOnly && (
         <div className="mt-4">
-          <CaptureBox near={near} countryCode={countryCode} onPlace={onCapturePlace} onRough={onCaptureRough} />
+          <CaptureBox near={near} countryCode={countryCode} onPlace={onCapturePlace} onRough={onCaptureRough} existing={existing} onExisting={onExisting} />
         </div>
       )}
 

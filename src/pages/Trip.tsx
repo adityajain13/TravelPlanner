@@ -62,7 +62,7 @@ import { Rail, AREA_LABEL, type Area } from "../components/trip/proto/Rail";
 import { TripBar } from "../components/trip/proto/TripBar";
 import { OfflineMapButton } from "../components/OfflineMapButton";
 import { IdeasHome } from "../components/trip/proto/IdeasHome";
-import { addedByOf, groupOf, isIdeaItem, isMustDo, isRough, removedByOf, setExtra, setWhy, toggleVote, votesOf } from "../lib/protoIdeas";
+import { addedByOf, groupOf, isIdeaItem, isMustDo, isRough, looksLike, removedByOf, setExtra, setWhy, toggleVote, votesOf } from "../lib/protoIdeas";
 import { samePlace } from "../lib/trips";
 import type { PlaceResult } from "../lib/photon";
 import { TripLevel } from "../components/trip/proto/TripLevel";
@@ -601,6 +601,38 @@ export function TripPage() {
               onWhy={(itemId, text) => setWhy(doc, itemId, text)}
               onRemove={removeIdea}
               onRestore={(itemId) => setExtra(doc, itemId, { removedBy: undefined })}
+              onGroup={(itemId, g) => setExtra(doc, itemId, { groupOverride: g })}
+              onFillDay={(itemIds, dayKey) => {
+                copyItems(doc, itemIds, writeOf(dayKey));
+                say(`Added ${itemIds.length} ideas to ${formatChip(dayKey.slice(4))}`, true);
+              }}
+              subtitles={state.meta.subtitles}
+              country={(() => {
+                try {
+                  return state.meta.countryCode ? new Intl.DisplayNames(["en"], { type: "region" }).of(state.meta.countryCode.toUpperCase()) : state.meta.destination;
+                } catch {
+                  return state.meta.destination;
+                }
+              })()}
+              existing={(text) => [
+                ...ideas
+                  .filter((i) => looksLike(text, i.item.name))
+                  .map((i) => ({
+                    id: i.item.id,
+                    name: i.item.name,
+                    onDay: false,
+                    sub: [i.days.length ? `On ${i.days.map((k) => formatChip(k.slice(4))).join(", ")}` : "Already in your ideas", people.length >= 2 && addedByOf(i.item) ? `${addedByOf(i.item) === me ? "your" : addedByOf(i.item) + "'s"} idea` : "", i.item.notes ? `“${i.item.notes}”` : ""].filter(Boolean).join(" · "),
+                  })),
+                ...state.items
+                  .filter((x) => x.kind === "place" && x.section.startsWith("day:") && looksLike(text, x.name) && !ideas.some((i) => samePlace(i.item, x)))
+                  .map((x) => ({ id: x.id, name: x.name, onDay: true, sub: `On ${formatChip(x.section.slice(4))}` })),
+              ]}
+              onExisting={(e) => {
+                const idea = ideas.find((i) => i.item.id === e.id);
+                if (!idea) return pickScope({ tab: "plan", key: state.items.find((x) => x.id === e.id)!.section });
+                if (people.length >= 2 && me && !votesOf(idea.item).includes(me)) toggleVote(doc, idea.item, me);
+                setFlash({ id: e.id, n: Date.now() });
+              }}
               onMustDo={(itemId) => {
                 const it = state.items.find((x) => x.id === itemId);
                 if (it) setExtra(doc, itemId, { mustDo: isMustDo(it) ? undefined : true });

@@ -27,6 +27,8 @@ const RULES: [Group, RegExp][] = [
   ["shopping", /shop|mall|store|boutique|outlet|department/i],
 ];
 export function groupOf(it: Item): Group {
+  const own = (it as Item & { groupOverride?: Group }).groupOverride;
+  if (own) return own;
   const text = `${it.category ?? ""} ${it.name}`;
   for (const [g, re] of RULES) if (re.test(text)) return g;
   return "other";
@@ -65,7 +67,7 @@ export function mentionParts(text: string, people: string[]): { text: string; wh
 export const URL_RE = /^https?:\/\/\S+$/i;
 
 /* ---- Who added it, must-do, soft remove (stored on the item; not in his Item type yet) ---- */
-type Extra = { votes?: string[]; addedBy?: string; mustDo?: boolean; removedBy?: string };
+type Extra = { votes?: string[]; addedBy?: string; mustDo?: boolean; removedBy?: string; groupOverride?: Group };
 const extra = (it: Item) => it as Item & Extra;
 export const addedByOf = (it: Item) => extra(it).addedBy;
 export const isMustDo = (it: Item) => !!extra(it).mustDo;
@@ -123,4 +125,35 @@ export function useAreaNames(areas: Area[]): Map<string, string> {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sig]);
   return new Map(areas.map((a) => [a.key, names.get(cacheKey(a.center)) ?? nameCache.get(cacheKey(a.center)) ?? ""]));
+}
+
+/* ---- Near-duplicates while typing: existing ideas and stops whose names look like the text ---- */
+const norm = (t: string) =>
+  t
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .trim();
+const STOP_WORDS = new Set(["the", "a", "of", "and", "in", "at", "japan"]);
+const tokens = (t: string) => norm(t).split(" ").filter((w) => w && !STOP_WORDS.has(w));
+/** "nara park" ~ "Nara Park", "Nara Park Deer Area", "park nara"; not "Nara Hotel" */
+export function looksLike(query: string, name: string): boolean {
+  const q = norm(query);
+  const n = norm(name);
+  if (q.length < 3 || !n) return false;
+  if (n.includes(q) || (q.includes(n) && n.length >= 4)) return true;
+  const a = tokens(query);
+  const b = new Set(tokens(name));
+  if (!a.length || !b.size) return false;
+  const hit = a.filter((w) => b.has(w) || [...b].some((x) => x.startsWith(w) && w.length >= 3)).length;
+  return hit / Math.min(a.length, b.size) >= 0.75 && hit >= Math.min(2, a.length);
+}
+
+/** "Kyoto, Japan": the town from the address when there is one, else the idea's area, plus the country */
+export function placeLine(it: Item, area: string | undefined, country: string | undefined): string {
+  const parts = (it.address ?? "").split(",").map((x) => x.trim()).filter(Boolean);
+  const town = parts.length >= 3 ? parts[parts.length - 3] : parts.length ? parts[0] : area;
+  const ctry = parts.length >= 2 ? parts[parts.length - 1] : country;
+  return [town?.replace(/ (City|Prefecture)$/, ""), ctry].filter(Boolean).join(", ");
 }

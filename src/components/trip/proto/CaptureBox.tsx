@@ -2,10 +2,13 @@
 // via his Photon search), a Google Maps link adds that place, and anything else (a thought, any other
 // link) can be saved straight away as a rough idea that needs a place later.
 import { useEffect, useRef, useState } from "react";
-import { Lightbulb, Loader2, MapPin, Plus } from "lucide-react";
+import { CalendarDays, Lightbulb, Loader2, MapPin, Plus, Star } from "lucide-react";
 import { searchPlaces, type PlaceResult } from "../../../lib/photon";
 import { isMapsLink, placesFromLink } from "../../../lib/gmaps";
 import { URL_RE } from "../../../lib/protoIdeas";
+
+/** Something already on the trip that looks like what's being typed */
+export type Existing = { id: string; name: string; sub: string; onDay: boolean };
 
 export function CaptureBox({
   near,
@@ -17,6 +20,8 @@ export function CaptureBox({
   onPlace,
   onRough,
   onCancel,
+  existing,
+  onExisting,
 }: {
   near?: [number, number];
   countryCode?: string;
@@ -28,6 +33,9 @@ export function CaptureBox({
   onPlace: (p: PlaceResult) => void;
   onRough?: (text: string) => void;
   onCancel?: () => void;
+  /** Ideas and stops whose names look like the text: listed first, so a near-duplicate is the obvious pick */
+  existing?: (text: string) => Existing[];
+  onExisting?: (e: Existing) => void;
 }) {
   const [q, setQ] = useState(initial);
   const [results, setResults] = useState<PlaceResult[]>([]);
@@ -60,9 +68,11 @@ export function CaptureBox({
   }, [text, isLink, isMaps, near?.[0], near?.[1], countryCode]);
 
   const roughRow = !placesOnly && !!onRough && text.length > 0;
-  const rows = results.length + (roughRow ? 1 : 0);
+  const same = existing && onExisting && !isLink ? existing(text).slice(0, 3) : [];
+  const rows = same.length + results.length + (roughRow ? 1 : 0);
   const choose = (i: number) => {
-    if (i < results.length) onPlace(results[i]);
+    if (i < same.length) onExisting!(same[i]);
+    else if (i < same.length + results.length) onPlace(results[i - same.length]);
     else if (roughRow) onRough!(text);
     else return;
     setQ("");
@@ -98,7 +108,25 @@ export function CaptureBox({
       </div>
       {focused && rows > 0 && (
         <ul className="absolute top-full right-0 left-0 z-40 mt-1.5 overflow-hidden rounded-2xl border border-line bg-surface p-1 shadow-2xl">
-          {results.map((r, i) => (
+          {same.map((x, i) => (
+            <li key={`x-${x.id}`}>
+              <button
+                onMouseDown={(e) => (e.preventDefault(), choose(i))}
+                onMouseEnter={() => setHi(i)}
+                className={`flex w-full items-start gap-2.5 rounded-xl px-3 py-2 text-left ${i === hi ? "bg-amber-400/15" : ""}`}
+              >
+                {x.onDay ? <CalendarDays className="mt-0.5 size-4 shrink-0 text-accent" /> : <Star className="mt-0.5 size-4 shrink-0 text-amber-500" />}
+                <span className="min-w-0">
+                  <span className="block truncate text-[14px] font-semibold">{x.name}</span>
+                  <span className="block truncate text-[12px] text-muted">{x.sub}</span>
+                </span>
+              </button>
+            </li>
+          ))}
+          {same.length > 0 && results.length > 0 && <li className="mx-3 my-1 border-t border-line" aria-hidden />}
+          {results.map((r, j) => {
+            const i = same.length + j;
+            return (
             <li key={r.osmId}>
               <button
                 onMouseDown={(e) => (e.preventDefault(), choose(i))}
@@ -112,13 +140,14 @@ export function CaptureBox({
                 </span>
               </button>
             </li>
-          ))}
+            );
+          })}
           {roughRow && (
             <li>
               <button
-                onMouseDown={(e) => (e.preventDefault(), choose(results.length))}
-                onMouseEnter={() => setHi(results.length)}
-                className={`flex w-full items-start gap-2.5 rounded-xl px-3 py-2 text-left ${hi === results.length ? "bg-accent/12" : ""} ${results.length ? "border-t border-line" : ""}`}
+                onMouseDown={(e) => (e.preventDefault(), choose(rows - 1))}
+                onMouseEnter={() => setHi(rows - 1)}
+                className={`flex w-full items-start gap-2.5 rounded-xl px-3 py-2 text-left ${hi === rows - 1 ? "bg-accent/12" : ""} ${rows > 1 ? "border-t border-line" : ""}`}
               >
                 <Lightbulb className="mt-0.5 size-4 shrink-0 text-amber-500" />
                 <span className="min-w-0">

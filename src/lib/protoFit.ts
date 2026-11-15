@@ -93,9 +93,8 @@ export function fitFor(idea: Item, day: { date: string; items: Item[] }): Fit {
       blockers.push({ text: `${fmtKm(best.km)} from this day's stops`, weight: 40 });
       score -= 30 + Math.min(best.km, 400) / 10;
     } else score -= best.km / 2;
-  } else if (!stops.length) {
-    reasons.push({ text: "Nothing planned yet: room for it", weight: 5 });
   }
+  // (An empty day isn't a reason for one idea; it's shown on the area group instead)
 
   // How full the day is
   const load = stops.reduce((n, s) => n + (factsOf(s).stay ?? DEFAULT_STAY), 0);
@@ -103,13 +102,8 @@ export function fitFor(idea: Item, day: { date: string; items: Item[] }): Fit {
   if (stops.length && load + add > FULL_DAY) {
     blockers.push({ text: `Day gets long (~${Math.round((load + add) / 60)} h of stops)`, weight: 30 });
     score -= 15;
-  } else if (stops.length && load < 4 * 60) {
-    reasons.push({ text: "Light day, has room", weight: 8 });
-    score += 5;
-  }
+  } else if (stops.length && load < 4 * 60) score += 5;
 
-  if (f.best === "sunset") reasons.push({ text: "Best at sunset", weight: 4 });
-  if (f.best === "morning") reasons.push({ text: "Best early", weight: 4 });
   // A to-do rather than a reason against the day: shown, but barely moves the score
   if (f.book) blockers.push({ text: "Book ahead", weight: 20 });
 
@@ -117,6 +111,9 @@ export function fitFor(idea: Item, day: { date: string; items: Item[] }): Fit {
   blockers.sort((a, b) => b.weight - a.weight);
   return { score, reasons, blockers, out };
 }
+
+/** A real fit: close to the day's planned stops (not just an empty day), and not ruled out */
+export const isGoodFit = (fit: Fit) => !fit.out && (fit.reasons[0]?.weight ?? 0) >= 10;
 
 /** The day this idea fits best, with its fit. */
 export function bestDay<D extends { key: string; date: string; items: Item[] }>(idea: Item, days: D[]): { day: D; fit: Fit } | null {
