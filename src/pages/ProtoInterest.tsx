@@ -449,6 +449,146 @@ function Donut(props: VariantProps) {
   );
 }
 
+/* ---------- round 2 of the shortlist: one calm diverging palette ----------
+   sit out = muted terracotta · tag along = light neutral · must do = the app's green.
+   Never colour alone: ✕ and ★ sit at the ends and "Mixed" is written out. */
+const P = { out: "#d4775c", along: "#c6ccc8", must: "#1f9d55", none: "transparent" };
+const pcol = (v: number) => (v === -1 ? P.out : v === 1 ? P.must : P.along);
+const GRAD = `linear-gradient(90deg,${P.out},${P.along} 50%,${P.must})`;
+const meanCol = (m: number) => (m > 0.2 ? P.must : m < -0.2 ? P.out : "#8f9792");
+
+function SoftTrack({ children, faint }: { children?: ReactNode; faint?: boolean }) {
+  return (
+    <span className="flex items-center gap-1.5">
+      <X className="size-3 shrink-0" style={{ color: P.out }} />
+      <span className="relative h-4 shrink-0" style={{ width: TRACK_W }}>
+        <span className={`absolute inset-x-0 top-1/2 h-[3px] -translate-y-1/2 rounded-full ${faint ? "opacity-30" : "opacity-55"}`} style={{ background: GRAD }} />
+        {children}
+      </span>
+      <Star className="size-3 shrink-0" style={{ color: P.must }} />
+    </span>
+  );
+}
+
+/** J2: the stacked bar in the calm palette, ordered sit out → tag along → must do */
+function StackedClean(props: VariantProps) {
+  const c = counts(props.people, props.answers);
+  const total = props.people.length;
+  const seg = (n: number, bg: string, title: string) => n > 0 && <span title={`${n} ${title}`} style={{ width: `${(n / total) * 100}%`, background: bg }} />;
+  return (
+    <TrackButton props={props} extra={isMixed(props.people, props.answers) ? <Mixed /> : undefined}>
+      <span className="flex items-center gap-1.5">
+        <X className="size-3" style={{ color: P.out }} />
+        <span className="flex h-2 w-24 gap-px overflow-hidden rounded-full bg-surface-2">
+          {seg(c.out, P.out, "sitting out")}
+          {seg(c.along, P.along, "tagging along")}
+          {seg(c.must, P.must, "must do")}
+          {c.none > 0 && <span title={`${c.none} haven't weighed in`} style={{ width: `${(c.none / total) * 100}%`, background: "repeating-linear-gradient(45deg,transparent 0 2px,rgb(0 0 0/.1) 2px 3px)" }} />}
+        </span>
+        <Star className="size-3" style={{ color: P.must }} />
+      </span>
+    </TrackButton>
+  );
+}
+
+/** J3: diverging stacked bar (the survey-report standard): sit-outs grow left of the centre line, must-dos
+    grow right, tag-alongs straddle it. Direction and agreement in one bar. */
+function StackedDiverging(props: VariantProps) {
+  const c = counts(props.people, props.answers);
+  const answeredN = c.out + c.along + c.must || 1;
+  const HALF = 48;
+  const w = (n: number) => (n / answeredN) * HALF;
+  return (
+    <TrackButton props={props} extra={isMixed(props.people, props.answers) ? <Mixed /> : undefined}>
+      <span className="flex items-center gap-1.5">
+        <X className="size-3" style={{ color: P.out }} />
+        <span className="relative h-2.5" style={{ width: HALF * 2 }}>
+          <span className="absolute inset-y-0 left-0 right-0 rounded-full bg-surface-2" />
+          {/* left of centre: sit-outs, then half the tag-alongs */}
+          <span className="absolute inset-y-0 flex" style={{ right: HALF }}>
+            {c.out > 0 && <span className="rounded-l-full" style={{ width: w(c.out), background: P.out }} />}
+            {c.along > 0 && <span style={{ width: w(c.along) / 2, background: P.along }} />}
+          </span>
+          <span className="absolute inset-y-0 flex" style={{ left: HALF }}>
+            {c.along > 0 && <span style={{ width: w(c.along) / 2, background: P.along }} />}
+            {c.must > 0 && <span className="rounded-r-full" style={{ width: w(c.must), background: P.must }} />}
+          </span>
+          <span className="absolute -inset-y-0.5 w-px bg-fg/50" style={{ left: HALF }} />
+        </span>
+        <Star className="size-3" style={{ color: P.must }} />
+      </span>
+    </TrackButton>
+  );
+}
+
+/** H2: knob + agreement band, in the calm palette; the band fades out at its ends instead of a hard pill */
+function KnobBand2(props: VariantProps) {
+  const a = answered(props.people, props.answers);
+  if (!a.length)
+    return (
+      <TrackButton props={props}>
+        <SoftTrack faint />
+      </TrackButton>
+    );
+  const lo = Math.min(...a);
+  const hi = Math.max(...a);
+  const mean = a.reduce((x, y) => x + y, 0) / a.length;
+  const wide = hi - lo;
+  return (
+    <TrackButton props={props} extra={isMixed(props.people, props.answers) ? <Mixed /> : undefined}>
+      <SoftTrack faint>
+        {wide > 0 && (
+          <span
+            className="absolute top-1/2 h-3 -translate-y-1/2 rounded-full"
+            style={{ left: posX(lo) - 6, width: posX(hi) - posX(lo) + 12, background: `linear-gradient(90deg,${pcol(lo)}55,${pcol(hi)}55)`, maskImage: "linear-gradient(90deg,transparent,#000 22%,#000 78%,transparent)" }}
+          />
+        )}
+        <span className="absolute top-1/2 size-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full ring-2 ring-surface shadow-sm" style={{ left: posX(mean), background: meanCol(mean) }} />
+      </SoftTrack>
+    </TrackButton>
+  );
+}
+
+/** I2: liquid line. The track itself is part of the blob: answers swell out of the line and melt back into it.
+    One clear answer = a round drop on the line; disagreement = the swelling stretches along the line. */
+function LiquidLine(props: VariantProps) {
+  const id = useId().replace(/:/g, "");
+  const c = counts(props.people, props.answers);
+  const a = answered(props.people, props.answers);
+  const mean = a.length ? a.reduce((x, y) => x + y, 0) / a.length : 0;
+  const lobes = ([[-1, c.out], [0, c.along], [1, c.must]] as const).filter(([, n]) => n > 0);
+  const SPREAD = 13;
+  const H = 30;
+  return (
+    <TrackButton props={props} extra={isMixed(props.people, props.answers) ? <Mixed /> : undefined}>
+      <span className="flex items-center gap-1.5">
+        <X className="size-3 shrink-0" style={{ color: P.out }} />
+        <svg width={TRACK_W} height={H} className="overflow-visible">
+          <defs>
+            <linearGradient id={`lg${id}`} x1="0" x2="1">
+              <stop offset="0" stopColor={P.out} />
+              <stop offset="0.5" stopColor={P.along} />
+              <stop offset="1" stopColor={P.must} />
+            </linearGradient>
+            <filter id={`liq${id}`} x="-20%" y="-50%" width="140%" height="200%">
+              <feGaussianBlur in="SourceGraphic" stdDeviation="3" result="b" />
+              <feColorMatrix in="b" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 20 -8" />
+            </filter>
+          </defs>
+          <g filter={`url(#liq${id})`}>
+            {/* the line, thick enough to take part in the melt */}
+            <rect x={0} y={H / 2 - 2.5} width={TRACK_W} height={5} rx={2.5} fill={`url(#lg${id})`} opacity={a.length ? 1 : 0.4} />
+            {lobes.map(([v, n]) => (
+              <circle key={v} cx={posX(mean) + (v - mean) * SPREAD} cy={H / 2} r={3.8 + 2.4 * Math.sqrt(n)} fill={pcol(v)} />
+            ))}
+          </g>
+        </svg>
+        <Star className="size-3 shrink-0" style={{ color: P.must }} />
+      </span>
+    </TrackButton>
+  );
+}
+
 const VARIANTS: { id: string; name: string; note: string; where: "top" | "bottom"; sliders?: boolean; C: (p: VariantProps) => ReactNode }[] = [
   { id: "A", name: "Avatar strip", note: "Who and what at once. Click your own avatar to answer.", where: "top", C: AvatarStrip },
   { id: "B", name: "Counts", note: "Smallest. Says how many, not who (hover/expand for names).", where: "top", C: Counts },
@@ -460,6 +600,10 @@ const VARIANTS: { id: string; name: string; note: string; where: "top" | "bottom
   { id: "H", name: "Knob + agreement band", note: "Your knob = direction; the soft band behind it = how spread out people are. “Mixed” when it spans both ends.", where: "bottom", sliders: true, C: KnobBand },
   { id: "I", name: "Gooey blob", note: "Answers melt into one blob at the average: round = agreed, peanut = two camps, lumpy = scattered.", where: "bottom", sliders: true, C: GooBlob },
   { id: "J", name: "Stacked bar (survey standard)", note: "The usual Likert chart: red / grey / amber segments sized by count; hatched = not answered.", where: "bottom", sliders: true, C: StackedBar },
+  { id: "J2", name: "Stacked bar, calm colours", note: "J in one palette: terracotta = sit out, light grey = tag along, green = must do; hatched = not answered.", where: "bottom", sliders: true, C: StackedClean },
+  { id: "J3", name: "Diverging stacked bar", note: "Survey-report standard: sit-outs grow left of the centre line, must-dos right. Shows direction and agreement.", where: "bottom", sliders: true, C: StackedDiverging },
+  { id: "H2", name: "Knob + band, calm colours", note: "H in the same palette; the band fades at its ends and takes the colours of the answers it spans.", where: "bottom", sliders: true, C: KnobBand2 },
+  { id: "I2", name: "Liquid line", note: "The line is part of the blob: answers swell out of it. Clear-cut = a round drop; disagreement = a long swelling.", where: "bottom", sliders: true, C: LiquidLine },
   { id: "K", name: "Donut (consensus tools)", note: "How decision tools like Loomio show a vote: a small ring split by answer, ★ in the middle if anyone must-dos it.", where: "bottom", sliders: true, C: Donut },
 ];
 
@@ -554,6 +698,8 @@ export function ProtoInterest() {
   const [me, setMe] = useState("Vishal");
   const [answers, setAnswers] = useState<Answers>(START);
   const [expanded, setExpanded] = useState(false);
+  const [shortlist, setShortlist] = useState(true);
+  const SHORTLIST = ["H", "H2", "J", "J2", "J3", "I", "I2"];
   const people = ALL_PEOPLE.slice(0, count);
   const props: VariantProps = { people, me, answers, set: (a) => setAnswers((x) => ({ ...x, [me]: a })) };
 
@@ -588,6 +734,9 @@ export function ProtoInterest() {
           <label className="flex items-center gap-2">
             <input type="checkbox" checked={expanded} onChange={(e) => setExpanded(e.target.checked)} /> Show expanded
           </label>
+          <label className="flex items-center gap-2">
+            <input type="checkbox" checked={shortlist} onChange={(e) => setShortlist(e.target.checked)} /> Shortlist only
+          </label>
           <span className="flex flex-wrap items-center gap-1.5">
             Everyone else:
             {people
@@ -614,7 +763,7 @@ export function ProtoInterest() {
         </div>
 
         <div className="mt-6 grid gap-6 md:grid-cols-2">
-          {VARIANTS.map((v) => (
+          {VARIANTS.filter((v) => !shortlist || SHORTLIST.includes(v.id)).map((v) => (
             <section key={v.id}>
               <p className="mb-2 text-[14px]">
                 <b>
