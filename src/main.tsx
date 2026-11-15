@@ -7,6 +7,7 @@ import { SessionProvider } from "./lib/api";
 import { Home } from "./pages/Home";
 import { Login } from "./pages/Login";
 import { ShareJoin } from "./pages/ShareJoin";
+import { NewTripPage } from "./pages/NewTrip";
 import { RequireAuth } from "./components/RequireAuth";
 import { RouteError, reloadOnce } from "./components/RouteError";
 
@@ -24,6 +25,8 @@ const router = createBrowserRouter(
   [
     { path: "/", element: <RequireAuth><Home /></RequireAuth>, errorElement: <RouteError /> },
     { path: "/login", element: <Login />, errorElement: <RouteError /> },
+    // PROTOTYPE (proto/new-trip): variant A of the new-trip flow
+    { path: "/new", element: <RequireAuth><NewTripPage /></RequireAuth>, errorElement: <RouteError /> },
     { path: "/s/:token", element: <ShareJoin />, errorElement: <RouteError /> },
     // Trip page handles its own gate: shared trips open without a login
     { path: "/trip/:id", element: <Suspense fallback={null}><TripPage /></Suspense>, errorElement: <RouteError /> },

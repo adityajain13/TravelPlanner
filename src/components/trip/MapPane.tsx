@@ -61,7 +61,8 @@ export function MapPane({
   children?: ReactNode;
 }) {
   return (
-    <main className={`relative min-h-0 flex-1 ${mobileView === "plan" ? "max-md:hidden" : ""}`}>
+    // PROTOTYPE (proto/new-trip): view-transition name matches the setup page's globe
+    <main className={`relative min-h-0 flex-1 ${mobileView === "plan" ? "max-md:hidden" : ""}`} style={{ viewTransitionName: "trip-map" }}>
       {/* Hide / show the itinerary (desktop) for a full-width map */}
       <button
         onClick={() => togglePlan(!planHidden)}

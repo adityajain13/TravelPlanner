@@ -40,7 +40,8 @@ export function TripHero({
 }) {
   return (
     <header ref={headerRef} className="relative">
-      <div className="relative h-80 overflow-hidden bg-surface-2">
+      {/* PROTOTYPE (proto/new-trip): view-transition name matches the setup page's hero */}
+      <div className="relative h-80 overflow-hidden bg-surface-2" style={{ viewTransitionName: "trip-hero" }}>
         {meta.cover ? (
           <Photo srcs={[meta.cover.url, meta.cover.thumb]} className="absolute inset-0 size-full object-cover" />
         ) : (
