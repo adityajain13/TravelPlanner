@@ -4,7 +4,7 @@
 //
 // Answers per person: null = hasn't weighed in · 0 = happy to tag along · 1 = must do · -1 = sitting out
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
-import { CalendarPlus, Check, ChevronDown, CircleAlert, GitFork, Star, Trash2, X } from "lucide-react";
+import { CalendarPlus, Check, ChevronDown, Star, Trash2, X } from "lucide-react";
 
 type Answer = -1 | 0 | 1 | null;
 type Answers = Record<string, Answer>;
@@ -292,32 +292,6 @@ function RangeBar(props: VariantProps) {
   );
 }
 
-/** Expanded view for the track variants: one snapping three-stop slider per person (yours is clickable) */
-function PersonSlider({ a, editable, onSet }: { a: Answer; editable: boolean; onSet: (a: Answer) => void }) {
-  const stops: (-1 | 0 | 1)[] = [-1, 0, 1];
-  const W = 150;
-  return (
-    <span className="flex items-center gap-1.5">
-      <X className="size-3" style={{ color: P.out }} />
-      <span className="relative h-5" style={{ width: W }}>
-        <span className="absolute inset-x-0 top-1/2 h-1 -translate-y-1/2 rounded-full" style={{ background: `linear-gradient(90deg,${P.out}99,${P.line} 22%,${P.line} 78%,${P.must}99)` }} />
-        {stops.map((v) => (
-          <button
-            key={v}
-            disabled={!editable}
-            onClick={() => onSet(a === v ? null : v)}
-            title={LABEL[key(v)]}
-            className={`absolute top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full transition-all ${
-              a === v ? "size-4 ring-2 ring-surface" : `size-2 bg-surface ring-1 ring-line ${editable ? "hover:size-3 hover:ring-fg" : ""}`
-            } ${editable ? "cursor-pointer" : "cursor-default"}`}
-            style={{ left: ((v + 1) / 2) * W, ...(a === v ? { background: pcol(v) } : {}) }}
-          />
-        ))}
-      </span>
-      <Star className="size-3" style={{ color: P.must }} />
-    </span>
-  );
-}
 
 /* ---------- more ways to show direction + agreement ---------- */
 
@@ -466,18 +440,41 @@ const meanCol = (m: number) => (m > 0.33 ? P.must : m < -0.33 ? P.out : "#8c938f
 const stopsBetween = (lo: number, hi: number, alpha = "") =>
   lo === hi ? `${pcol(lo)}${alpha}` : lo === -1 && hi === 1 ? `${P.out}${alpha},${P.along}${alpha} 50%,${P.must}${alpha}` : `${pcol(lo)}${alpha},${pcol(hi)}${alpha}`;
 
-function SoftTrack({ children, faint }: { children?: ReactNode; faint?: boolean }) {
+/** Filled end marks that sit on the line's ends: ✕ in a disc, a solid ★ */
+const EndOut = ({ size = 13 }: { size?: number }) => (
+  <span className="grid place-items-center rounded-full" style={{ width: size, height: size, background: P.out }}>
+    <X className="text-white" style={{ width: size * 0.62, height: size * 0.62 }} strokeWidth={3.5} />
+  </span>
+);
+const EndMust = ({ size = 14 }: { size?: number }) => <Star style={{ width: size, height: size, color: P.must, fill: P.must }} />;
+
+function SoftTrack({ children, faint, w = TRACK_W }: { children?: ReactNode; faint?: boolean; w?: number }) {
   return (
-    <span className="flex items-center gap-1.5">
-      <X className="size-3 shrink-0" style={{ color: P.out }} />
-      <span className="relative h-4 shrink-0" style={{ width: TRACK_W }}>
-        <span
-          className={`absolute inset-x-0 top-1/2 h-[3px] -translate-y-1/2 rounded-full ${faint ? "opacity-70" : ""}`}
-          style={{ background: `linear-gradient(90deg,${P.out}99,${P.line} 22%,${P.line} 78%,${P.must}99)` }}
-        />
-        {children}
+    <span className="relative mx-2 inline-block h-5 shrink-0" style={{ width: w }}>
+      <span
+        className={`absolute inset-x-0 top-1/2 h-[3px] -translate-y-1/2 rounded-full ${faint ? "opacity-70" : ""}`}
+        style={{ background: `linear-gradient(90deg,${P.out}99,${P.line} 22%,${P.line} 78%,${P.must}99)` }}
+      />
+      <span className="absolute top-1/2 left-0 -translate-x-1/2 -translate-y-1/2">
+        <EndOut />
       </span>
-      <Star className="size-3 shrink-0" style={{ color: P.must }} />
+      <span className="absolute top-1/2 right-0 translate-x-1/2 -translate-y-1/2">
+        <EndMust />
+      </span>
+      {children}
+    </span>
+  );
+}
+
+/** The knob: at an end it takes over that end's mark (✕ or ★ inside it) */
+function Knob({ value, x }: { value: number; x: number }) {
+  return (
+    <span
+      className="absolute top-1/2 z-10 grid size-4 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full ring-2 ring-surface shadow-sm"
+      style={{ left: x, background: meanCol(value) }}
+    >
+      {value <= -0.99 && <X className="size-2.5 text-white" strokeWidth={3.5} />}
+      {value >= 0.99 && <Star className="size-2.5 fill-white text-white" />}
     </span>
   );
 }
@@ -555,9 +552,32 @@ function KnobBand2(props: VariantProps) {
             style={{ left: posX(lo) - 6, width: posX(hi) - posX(lo) + 12, background: `linear-gradient(90deg,${stopsBetween(lo, hi, "66")})`, maskImage: "linear-gradient(90deg,transparent,#000 22%,#000 78%,transparent)" }}
           />
         )}
-        <span className="absolute top-1/2 size-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full ring-2 ring-surface shadow-sm" style={{ left: posX(mean), background: meanCol(mean) }} />
+        <Knob value={mean} x={posX(mean)} />
       </SoftTrack>
     </TrackButton>
+  );
+}
+
+/** One person's row in the expanded view: the same track and knob as the summary. Yours is clickable at the three stops. */
+function PersonTrack({ a, editable, onSet }: { a: Answer; editable: boolean; onSet: (a: Answer) => void }) {
+  const W = 132;
+  const x = (v: number) => ((v + 1) / 2) * W;
+  return (
+    <SoftTrack w={W} faint={a === null}>
+      {a !== null && <Knob value={a} x={x(a)} />}
+      {a === null && <span className="absolute top-1/2 size-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full border border-dashed border-muted/60 bg-surface" style={{ left: x(0) }} />}
+      {editable &&
+        ([-1, 0, 1] as const).map((v) => (
+          <button
+            key={v}
+            onClick={() => onSet(a === v ? null : v)}
+            title={LABEL[key(v)]}
+            aria-label={LABEL[key(v)]}
+            className="absolute top-1/2 z-20 size-6 -translate-x-1/2 -translate-y-1/2 rounded-full hover:bg-fg/8"
+            style={{ left: x(v) }}
+          />
+        ))}
+    </SoftTrack>
   );
 }
 
@@ -665,7 +685,6 @@ const VARIANTS: { id: string; name: string; note: string; where: "top" | "bottom
 function Card({ v, props, expanded }: { v: (typeof VARIANTS)[number]; props: VariantProps; expanded: boolean }) {
   const { people, me, answers, set } = props;
   const must = people.filter((p) => answers[p] === 1);
-  const out = people.filter((p) => answers[p] === -1);
   const solo = people.length === 1;
   const interest = solo ? (
     <button onClick={() => set(answers[me] === 1 ? null : 1)} title="Must do" className={answers[me] === 1 ? "text-amber-500" : "text-muted hover:text-fg"}>
@@ -704,13 +723,22 @@ function Card({ v, props, expanded }: { v: (typeof VARIANTS)[number]; props: Var
         <div className="border-t border-line px-3.5 py-3">
           <p className="mb-2 text-[11px] font-semibold tracking-wider text-muted uppercase">How the group feels</p>
           <ul className="space-y-1.5">
-            {sorted(people, answers).map((p) => (
+            {(v.sliders ? [me, ...people.filter((x) => x !== me)] : sorted(people, answers)).map((p) => (
               <li key={p} className="flex items-center gap-2.5 text-[13px]">
-                <AnswerAvatar name={p} a={answers[p] ?? null} size={20} />
+                {v.sliders ? (
+                  <span
+                    className="grid size-5 shrink-0 place-items-center rounded-full text-[9.5px] font-bold text-white"
+                    style={{ background: `hsl(${hue(p)} 55% 45%)` }}
+                  >
+                    {p[0]}
+                  </span>
+                ) : (
+                  <AnswerAvatar name={p} a={answers[p] ?? null} size={20} />
+                )}
                 <span className="w-16 truncate font-semibold">{p === me ? "You" : p}</span>
                 {v.sliders ? (
                   <span className="flex items-center gap-2.5">
-                    <PersonSlider a={answers[p] ?? null} editable={p === me} onSet={set} />
+                    <PersonTrack a={answers[p] ?? null} editable={p === me} onSet={set} />
                     <span className={`text-[12px] ${(answers[p] ?? null) === null ? "text-muted italic" : "text-muted"}`}>{LABEL[key(answers[p] ?? null)]}</span>
                   </span>
                 ) : p === me ? (
@@ -723,16 +751,6 @@ function Card({ v, props, expanded }: { v: (typeof VARIANTS)[number]; props: Var
               </li>
             ))}
           </ul>
-          {must.length > 0 && out.length > 0 && (
-            <p className="mt-2.5 flex items-center gap-1.5 text-[12.5px] text-accent">
-              <GitFork className="size-3.5" /> {must.join(", ")}'s must-do, {out.join(", ")} sitting out: split the day?
-            </p>
-          )}
-          {must.length === 0 && out.length >= 2 && (
-            <p className="mt-2.5 flex items-center gap-1.5 text-[12.5px] text-muted">
-              <CircleAlert className="size-3.5" /> Several sitting out and no must-do: this one sinks in the list
-            </p>
-          )}
         </div>
       )}
       <div className="flex items-center justify-center gap-1 border-t border-line py-1.5 text-[12px] text-muted">
@@ -752,8 +770,8 @@ export function ProtoInterest() {
   const [answers, setAnswers] = useState<Answers>(START);
   const [expanded, setExpanded] = useState(false);
   const [shortlist, setShortlist] = useState(true);
-  const SHORTLIST = ["J3", "H2"];
-  const [palette, setPalette] = useState("coral");
+  const SHORTLIST = ["H2"];
+  const [palette, setPalette] = useState("teal");
   P = PALETTES[palette];
   const people = ALL_PEOPLE.slice(0, count);
   const props: VariantProps = { people, me, answers, set: (a) => setAnswers((x) => ({ ...x, [me]: a })) };
