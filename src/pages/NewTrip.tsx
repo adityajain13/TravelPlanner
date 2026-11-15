@@ -81,39 +81,42 @@ export function NewTripPage() {
     <div className="flex h-full flex-row">
       <aside className="flex min-h-0 w-[480px] shrink-0 flex-col border-r border-line bg-bg lg:w-[540px] xl:w-[620px] 2xl:w-[680px]">
         <div className="min-h-0 flex-1 overflow-y-auto pb-24">
-          {/* Same block as TripHero, so it stays put when the trip opens */}
-          <header className="relative h-80 overflow-hidden bg-surface-2" style={{ viewTransitionName: "trip-hero" }}>
-            <div className="absolute inset-0 bg-[radial-gradient(120%_90%_at_20%_10%,rgb(95_214_139/.35),transparent_60%),radial-gradient(90%_80%_at_90%_30%,rgb(106_168_255/.3),transparent_60%)]" />
-            <div className="absolute inset-0 bg-gradient-to-b from-black/55 via-black/5 to-black/85" />
-            <button onClick={back} className="absolute top-4 left-4 z-10 flex items-center gap-1.5 rounded-full bg-black/35 px-3 py-1.5 text-sm text-white/90 backdrop-blur hover:bg-black/55">
+          {/* A plain title bar in the page's own colours: back link, then the trip's name and dates.
+              The cover banner appears on the trip page once Start planning is pressed */}
+          <header className="border-b border-line bg-surface px-5 pt-4 pb-5" style={{ viewTransitionName: "trip-hero" }}>
+            <button onClick={back} className="-ml-1 flex items-center gap-1.5 rounded-full px-1 py-1 text-sm text-muted hover:text-fg">
               <ArrowLeft className="size-4" /> Your trips
             </button>
-            <div className="absolute inset-x-0 bottom-0 px-5 pb-4 text-white">
-              <LiveTitle title={t.title || t.autoTitle} start={t.startDate} end={t.endDate} />
+            <div className="mt-3">
+              <LiveTitle title={t.title || t.autoTitle} start={t.startDate} end={t.endDate} compact inline />
             </div>
           </header>
           <div className="px-5 pt-6">{form}</div>
         </div>
       </aside>
       <main className="relative min-w-0 flex-1 bg-bg" style={{ viewTransitionName: "trip-map" }}>
-        <GlobeView place={t.dest.place} preview={t.preview} padding={{ top: 80, bottom: 80, left: 80, right: 80 }} />
+        <GlobeView place={t.dest.place} preview={t.preview} padding={{ top: 24, bottom: 24, left: 24, right: 24 }} />
       </main>
       <VariantSwitch />
     </div>
   );
 }
 
-/** The hero's title + dates, filling in as the form is completed. */
-function LiveTitle({ title, start, end, compact }: { title: string; start: string; end: string; compact?: boolean }) {
+/** The hero's title + dates, filling in as the form is completed (`inline`: one row, for the compact header). */
+function LiveTitle({ title, start, end, compact, inline }: { title: string; start: string; end: string; compact?: boolean; inline?: boolean }) {
   const s = fromISO(start);
   const e = fromISO(end);
   const label = s && e ? `${dtf(undefined, { month: "short", day: "numeric" }).format(s)} – ${dtf(undefined, { month: "short", day: "numeric", year: "numeric" }).format(e)}` : "";
   return (
-    <div>
-      <p className={`font-display leading-tight transition-opacity ${compact ? "text-2xl" : "text-[2.25rem] [text-shadow:0_1px_12px_rgb(0_0_0/.5)]"} ${title ? "" : "opacity-40"}`}>
-        {title || "Trip to …"}
+    <div className={inline ? "flex items-end justify-between gap-3" : ""}>
+      <p
+        className={`min-w-0 truncate font-display leading-tight transition-opacity ${compact ? "text-2xl" : inline ? "text-[1.75rem] [text-shadow:0_1px_12px_rgb(0_0_0/.5)]" : "text-[2.25rem] [text-shadow:0_1px_12px_rgb(0_0_0/.5)]"} ${title ? "" : compact ? "text-muted" : "opacity-40"}`}
+      >
+        {title || (compact ? "New trip" : "Trip to …")}
       </p>
-      <p className={`mt-2 inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-[15px] font-semibold ${compact ? "bg-surface-2 px-3 py-1 text-sm" : "bg-black/35 text-white/90 backdrop-blur"}`}>
+      <p
+        className={`inline-flex shrink-0 items-center gap-1.5 rounded-full px-3.5 py-1.5 text-[15px] font-semibold ${inline ? "mb-0.5" : "mt-2"} ${compact ? "bg-surface-2 px-3 py-1 text-sm" : "bg-black/35 text-white/90 backdrop-blur"}`}
+      >
         <CalendarDays className="size-4 opacity-80" /> {label}
       </p>
     </div>

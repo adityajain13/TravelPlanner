@@ -113,7 +113,8 @@ function matchScore(q: string, key: string): number {
   const whole = Math.min(osa(q, key.slice(0, q.length)), osa(q, key));
   const word = Math.min(...words.map((w) => osa(q, w)));
   if (whole <= allowed) return 2 - whole * 0.4;
-  return word <= allowed ? 1.8 - word * 0.4 : 0;
+  // One typo at most within a single word ("iceland" is two edits from "island", so not Norfolk Island)
+  return word <= 1 ? 1.8 - word * 0.4 : 0;
 }
 
 /** Instant, forgiving matches from the built-in list. */
@@ -185,10 +186,9 @@ export async function searchDestinations(q: string, signal?: AbortSignal): Promi
   // When the built-in list understood the query, drop Photon's loose guesses that don't resemble it (Andorra for "korae")
   const nq = norm(q);
   const plausible = (r: Destination) => !local.length || matchScore(nq, norm(r.name)) > 0;
-  return [
-    ...local,
-    ...remote.filter((r) => !seen.has(key(r)) && plausible(r) && !(r.kind === "country" && local.some((l) => l.countryCode === r.countryCode))),
-  ].slice(0, 7);
+  // Countries: one row per country, matched by code or (when Photon leaves the code out) by name
+  const sameCountry = (r: Destination) => r.kind === "country" && local.some((l) => l.kind === "country" && (l.countryCode === r.countryCode || norm(l.name) === norm(r.name)));
+  return [...local, ...remote.filter((r) => !seen.has(key(r)) && plausible(r) && !sameCountry(r))].slice(0, 7);
 }
 
 const resolved = new Map<string, Destination>();

@@ -39,16 +39,58 @@ function focusData(outline: Outline): FeatureCollection {
   return { type: "FeatureCollection", features: [mask] };
 }
 
+/**
+ * The camera that fits an outline inside the map (minus padding) as it's actually drawn on the globe.
+ * MapLibre's cameraForBounds uses flat-map maths, which aims too far north for high-latitude places
+ * (Canada landed in the bottom half). This tries a camera, measures where the outline's points land on
+ * screen, and corrects zoom and centre a few times. The trial jumps happen between frames, so nothing
+ * visible moves; the real camera is put back before returning.
+ */
+function fitOutline(map: maplibregl.Map, outline: Outline, padding: maplibregl.PaddingOptions): { center: maplibregl.LngLat; zoom: number } {
+  const rings = outline.type === "Polygon" ? [outline.coordinates[0]] : outline.coordinates.map((p) => p[0]);
+  const all = rings.flat();
+  const step = Math.max(1, Math.floor(all.length / 1500));
+  const pts = all.filter((_, i) => i % step === 0) as [number, number][];
+  const [w0, s0, e0, n0] = boundsOf(outline);
+  const { clientWidth: W, clientHeight: H } = map.getContainer();
+  const pl = padding.left ?? 0, pr = padding.right ?? 0, pt = padding.top ?? 0, pb = padding.bottom ?? 0;
+  const before = { center: map.getCenter(), zoom: map.getZoom(), bearing: map.getBearing(), pitch: map.getPitch(), padding: map.getPadding() };
+  let center = new maplibregl.LngLat((w0 + e0) / 2, (s0 + n0) / 2);
+  let zoom = map.cameraForBounds([w0, s0, e0, n0], { padding })?.zoom ?? 3;
+  for (let i = 0; i < 4; i++) {
+    map.jumpTo({ center, zoom, bearing: 0, pitch: 0, padding: { top: 0, bottom: 0, left: 0, right: 0 } });
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    for (const p of pts) {
+      const q = map.project(p);
+      if (!Number.isFinite(q.x) || !Number.isFinite(q.y)) continue;
+      x0 = Math.min(x0, q.x), y0 = Math.min(y0, q.y), x1 = Math.max(x1, q.x), y1 = Math.max(y1, q.y);
+    }
+    if (!Number.isFinite(x0)) break;
+    const scale = Math.min((W - pl - pr) / Math.max(1, x1 - x0), (H - pt - pb) / Math.max(1, y1 - y0));
+    // Shift so the outline's on-screen middle sits in the middle of the padded area
+    const dx = (x0 + x1) / 2 - (pl + W - pr) / 2;
+    const dy = (y0 + y1) / 2 - (pt + H - pb) / 2;
+    center = map.unproject([W / 2 + dx, H / 2 + dy]);
+    zoom += Math.log2(scale);
+    if (Math.abs(Math.log2(scale)) < 0.02 && Math.abs(dx) < 2 && Math.abs(dy) < 2) break;
+  }
+  map.jumpTo(before);
+  return { center, zoom: Math.min(11, zoom) };
+}
+
 export function GlobeView({
   place,
   preview = null,
   padding = { top: 40, bottom: 40, left: 40, right: 40 },
+  zoomBoost = 0,
   className = "",
 }: {
   place: Destination | null;
   preview?: Destination | null;
   /** Keeps the place clear of anything drawn over the map (the phone card). */
   padding?: maplibregl.PaddingOptions;
+  /** Zooms in this much past "fits exactly", so the place fills the map (its far edges may crop). */
+  zoomBoost?: number;
   className?: string;
 }) {
   const [theme] = useTheme();
@@ -65,6 +107,8 @@ export function GlobeView({
   const driftSince = useRef(0);
   const pad = useRef(padding);
   pad.current = padding;
+  const boost = useRef(zoomBoost);
+  boost.current = zoomBoost;
 
   useEffect(() => {
     if (!el.current) return;
@@ -190,10 +234,10 @@ export function GlobeView({
           setLabels(map, true);
           if (outline) {
             // How close the place will be framed decides whether its surroundings stay detailed
-            const bounds = boundsOf(outline);
-            const zoom = Math.min(11, map.cameraForBounds(bounds, { padding: pad.current })?.zoom ?? 0);
+            const cam = fitOutline(map, outline, pad.current);
+            const zoom = Math.min(11, cam.zoom + boost.current);
             setFocus(map, outline, zoom < DETAILED_SURROUNDINGS_ZOOM);
-            map.fitBounds(bounds, { padding: pad.current, maxZoom: 11, duration: 1400, essential: true });
+            map.easeTo({ center: cam.center, zoom, bearing: 0, pitch: 0, padding: { top: 0, bottom: 0, left: 0, right: 0 }, duration: 1400, essential: true });
           } else {
             setFocus(map, null);
             const dot = document.createElement("div");
