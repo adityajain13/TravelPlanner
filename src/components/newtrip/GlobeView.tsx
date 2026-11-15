@@ -23,6 +23,11 @@ const IDLE_ZOOM = 1.5;
 const PREVIEW_MAX_ZOOM = 3.5;
 /** How much land outside the chosen place is dimmed (the sea is left alone). */
 const MASK = { dark: { color: "#03060a", opacity: 0.2 }, light: { color: "#1c2220", opacity: 0.15 } };
+/**
+ * Framed at this zoom or closer (places under ~400km across: cities, towns, small countries), the
+ * surroundings keep their detail under the dim; further out (countries, big states) they're plain land.
+ */
+const DETAILED_SURROUNDINGS_ZOOM = 7;
 
 const EMPTY: FeatureCollection = { type: "FeatureCollection", features: [] };
 
@@ -53,8 +58,9 @@ export function GlobeView({
   const labelLayers = useRef<string[]>([]);
   /** The style's own label filters, to put back when the focus clears. */
   const labelFilters = useRef(new Map<string, maplibregl.FilterSpecification | undefined>());
-  /** Copies of the water layers drawn above the mask, so the sea keeps its colour everywhere. */
+  /** Copies of the water and country-border layers drawn above the mask: outside the place only the sea and borders show. */
   const waterAbove = useRef<string[]>([]);
+  const bordersAbove = useRef<string[]>([]);
   const mode = useRef<"idle" | "preview" | "picked">("idle");
   const driftSince = useRef(0);
   const pad = useRef(padding);
@@ -87,22 +93,27 @@ export function GlobeView({
       labelLayers.current = layers.filter((l) => l.type === "symbol").map((l) => l.id);
       labelFilters.current = new Map(labelLayers.current.map((id) => [id, map.getFilter(id) ?? undefined]));
       setLabels(map, mode.current === "picked");
-      // Order: map → mask → sea again → labels. The mask dims land outside the place, the sea is drawn
-      // over it so water looks the same everywhere, and names stay on top (they're clipped to the place).
+      // Order: map → plain land → dim → sea again → country borders again → labels.
+      // Outside the place, plain land covers roads, regions and land cover; the dim sits on that; the sea
+      // and national borders are drawn back on top. Inside the place the map is untouched, and names stay
+      // on top (they're clipped to the place).
       const firstLabel = labelLayers.current[0];
       const m = dark ? MASK.dark : MASK.light;
+      const bg = layers.find((l) => l.type === "background");
+      const land = (bg && (map.getPaintProperty(bg.id, "background-color") as string | undefined)) ?? (dark ? "#0c0c0c" : "#f2f3f0");
+      const fade = { duration: 900, delay: 0 };
       map.addSource("focus", { type: "geojson", data: EMPTY });
-      map.addLayer(
-        { id: "focus-mask", type: "fill", source: "focus", paint: { "fill-color": m.color, "fill-opacity": 0, "fill-opacity-transition": { duration: 900, delay: 0 } } },
-        firstLabel,
-      );
-      waterAbove.current = [];
-      for (const l of layers) {
-        if (l.type !== "fill" || !/water|ocean/i.test(l.id)) continue;
+      map.addLayer({ id: "focus-plain", type: "fill", source: "focus", paint: { "fill-color": land, "fill-opacity": 0, "fill-opacity-transition": fade } }, firstLabel);
+      map.addLayer({ id: "focus-mask", type: "fill", source: "focus", paint: { "fill-color": m.color, "fill-opacity": 0, "fill-opacity-transition": fade } }, firstLabel);
+      const isWater = (l: (typeof layers)[number]) => l.type === "fill" && /water|ocean/i.test(l.id);
+      const isCountryBorder = (l: (typeof layers)[number]) => l.type === "line" && /boundar/i.test(l.id) && /country|_2$|disputed/i.test(l.id);
+      const copyAbove = (l: (typeof layers)[number]) => {
         const id = `${l.id}-above-focus`;
-        map.addLayer({ ...l, id, layout: { ...l.layout, visibility: "none" } }, firstLabel);
-        waterAbove.current.push(id);
-      }
+        map.addLayer({ ...l, id, layout: { ...l.layout, visibility: "none" } } as maplibregl.LayerSpecification, firstLabel);
+        return id;
+      };
+      waterAbove.current = layers.filter(isWater).map(copyAbove);
+      bordersAbove.current = layers.filter(isCountryBorder).map(copyAbove);
     });
 
     const tick = (now: number) => {
@@ -134,14 +145,17 @@ export function GlobeView({
   }
 
   /**
-   * Spotlight on the outline (or clear it with null): land outside is dimmed by the mask,
-   * and labels are clipped to the outline so only names inside it show.
+   * Spotlight on the outline (or clear it with null). Outside it, land is slightly dimmed and the sea keeps
+   * its colour; with `plain`, the surroundings are also reduced to flat land plus country borders (for big
+   * places), otherwise their roads and terrain stay visible (for small ones). Labels are clipped to the
+   * outline so only names inside it show.
    */
-  function setFocus(map: maplibregl.Map, outline: Outline | null) {
+  function setFocus(map: maplibregl.Map, outline: Outline | null, plain = true) {
     const src = map.getSource<maplibregl.GeoJSONSource>("focus");
     if (!src) return;
     if (outline) src.setData(focusData(outline));
     const m = isDark(theme) ? MASK.dark : MASK.light;
+    map.setPaintProperty("focus-plain", "fill-opacity", outline && plain ? 1 : 0);
     map.setPaintProperty("focus-mask", "fill-opacity", outline ? m.opacity : 0);
     for (const id of labelLayers.current) {
       if (!map.getLayer(id)) continue;
@@ -149,7 +163,9 @@ export function GlobeView({
       const within = ["within", outline] as unknown as maplibregl.FilterSpecification;
       map.setFilter(id, outline ? (own ? (["all", own, within] as maplibregl.FilterSpecification) : within) : (own ?? null));
     }
-    for (const id of waterAbove.current) if (map.getLayer(id)) map.setLayoutProperty(id, "visibility", outline ? "visible" : "none");
+    const show = (ids: string[], on: boolean) => ids.forEach((id) => map.getLayer(id) && map.setLayoutProperty(id, "visibility", on ? "visible" : "none"));
+    show(waterAbove.current, !!outline);
+    show(bordersAbove.current, !!outline && plain); // without the plain layer the map's own borders already show
   }
 
   // Picked place, or a preview while typing, or back to idle
@@ -172,9 +188,14 @@ export function GlobeView({
           if (ctl.signal.aborted) return;
           const outline = raw && mainParts(raw, [place.lng, place.lat]);
           setLabels(map, true);
-          setFocus(map, outline);
-          if (outline) map.fitBounds(boundsOf(outline), { padding: pad.current, maxZoom: 11, duration: 1400, essential: true });
-          else {
+          if (outline) {
+            // How close the place will be framed decides whether its surroundings stay detailed
+            const bounds = boundsOf(outline);
+            const zoom = Math.min(11, map.cameraForBounds(bounds, { padding: pad.current })?.zoom ?? 0);
+            setFocus(map, outline, zoom < DETAILED_SURROUNDINGS_ZOOM);
+            map.fitBounds(bounds, { padding: pad.current, maxZoom: 11, duration: 1400, essential: true });
+          } else {
+            setFocus(map, null);
             const dot = document.createElement("div");
             dot.className = "size-3.5 rounded-full border-2 border-white bg-accent shadow-[0_0_0_6px_rgb(95_214_139/.3)]";
             marker.current = new maplibregl.Marker({ element: dot }).setLngLat([place.lng, place.lat]).addTo(map);
