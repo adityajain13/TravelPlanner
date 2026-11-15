@@ -19,6 +19,8 @@ const tripChunk = () => import("./pages/Trip");
 const TripPage = lazy(() => tripChunk().then((m) => ({ default: m.TripPage })));
 // Opening a trip straight from a link/reload: fetch its page chunk alongside the app shell
 if (/\/trip\//.test(location.pathname)) void tripChunk();
+// PROTOTYPE (proto/trip-focus): dev-only playground pages
+const ProtoInterest = lazy(() => import("./pages/ProtoInterest").then((m) => ({ default: m.ProtoInterest })));
 
 const router = createBrowserRouter(
   [
@@ -27,6 +29,7 @@ const router = createBrowserRouter(
     { path: "/s/:token", element: <ShareJoin />, errorElement: <RouteError /> },
     // Trip page handles its own gate: shared trips open without a login
     { path: "/trip/:id", element: <Suspense fallback={null}><TripPage /></Suspense>, errorElement: <RouteError /> },
+    ...(import.meta.env.DEV ? [{ path: "/proto/interest", element: <Suspense fallback={null}><ProtoInterest /></Suspense> }] : []),
   ],
   { basename: "/travelplanner" },
 );
