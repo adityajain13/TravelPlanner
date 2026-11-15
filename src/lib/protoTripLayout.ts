@@ -1,7 +1,7 @@
 // PROTOTYPE (proto/trip-focus): which trip-page layout to show. Dev builds only; remembered per browser.
 import { useEffect, useState } from "react";
 
-export type TripLayout = "current" | "a";
+export type TripLayout = "current" | "a" | "b";
 const KEY = "proto:trip-layout";
 const EVENT = "proto-trip-layout";
 
@@ -11,7 +11,7 @@ function read(): TripLayout {
   if (!PROTO_ENABLED) return "current";
   try {
     const v = localStorage.getItem(KEY);
-    return v === "a" || v === "current" ? v : "a";
+    return v === "a" || v === "b" || v === "current" ? v : "a";
   } catch {
     return "a";
   }

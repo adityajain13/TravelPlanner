@@ -58,6 +58,10 @@ import { ScopeNav, type Scope } from "../components/trip/proto/ScopeNav";
 import { ScopeHeader } from "../components/trip/proto/ScopeHeader";
 import { SelectionBar } from "../components/trip/SelectionBar";
 import { UndoBar } from "../components/trip/UndoBars";
+import { AppBar } from "../components/trip/proto/AppBar";
+import { TripLevel } from "../components/trip/proto/TripLevel";
+import { IdeasShelf, type Idea } from "../components/trip/proto/IdeasShelf";
+import { isPrep } from "../components/trip/proto/kinds";
 
 const LOADING = "loading" as const;
 
@@ -180,7 +184,8 @@ export function TripPage() {
   // PROTOTYPE (proto/trip-focus): variant A scopes the plan and map to one day or list (the map's
   // existing `focus`). During the trip it opens on today; ?today=2026-12-02 tries that.
   const [layout] = useTripLayout();
-  const scoped = layout === "a";
+  const scoped = layout !== "current";
+  const layoutB = layout === "b";
   const autoScoped = useRef<string | null>(null);
   useEffect(() => {
     if (!scoped || !view || !id || autoScoped.current === id) return;
@@ -338,6 +343,20 @@ export function TripPage() {
     requestAnimationFrame(() => scrollRef.current?.scrollTo({ top: 0 }));
   };
   const scopedSection = scoped && tab === "plan" && focus ? view.sections.find((s) => s.key === focus) : undefined;
+  // Variant B: ideas = places in lists that aren't prep (Notes, Packing…); "planned" when a copy is on a day
+  const ideas: Idea[] = layoutB
+    ? overviewSections
+        .filter((s) => s.kind === "list" && !isPrep(s))
+        .flatMap((s) =>
+          s.items
+            .filter((i) => i.kind === "place" && !i.waypoint)
+            .map((item) => ({ item, list: s.title ?? "List", days: sectionsOf(item.id).filter((k) => k.startsWith("day:")) })),
+        )
+    : [];
+  const addIdea = (itemId: string, dayKey: string) => {
+    const [newId] = copyItems(doc, [itemId], writeOf(dayKey));
+    if (newId) revealAdded(newId);
+  };
   const onOverviewGo = (t: OverviewTarget) => {
     setShowOverview(false);
     if (scoped && t.kind === "section") return pickScope({ tab: "plan", key: t.key });
@@ -433,7 +452,7 @@ export function TripPage() {
   return (
     <div className="flex h-full flex-col md:flex-row">
       {/* Contents column (wide screens); a drawer below that */}
-      {scoped ? (
+      {layoutB ? null : scoped ? (
         // PROTOTYPE (proto/trip-focus): variant A's sidebar picks the scope instead of scrolling
         <div className={`hidden shrink-0 border-r border-line bg-bg ${planHidden || contentsHidden ? "" : "lg:block"}`}>
           <div className="h-full w-[250px] xl:w-[280px]">
@@ -465,11 +484,15 @@ export function TripPage() {
       {contentsDrawer && <ContentsDrawer contents={contentsProps} history={history} readOnly={readOnly} onClose={() => setContentsDrawer(false)} />}
       {/* Plan panel */}
       <aside
-        className={`flex min-h-0 flex-col border-line bg-bg md:w-[480px] md:shrink-0 md:border-r lg:w-[540px] xl:w-[620px] 2xl:w-[680px] ${planHidden ? "md:hidden" : ""} ${
+        className={`flex min-h-0 flex-col border-line bg-bg md:w-[480px] md:shrink-0 md:border-r ${layoutB && scopedSection?.kind === "day" ? "lg:w-[480px] xl:w-[540px]" : "lg:w-[540px] xl:w-[620px] 2xl:w-[680px]"} ${planHidden ? "md:hidden" : ""} ${
           mobileView === "map" ? "max-md:hidden" : "flex-1 md:flex-none"
         }`}
       >
-        <CollapsedContentsBar hidden={contentsHidden} readOnly={readOnly} history={history} onShow={showContents} />
+        {layoutB ? (
+          <AppBar history={history} readOnly={readOnly} canSync={canSync} syncStatus={syncStatus} isOwner={isOwner} onShare={() => setSharing(true)} onHistory={() => setShowHistory(true)} onSettings={() => setShowSettings(true)} />
+        ) : (
+          <CollapsedContentsBar hidden={contentsHidden} readOnly={readOnly} history={history} onShow={showContents} />
+        )}
         <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto pb-28 md:pb-10">
           {/* PROTOTYPE (proto/trip-focus): one day or list on its own, under a slim bar */}
           {scopedSection ? (
@@ -487,6 +510,34 @@ export function TripPage() {
                   dragging={dragging}
                   setDragging={setDragging}
                 />
+              </div>
+            </>
+          ) : layoutB && tab === "plan" ? (
+            <TripLevel
+              doc={doc}
+              state={state}
+              tripId={id!}
+              readOnly={readOnly}
+              sections={overviewSections}
+              today={today}
+              countdown={overview.countdown}
+              attention={overview.attention}
+              bookingsByDay={new Map([...chipsByDay].map(([d, c]) => [d, c.length]))}
+              scheduledIds={new Set(ideas.filter((i) => i.days.length).map((i) => i.item.id))}
+              budgetTotal={contentsProps.budgetTotal}
+              onPick={pickScope}
+              onOverview={() => setShowOverview(true)}
+              onPickCover={() => setPickingCover(true)}
+              tools={
+                <PlanTools doc={doc} state={state} readOnly={readOnly} unpinned={unpinned} onDismissUnpinned={dismissUnpinned} canReview={canReview} inbox={inbox} setInbox={setInbox} autoExpandFirst={reviewing} photoFill={photoFill} setPhotoFill={setPhotoFill} />
+              }
+            />
+          ) : layoutB ? (
+            <>
+              <ScopeHeader title={state.meta.title} sections={overviewSections} focus="" onPick={() => pickScope({ tab: "plan", key: null })} />
+              <div className="px-3">
+                {tab === "bookings" && <ReservationsPanel doc={doc} state={state} readOnly={readOnly} tripId={id} canForward={canReview} walkOn={walk.on} onToggleWalk={toggleWalk} />}
+                {tab === "budget" && <BudgetPanel doc={doc} state={state} readOnly={readOnly} />}
               </div>
             </>
           ) : (<>
@@ -552,6 +603,19 @@ export function TripPage() {
           </>)}
         </div>
       </aside>
+      {/* PROTOTYPE (proto/trip-focus): variant B's ideas shelf beside a day */}
+      {layoutB && scopedSection?.kind === "day" && !planHidden && (
+        <div className="hidden shrink-0 border-r border-line bg-bg lg:block">
+          <IdeasShelf
+            day={scopedSection}
+            days={overviewSections.filter((s) => s.kind === "day")}
+            ideas={ideas}
+            readOnly={readOnly}
+            onAdd={(itemId) => addIdea(itemId, scopedSection.key)}
+            onPickDay={(key) => pickScope({ tab: "plan", key })}
+          />
+        </div>
+      )}
 
       <MapPane
         planHidden={planHidden}

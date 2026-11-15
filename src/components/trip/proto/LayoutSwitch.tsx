@@ -5,6 +5,7 @@ import { PROTO_ENABLED, useTripLayout, type TripLayout } from "../../../lib/prot
 const OPTIONS: { v: TripLayout; label: string; hint: string }[] = [
   { v: "current", label: "Current", hint: "His original trip page" },
   { v: "a", label: "A", hint: "Pick a day: the plan and map show only that day" },
+  { v: "b", label: "B", hint: "No sidebar: the plan pane is the navigation, with ideas beside each day" },
 ];
 
 export function LayoutSwitch() {
