@@ -14,7 +14,7 @@ export const dayShort = (iso: string) => {
   return `${dtf(undefined, { weekday: "short", timeZone: "UTC" }).format(d)} ${d.getUTCDate()}`;
 };
 
-export function DayMenu({ days, best, onAdd }: { days: DayFit[]; best: DayFit | null; onAdd: (dayKey: string) => void }) {
+export function DayMenu({ days, best, booked, onAdd }: { days: DayFit[]; best: DayFit | null; /** The day it's booked for: always the suggestion */ booked?: DayFit; onAdd: (dayKey: string) => void }) {
   const [open, setOpen] = useState(false);
   const box = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -23,7 +23,7 @@ export function DayMenu({ days, best, onAdd }: { days: DayFit[]; best: DayFit | 
     document.addEventListener("mousedown", off);
     return () => document.removeEventListener("mousedown", off);
   }, [open]);
-  const suggest = best && isGoodFit(best.fit) ? best : null;
+  const suggest = booked ?? (best && isGoodFit(best.fit) ? best : null);
   const base = "flex items-center gap-1.5 bg-accent text-[12.5px] font-semibold text-on-accent hover:brightness-110";
 
   return (
@@ -32,6 +32,7 @@ export function DayMenu({ days, best, onAdd }: { days: DayFit[]; best: DayFit | 
         <>
           <button onClick={() => onAdd(suggest.key)} className={`${base} rounded-l-full py-1.5 pr-2.5 pl-3`} title={`Add to ${dayShort(suggest.date)}`}>
             <CalendarPlus className="size-3.5" /> Add to {dayShort(suggest.date)}
+            {booked && <span className="font-normal opacity-85">· booked</span>}
           </button>
           <button onClick={() => setOpen((o) => !o)} aria-label="Pick another day" aria-expanded={open} className={`${base} rounded-r-full border-l border-on-accent/25 px-2 py-1.5`}>
             <ChevronDown className="size-3.5" />
@@ -66,7 +67,9 @@ export function DayMenu({ days, best, onAdd }: { days: DayFit[]; best: DayFit | 
                       </span>
                     )}
                   </span>
-                  {best?.key === d.key && suggest && <span className="shrink-0 rounded-full bg-accent/15 px-1.5 text-[10px] font-bold text-accent uppercase">Best</span>}
+                  {booked?.key === d.key ? (
+                    <span className="shrink-0 rounded-full bg-accent/15 px-1.5 text-[10px] font-bold text-accent uppercase">Booked</span>
+                  ) : best?.key === d.key && suggest && !booked && <span className="shrink-0 rounded-full bg-accent/15 px-1.5 text-[10px] font-bold text-accent uppercase">Best</span>}
                 </button>
               </li>
             );

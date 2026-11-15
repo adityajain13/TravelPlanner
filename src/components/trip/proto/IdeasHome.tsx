@@ -6,8 +6,9 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Check, ChevronDown, Info, Lightbulb, MapPin, RotateCcw, Star, ThumbsUp, Trash2 } from "lucide-react";
 import type { SectionInfo } from "../../Section";
 import type { PlaceResult } from "../../../lib/photon";
-import { fitFor, isGoodFit } from "../../../lib/protoFit";
-import { addedByOf, clusterAreas, GROUP_LABEL, GROUP_ORDER, isMustDo, mentionParts, placeLine, removedByOf, useAreaNames, votesOf, type Group } from "../../../lib/protoIdeas";
+import type { Reservation } from "../../../lib/trips";
+import { factsOf, fitFor, isGoodFit } from "../../../lib/protoFit";
+import { addedByOf, bookingState, clusterAreas, GROUP_LABEL, GROUP_ORDER, isMustDo, mentionParts, placeLine, removedByOf, useAreaNames, votesOf, type Group } from "../../../lib/protoIdeas";
 import { IdeaCard } from "./IdeaCard";
 import { dayShort, type DayFit } from "./DayMenu";
 import { formatChip } from "../DayChips";
@@ -53,6 +54,8 @@ export function IdeasHome({
   country,
   existing,
   onExisting,
+  reservations,
+  selectedId,
 }: {
   ideas: Idea[];
   /** Ideas someone removed that another person added: kept so they can be restored */
@@ -88,6 +91,8 @@ export function IdeasHome({
   country?: string;
   existing?: (text: string) => Existing[];
   onExisting?: (e: Existing) => void;
+  reservations: Reservation[];
+  selectedId: string | null;
 }) {
   const [filter, setFilter] = useState<Group | "rough" | null>(null);
   const [sort, setSort] = useState<Sort>("suggested");
@@ -113,6 +118,17 @@ export function IdeasHome({
   );
   const areas = useMemo(() => clusterAreas(placeIdeas.map((i) => i.item)).sort((a, b) => b.ids.length - a.ids.length), [placeIdeas.map((i) => i.item.id).join()]); // eslint-disable-line react-hooks/exhaustive-deps
   const areaNames = useAreaNames(areas);
+  // The trip's country, else the one most ideas' addresses end in (so every card reads "Town, Country")
+  const tripCountry =
+    country ||
+    (() => {
+      const n = new Map<string, number>();
+      for (const i of ideas) {
+        const c = i.item.address?.split(",").at(-1)?.trim();
+        if (c) n.set(c, (n.get(c) ?? 0) + 1);
+      }
+      return [...n].sort((x, y) => y[1] - x[1])[0]?.[0];
+    })();
   const areaOf = new Map(areas.flatMap((a) => a.ids.map((id) => [id, a.key] as const)));
 
   // Suggested: by area unless several people are actually voting
@@ -153,7 +169,7 @@ export function IdeasHome({
     if (!flash) return;
     setFilter(null);
     setLit(flash.id);
-    requestAnimationFrame(() => document.getElementById(`idea-${flash.id}`)?.scrollIntoView({ block: "center", behavior: "smooth" }));
+    requestAnimationFrame(() => document.getElementById(`item-${flash.id}`)?.scrollIntoView({ block: "center", behavior: "smooth" }));
     const t = setTimeout(() => setLit(null), 1800);
     return () => clearTimeout(t);
   }, [flash]);
@@ -272,13 +288,15 @@ export function IdeasHome({
       <IdeaCard
         key={idea.item.id}
         idea={idea}
-        where={placeLine(idea.item, areaNames.get(areaOf.get(idea.item.id) ?? ""), country)}
+        where={placeLine(idea.item, areaNames.get(areaOf.get(idea.item.id) ?? ""), tripCountry)}
         days={dayFits(idea)}
         best={fits.get(idea.item.id) ?? null}
         people={people}
         me={me}
         readOnly={readOnly}
         highlight={lit === idea.item.id ? "lit" : justAdded === idea.item.id ? "new" : null}
+        selected={selectedId === idea.item.id}
+        booking={bookingState(idea.item, reservations, !!factsOf(idea.item).book)}
         startWhy={justAdded === idea.item.id}
         onAdd={(k) => onAdd(idea.item.id, k)}
         onOpen={() => onOpen(idea.item.id)}
@@ -351,7 +369,7 @@ export function IdeasHome({
           </p>
           <div className="space-y-2.5">
             {rough.map((idea) => (
-              <div key={idea.item.id} id={`idea-${idea.item.id}`} className="rounded-2xl border border-dashed border-amber-400/60 bg-amber-400/[0.04] p-3.5">
+              <div key={idea.item.id} id={`item-${idea.item.id}`} className="rounded-2xl border border-dashed border-amber-400/60 bg-amber-400/[0.04] p-3.5">
                 <div className="flex items-start gap-3">
                   <div className="min-w-0 flex-1">
                     <p className="text-[15px] font-semibold break-words">{idea.item.name}</p>

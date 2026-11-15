@@ -5,7 +5,7 @@
 import type * as Y from "yjs";
 import { useEffect, useState } from "react";
 import { distanceKm } from "./geocode";
-import { updateItem, type Item } from "./trips";
+import { updateItem, type Item, type Reservation } from "./trips";
 
 export type Group = "food" | "sights" | "nature" | "experiences" | "shopping" | "other";
 export const GROUP_LABEL: Record<Group, string> = {
@@ -27,8 +27,11 @@ const RULES: [Group, RegExp][] = [
   ["shopping", /shop|mall|store|boutique|outlet|department/i],
 ];
 export function groupOf(it: Item): Group {
-  const own = (it as Item & { groupOverride?: Group }).groupOverride;
-  if (own) return own;
+  return (it as Item & { groupOverride?: Group }).groupOverride ?? autoGroupOf(it);
+}
+export const hasOwnGroup = (it: Item) => !!(it as Item & { groupOverride?: Group }).groupOverride;
+/** The app's own guess, ignoring any category the user picked */
+export function autoGroupOf(it: Item): Group {
   const text = `${it.category ?? ""} ${it.name}`;
   for (const [g, re] of RULES) if (re.test(text)) return g;
   return "other";
@@ -156,4 +159,24 @@ export function placeLine(it: Item, area: string | undefined, country: string | 
   const town = parts.length >= 3 ? parts[parts.length - 3] : parts.length ? parts[0] : area;
   const ctry = parts.length >= 2 ? parts[parts.length - 1] : country;
   return [town?.replace(/ (City|Prefecture)$/, ""), ctry].filter(Boolean).join(", ");
+}
+
+/* ---- Booking state: does the trip have a booking for this idea? ---- */
+export type BookingState =
+  | { kind: "none" }
+  | { kind: "needed" }
+  | { kind: "booked"; res: Reservation; date?: string; time?: string };
+
+/** A booking matches an idea when it's at the same spot (within ~300 m) or its title names the place */
+export function bookingFor(it: Item, reservations: Reservation[]): Reservation | undefined {
+  return reservations.find((r) => {
+    if (r.type === "flight" || r.type === "car" || r.type === "train") return false;
+    if (r.lat != null && r.lng != null && it.lat != null && it.lng != null && distanceKm([r.lng, r.lat], [it.lng, it.lat]) < 0.3) return true;
+    return looksLike(it.name, r.title);
+  });
+}
+export function bookingState(it: Item, reservations: Reservation[], needsBooking: boolean): BookingState {
+  const res = bookingFor(it, reservations);
+  if (res) return { kind: "booked", res, date: res.startDate, time: res.startTime };
+  return needsBooking ? { kind: "needed" } : { kind: "none" };
 }

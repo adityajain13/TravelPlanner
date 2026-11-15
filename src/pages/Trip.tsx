@@ -614,6 +614,8 @@ export function TripPage() {
                   return state.meta.destination;
                 }
               })()}
+              reservations={state.reservations}
+              selectedId={selectedId}
               existing={(text) => [
                 ...ideas
                   .filter((i) => looksLike(text, i.item.name))

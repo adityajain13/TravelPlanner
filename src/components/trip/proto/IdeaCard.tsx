@@ -2,10 +2,10 @@
 // must-do and votes, the day button and a ⋯ menu. Unfolded: a Recommendation section (good / watch out /
 // won't work, each with an icon and a word, not just a colour) and About (address, visit length, links).
 import { useEffect, useRef, useState } from "react";
-import { Check, ChevronDown, CircleAlert, ExternalLink, Map as MapIcon, MoreHorizontal, Pencil, Star, ThumbsUp, Trash2, X } from "lucide-react";
+import { Check, ChevronDown, CircleAlert, ExternalLink, Map as MapIcon, MoreHorizontal, Pencil, Star, ThumbsUp, Ticket, Trash2, X } from "lucide-react";
 import { googleMapsLink } from "../../../lib/photon";
 import { factsOf, isGoodFit } from "../../../lib/protoFit";
-import { addedByOf, GROUP_LABEL, GROUP_ORDER, isMustDo, mentionParts, votesOf, type Group } from "../../../lib/protoIdeas";
+import { addedByOf, autoGroupOf, GROUP_LABEL, GROUP_ORDER, hasOwnGroup, isMustDo, mentionParts, votesOf, type BookingState, type Group } from "../../../lib/protoIdeas";
 import { Avatar, MentionInput } from "./MentionInput";
 import { DayMenu, dayShort, type DayFit } from "./DayMenu";
 import type { Idea } from "./IdeasShelf";
@@ -22,6 +22,8 @@ export function IdeaCard({
   me,
   readOnly,
   highlight,
+  selected,
+  booking,
   startWhy,
   onAdd,
   onOpen,
@@ -42,6 +44,9 @@ export function IdeaCard({
   me: string | null;
   readOnly: boolean;
   highlight: "lit" | "new" | null;
+  /** Open on the map (his place card) */
+  selected: boolean;
+  booking: BookingState;
   /** Just captured: open the why field */
   startWhy: boolean;
   onAdd: (dayKey: string) => void;
@@ -75,25 +80,33 @@ export function IdeaCard({
 
   const categoryMenu = (
     <ul className="absolute top-full left-0 z-40 mt-1 w-44 rounded-xl border border-line bg-surface p-1 shadow-xl">
+      {/* Automatic: the app's guess from the place's map category and name; picking one below overrides it */}
+      <li>
+        <button onClick={() => (onGroup(undefined), setMenu(null))} className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-[13px] hover:bg-surface-2">
+          <span className="w-3.5">{!hasOwnGroup(it) && <Check className="size-3.5 text-accent" />}</span>
+          <span>
+            Automatic <span className="text-muted">({GROUP_LABEL[autoGroupOf(it)]})</span>
+          </span>
+        </button>
+      </li>
+      <li className="my-1 border-t border-line" aria-hidden />
       {GROUP_ORDER.map((g) => (
         <li key={g}>
           <button onClick={() => (onGroup(g), setMenu(null))} className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-[13px] hover:bg-surface-2">
-            <span className="w-3.5">{idea.group === g && <Check className="size-3.5 text-accent" />}</span>
+            <span className="w-3.5">{hasOwnGroup(it) && idea.group === g && <Check className="size-3.5 text-accent" />}</span>
             {GROUP_LABEL[g]}
           </button>
         </li>
       ))}
-      <li className="mt-1 border-t border-line pt-1">
-        <button onClick={() => (onGroup(undefined), setMenu(null))} className="w-full rounded-lg px-2.5 py-1.5 text-left text-[12px] text-muted hover:bg-surface-2">
-          Let the app decide
-        </button>
-      </li>
     </ul>
   );
 
   // Recommendation: the best day's reasons, then any day this can't go on
   const good = best && isGoodFit(best.fit) ? best.fit.reasons : [];
-  const warn = best ? best.fit.blockers.filter((b) => !best.fit.out || b.weight < 100) : [];
+  const booked = booking.kind === "booked" ? booking : null;
+  const warn = best ? best.fit.blockers.filter((b) => (!best.fit.out || b.weight < 100) && !(booked && b.text === "Book ahead")) : [];
+  const bookedDay = booked?.date ? days.find((d) => d.date === booked.date) : undefined;
+  const bookedText = booked ? (booked.date ? `${dayShort(booked.date)}${booked.time ? `, ${booked.time}` : ""}` : "no date yet") : "";
   const ruledOut = days.filter((d) => d.fit.out);
   const line = (kind: "good" | "warn" | "out", text: string, key: string) => (
     <li key={key} className={`flex items-start gap-2 ${kind === "good" ? "text-accent" : kind === "out" ? "text-red-600 dark:text-red-400" : "text-amber-700 dark:text-amber-300"}`}>
@@ -106,18 +119,18 @@ export function IdeaCard({
   );
 
   return (
+    // Clicking the card selects it (his place card opens over the map); the strip along the bottom unfolds it
     <div
-      id={`idea-${it.id}`}
-      className={`rounded-2xl border bg-surface transition-all duration-500 ${
-        highlight === "lit" ? "border-accent ring-4 ring-accent/20" : highlight === "new" ? "border-accent" : mustOn ? "border-amber-400/70" : "border-line"
+      id={`item-${it.id}`}
+      onClick={(e) => !(e.target as HTMLElement).closest("button,a,input,select,ul") && onOpen()}
+      className={`cursor-pointer rounded-2xl border bg-surface transition-all duration-500 ${
+        highlight === "lit" || selected ? "border-accent ring-4 ring-accent/20" : highlight === "new" ? "border-accent" : mustOn ? "border-amber-400/70" : "border-line"
       }`}
     >
       <div className="p-3.5">
         <div className="flex items-start gap-3">
           <div className="min-w-0 flex-1">
-            <button onClick={() => setOpen((o) => !o)} className="block max-w-full truncate text-left text-[16px] font-semibold hover:underline">
-              {it.name}
-            </button>
+            <p className="truncate text-[16px] font-semibold">{it.name}</p>
             <div ref={menu === "category" ? box : undefined} className="relative mt-0.5 flex flex-wrap items-center gap-x-1.5 text-[12.5px] text-muted">
               {where && <span>{where}</span>}
               {where && <span aria-hidden>·</span>}
@@ -130,11 +143,21 @@ export function IdeaCard({
                 {!readOnly && <ChevronDown className="size-3" />}
               </button>
               {menu === "category" && categoryMenu}
+              {booking.kind === "needed" && (
+                <span className="ml-1 flex items-center gap-1 rounded-full bg-amber-400/20 px-2 py-px text-[11.5px] font-semibold text-amber-800 dark:text-amber-300">
+                  <Ticket className="size-3" /> Book ahead
+                </span>
+              )}
+              {booked && (
+                <span className="ml-1 flex items-center gap-1 rounded-full bg-accent/15 px-2 py-px text-[11.5px] font-semibold text-accent" title={booked.res.title}>
+                  <Ticket className="size-3" /> <Check className="-ml-0.5 size-3" /> Booked · {bookedText}
+                </span>
+              )}
             </div>
           </div>
           {!readOnly && (
             <div ref={menu === "main" ? box : undefined} className="relative flex shrink-0 items-center gap-1">
-              <DayMenu days={days} best={best} onAdd={onAdd} />
+              <DayMenu days={days} best={best} booked={bookedDay} onAdd={onAdd} />
               <button onClick={() => setMenu(menu === "main" ? null : "main")} aria-label="More" className="grid size-8 place-items-center rounded-full text-muted hover:bg-surface-2 hover:text-fg">
                 <MoreHorizontal className="size-4" />
               </button>
@@ -142,9 +165,6 @@ export function IdeaCard({
                 <div className="absolute top-full right-0 z-40 mt-1 w-48 rounded-xl border border-line bg-surface p-1 shadow-xl">
                   <button onClick={() => (setEditing(true), setMenu(null))} className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-[13px] hover:bg-surface-2">
                     <Pencil className="size-3.5" /> {it.notes ? "Edit why" : "Add why"}
-                  </button>
-                  <button onClick={() => setMenu("category")} className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-[13px] hover:bg-surface-2">
-                    <ChevronDown className="size-3.5" /> Change category
                   </button>
                   <button onClick={() => (onOpen(), setMenu(null))} className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-[13px] hover:bg-surface-2">
                     <MapIcon className="size-3.5" /> Show on map
@@ -187,7 +207,13 @@ export function IdeaCard({
           )
         )}
 
-        <div className="mt-2.5 flex items-center gap-1.5">
+        <div
+          onClick={(e) => {
+            e.stopPropagation();
+            if (!(e.target as HTMLElement).closest("button")) setOpen((o) => !o);
+          }}
+          className="-mx-3.5 -mb-3.5 mt-1.5 flex items-center gap-1.5 rounded-b-2xl px-3.5 pt-1 pb-2.5 hover:bg-surface-2/50"
+        >
           {(!readOnly || mustOn) && (
             <button
               onClick={() => !readOnly && onMustDo()}
@@ -237,6 +263,7 @@ export function IdeaCard({
               <p className="mb-1.5 text-muted">Nothing planned nearby yet, so no day stands out.</p>
             )}
             <ul className="space-y-1">
+              {booked && line("good", `Booked (${bookedText}): ${booked.res.title}`, "booked")}
               {good.slice(0, 2).map((r, i) => line("good", r.text, `g${i}`))}
               {warn.map((b, i) => line("warn", b.text, `w${i}`))}
               {ruledOut.length > 0 && line("out", `${ruledOut[0].fit.blockers[0].text}: ${ruledOut.map((d) => dayShort(d.date)).join(", ")}`, "out")}
@@ -269,10 +296,10 @@ export function IdeaCard({
                   <dd>{facts.closed.map((d) => WEEKDAYS[d]).join(", ")}</dd>
                 </>
               ) : null}
-              {facts.book && (
+              {(facts.book || booked) && (
                 <>
                   <dt className="text-muted">Tickets</dt>
-                  <dd>Book ahead</dd>
+                  <dd>{booked ? `Booked · ${bookedText}${booked.res.confirmation ? ` · #${booked.res.confirmation}` : ""}` : "Book ahead"}</dd>
                 </>
               )}
               {group && by && (
