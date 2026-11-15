@@ -58,7 +58,8 @@ import { ScopeNav, type Scope } from "../components/trip/proto/ScopeNav";
 import { ScopeHeader } from "../components/trip/proto/ScopeHeader";
 import { SelectionBar } from "../components/trip/SelectionBar";
 import { UndoBar } from "../components/trip/UndoBars";
-import { AppBar } from "../components/trip/proto/AppBar";
+import { Rail, AREA_LABEL, type Area } from "../components/trip/proto/Rail";
+import { IdeasHome } from "../components/trip/proto/IdeasHome";
 import { TripLevel } from "../components/trip/proto/TripLevel";
 import { IdeasShelf, type Idea } from "../components/trip/proto/IdeasShelf";
 import { isPrep } from "../components/trip/proto/kinds";
@@ -186,6 +187,7 @@ export function TripPage() {
   const [layout] = useTripLayout();
   const scoped = layout !== "current";
   const layoutB = layout === "b";
+  const [area, setArea] = useState<Area>("itinerary"); // variant B: which rail area is open
   const autoScoped = useRef<string | null>(null);
   useEffect(() => {
     if (!scoped || !view || !id || autoScoped.current === id) return;
@@ -336,12 +338,22 @@ export function TripPage() {
   const pickScope = (s: Scope) => {
     const key = s.tab === "plan" ? s.key : null;
     if (key !== focus) setSelectedId(null);
+    // Variant B: drilling into a day or list also moves the rail to its area
+    const sec = key ? view.sections.find((x) => x.key === key) : undefined;
+    if (sec) setArea(sec.kind === "day" ? "itinerary" : isPrep(sec) ? "prep" : "ideas");
+    else if (s.tab !== "plan") setArea(s.tab);
     setTab(s.tab);
     setFocus(key);
     setMobileView("plan");
     setContentsDrawer(false);
     requestAnimationFrame(() => scrollRef.current?.scrollTo({ top: 0 }));
   };
+  const pickArea = (a: Area) => {
+    setArea(a);
+    pickScope(a === "bookings" || a === "budget" ? { tab: a } : { tab: "plan", key: null });
+    setArea(a);
+  };
+  const railArea: Area = tab === "bookings" ? "bookings" : tab === "budget" ? "budget" : area;
   const scopedSection = scoped && tab === "plan" && focus ? view.sections.find((s) => s.key === focus) : undefined;
   // Variant B: ideas = places in lists that aren't prep (Notes, Packing…); "planned" when a copy is on a day
   const ideas: Idea[] = layoutB
@@ -452,7 +464,22 @@ export function TripPage() {
   return (
     <div className="flex h-full flex-col md:flex-row">
       {/* Contents column (wide screens); a drawer below that */}
-      {layoutB ? null : scoped ? (
+      {layoutB ? (
+        // PROTOTYPE (proto/trip-focus): variant B's thin rail
+        <Rail
+          area={railArea}
+          onArea={pickArea}
+          counts={{ ideas: ideas.filter((i) => !i.days.length).length, bookings: state.reservations.length }}
+          history={history}
+          readOnly={readOnly}
+          canSync={canSync}
+          syncStatus={syncStatus}
+          isOwner={isOwner}
+          onShare={() => setSharing(true)}
+          onHistory={() => setShowHistory(true)}
+          onSettings={() => setShowSettings(true)}
+        />
+      ) : scoped ? (
         // PROTOTYPE (proto/trip-focus): variant A's sidebar picks the scope instead of scrolling
         <div className={`hidden shrink-0 border-r border-line bg-bg ${planHidden || contentsHidden ? "" : "lg:block"}`}>
           <div className="h-full w-[250px] xl:w-[280px]">
@@ -484,20 +511,16 @@ export function TripPage() {
       {contentsDrawer && <ContentsDrawer contents={contentsProps} history={history} readOnly={readOnly} onClose={() => setContentsDrawer(false)} />}
       {/* Plan panel */}
       <aside
-        className={`flex min-h-0 flex-col border-line bg-bg md:w-[480px] md:shrink-0 md:border-r ${layoutB && scopedSection?.kind === "day" ? "lg:w-[480px] xl:w-[540px]" : "lg:w-[540px] xl:w-[620px] 2xl:w-[680px]"} ${planHidden ? "md:hidden" : ""} ${
+        className={`flex min-h-0 flex-col border-line bg-bg md:w-[480px] md:shrink-0 md:border-r ${layoutB ? (scopedSection?.kind === "day" ? "lg:w-[480px] xl:w-[540px]" : "lg:w-[600px] xl:w-[700px] 2xl:w-[780px]") : "lg:w-[540px] xl:w-[620px] 2xl:w-[680px]"} ${planHidden ? "md:hidden" : ""} ${
           mobileView === "map" ? "max-md:hidden" : "flex-1 md:flex-none"
         }`}
       >
-        {layoutB ? (
-          <AppBar history={history} readOnly={readOnly} canSync={canSync} syncStatus={syncStatus} isOwner={isOwner} onShare={() => setSharing(true)} onHistory={() => setShowHistory(true)} onSettings={() => setShowSettings(true)} />
-        ) : (
-          <CollapsedContentsBar hidden={contentsHidden} readOnly={readOnly} history={history} onShow={showContents} />
-        )}
+        {!layoutB && <CollapsedContentsBar hidden={contentsHidden} readOnly={readOnly} history={history} onShow={showContents} />}
         <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto pb-28 md:pb-10">
           {/* PROTOTYPE (proto/trip-focus): one day or list on its own, under a slim bar */}
           {scopedSection ? (
             <>
-              <ScopeHeader title={state.meta.title} sections={overviewSections} focus={scopedSection.key} onPick={(key) => pickScope({ tab: "plan", key })}>
+              <ScopeHeader title={layoutB ? AREA_LABEL[area] : state.meta.title} sections={overviewSections} focus={scopedSection.key} onPick={(key) => pickScope({ tab: "plan", key })}>
                 {checked.size > 0 && (
                   <SelectionBar doc={doc} checked={checked} checkedIds={checkedIds} here={checkedHere} targets={targets} writeOf={writeOf} selectedId={selectedId} setSelectedId={setSelectedId} onClear={clearChecked} />
                 )}
@@ -512,8 +535,19 @@ export function TripPage() {
                 />
               </div>
             </>
+          ) : layoutB && tab === "plan" && area === "ideas" ? (
+            <IdeasHome
+              ideas={ideas}
+              days={overviewSections.filter((s) => s.kind === "day")}
+              lists={overviewSections.filter((s) => s.kind === "list" && !isPrep(s))}
+              readOnly={readOnly}
+              onAdd={addIdea}
+              onOpenList={(key) => pickScope({ tab: "plan", key })}
+              onOpenDay={(key) => pickScope({ tab: "plan", key })}
+            />
           ) : layoutB && tab === "plan" ? (
             <TripLevel
+              area={area === "prep" ? "prep" : "itinerary"}
               doc={doc}
               state={state}
               tripId={id!}
@@ -523,8 +557,6 @@ export function TripPage() {
               countdown={overview.countdown}
               attention={overview.attention}
               bookingsByDay={new Map([...chipsByDay].map(([d, c]) => [d, c.length]))}
-              scheduledIds={new Set(ideas.filter((i) => i.days.length).map((i) => i.item.id))}
-              budgetTotal={contentsProps.budgetTotal}
               onPick={pickScope}
               onOverview={() => setShowOverview(true)}
               onPickCover={() => setPickingCover(true)}
@@ -534,8 +566,7 @@ export function TripPage() {
             />
           ) : layoutB ? (
             <>
-              <ScopeHeader title={state.meta.title} sections={overviewSections} focus="" onPick={() => pickScope({ tab: "plan", key: null })} />
-              <div className="px-3">
+              <div className="px-3 pt-4">
                 {tab === "bookings" && <ReservationsPanel doc={doc} state={state} readOnly={readOnly} tripId={id} canForward={canReview} walkOn={walk.on} onToggleWalk={toggleWalk} />}
                 {tab === "budget" && <BudgetPanel doc={doc} state={state} readOnly={readOnly} />}
               </div>

@@ -1,6 +1,6 @@
-// PROTOTYPE (proto/trip-focus): variant B's top level. The plan pane *is* the navigation: days, ideas,
-// prep, then bookings and budget. Picking a row drills in; the map shows the whole trip meanwhile.
-import { ChevronRight, ImagePlus, LayoutDashboard, Lightbulb, ListChecks, PiggyBank, Ticket } from "lucide-react";
+// PROTOTYPE (proto/trip-focus): variant B's Itinerary and Prep areas (the rail picks the area). Itinerary:
+// compact trip header, overview, one row per day. Prep: notes and checklists. A row drills in.
+import { ChevronRight, ImagePlus, LayoutDashboard, ListChecks, Ticket } from "lucide-react";
 import type { ReactNode } from "react";
 import type * as Y from "yjs";
 import type { SectionInfo } from "../../Section";
@@ -10,12 +10,12 @@ import { Photo } from "../../Photo";
 import { OfflineMapButton } from "../../OfflineMapButton";
 import { dtf } from "../../../lib/intl";
 import { parseISODate } from "../../../lib/dates";
-import { formatMoney } from "../../../lib/fx";
 import { inkOn } from "../../../lib/colors";
 import { isPrep, placesIn } from "./kinds";
 import type { Scope } from "./ScopeNav";
 
 export function TripLevel({
+  area,
   doc,
   state,
   tripId,
@@ -25,13 +25,12 @@ export function TripLevel({
   countdown,
   attention,
   bookingsByDay,
-  scheduledIds,
-  budgetTotal,
   onPick,
   onOverview,
   onPickCover,
   tools,
 }: {
+  area: "itinerary" | "prep";
   doc: Y.Doc;
   state: TripState;
   tripId: string;
@@ -41,9 +40,6 @@ export function TripLevel({
   countdown: string;
   attention: number;
   bookingsByDay: Map<string, number>;
-  /** Idea ids that are on some day */
-  scheduledIds: Set<string>;
-  budgetTotal?: { amount: number; currency: string };
   onPick: (s: Scope) => void;
   onOverview: () => void;
   onPickCover: () => void;
@@ -52,7 +48,6 @@ export function TripLevel({
 }) {
   const { meta } = state;
   const days = sections.filter((s) => s.kind === "day");
-  const ideaLists = sections.filter((s) => s.kind === "list" && !isPrep(s));
   const prep = sections.filter((s) => s.kind === "list" && isPrep(s));
   const heading = (t: string, aside?: string) => (
     <div className="mt-7 mb-2 flex items-baseline px-2">
@@ -69,8 +64,28 @@ export function TripLevel({
       </span>
     </button>
   );
-  const ideas = ideaLists.flatMap(placesIn);
-  const unplanned = new Set(ideas.filter((i) => !scheduledIds.has(i.id)).map((i) => i.name)).size;
+
+  if (area === "prep")
+    return (
+      <div className="px-4 pt-6 pb-10">
+        <h1 className="px-2 font-display text-[28px] leading-tight">Prep</h1>
+        <p className="mt-1 mb-4 px-2 text-[14px] text-muted">Notes and checklists for before you go</p>
+        {!prep.length && <p className="px-2 text-[14px] text-muted">No notes or checklists yet.</p>}
+        {prep.map((s) =>
+          row(
+            s.key,
+            () => onPick({ tab: "plan", key: s.key }),
+            <>
+              <span className="grid size-10 shrink-0 place-items-center rounded-full bg-surface-2 text-muted">
+                <ListChecks className="size-[18px]" />
+              </span>
+              <span className="truncate font-semibold">{s.title}</span>
+            </>,
+            s.items.length > 0 && <span>{s.items.length}</span>,
+          ),
+        )}
+      </div>
+    );
 
   return (
     <div className="px-4 pt-5 pb-10">
@@ -147,65 +162,6 @@ export function TripLevel({
           </>,
         );
       })}
-
-      {ideaLists.length > 0 && heading("Ideas", unplanned ? `${unplanned} not on a day yet` : "All on a day")}
-      {ideaLists.map((s) => {
-        const ps = placesIn(s);
-        const planned = ps.filter((i) => scheduledIds.has(i.id)).length;
-        return row(
-          s.key,
-          () => onPick({ tab: "plan", key: s.key }),
-          <>
-            <span className="grid size-10 shrink-0 place-items-center rounded-full bg-amber-400/15 text-amber-500">
-              <Lightbulb className="size-[18px]" />
-            </span>
-            <span className="min-w-0">
-              <span className="block truncate font-semibold">{s.title}</span>
-              <span className="block truncate text-[13px] text-muted">{ps.map((i) => i.name).join(" · ") || "Empty"}</span>
-            </span>
-          </>,
-          ps.length > 0 && <span>{planned ? `${planned} of ${ps.length} planned` : `${ps.length}`}</span>,
-        );
-      })}
-
-      {prep.length > 0 && heading("Prep")}
-      {prep.map((s) =>
-        row(
-          s.key,
-          () => onPick({ tab: "plan", key: s.key }),
-          <>
-            <span className="grid size-10 shrink-0 place-items-center rounded-full bg-surface-2 text-muted">
-              <ListChecks className="size-[18px]" />
-            </span>
-            <span className="truncate font-semibold">{s.title}</span>
-          </>,
-          s.items.length > 0 && <span>{s.items.length}</span>,
-        ),
-      )}
-
-      {heading("Trip")}
-      {row(
-        "bookings",
-        () => onPick({ tab: "bookings" }),
-        <>
-          <span className="grid size-10 shrink-0 place-items-center rounded-full bg-surface-2 text-muted">
-            <Ticket className="size-[18px]" />
-          </span>
-          <span className="font-semibold">Bookings</span>
-        </>,
-        state.reservations.length > 0 && <span>{state.reservations.length}</span>,
-      )}
-      {row(
-        "budget",
-        () => onPick({ tab: "budget" }),
-        <>
-          <span className="grid size-10 shrink-0 place-items-center rounded-full bg-surface-2 text-muted">
-            <PiggyBank className="size-[18px]" />
-          </span>
-          <span className="font-semibold">Budget</span>
-        </>,
-        budgetTotal && <span>{formatMoney(budgetTotal.amount, budgetTotal.currency)}</span>,
-      )}
 
       <div className="mt-8 border-t border-line pt-4">
         <div className="mb-2 flex items-center px-2">
