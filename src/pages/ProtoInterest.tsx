@@ -589,6 +589,46 @@ function LiquidLine(props: VariantProps) {
   );
 }
 
+/** H3: H2 with the band as a soft glow radiating from the knob: a feathered oval (above and below the line too)
+    that stretches over the answers it covers. Agreed = a small round halo; scattered = a long, wide glow. */
+function KnobGlow(props: VariantProps) {
+  const a = answered(props.people, props.answers);
+  if (!a.length)
+    return (
+      <TrackButton props={props}>
+        <SoftTrack faint />
+      </TrackButton>
+    );
+  const lo = Math.min(...a);
+  const hi = Math.max(...a);
+  const mean = a.reduce((x, y) => x + y, 0) / a.length;
+  const PAD = 12; // how far the glow reaches past the outermost answers
+  const left = posX(lo) - PAD;
+  const width = posX(hi) - posX(lo) + PAD * 2;
+  return (
+    <TrackButton props={props} extra={isMixed(props.people, props.answers) ? <Mixed /> : undefined}>
+      <SoftTrack faint>
+        <span
+          aria-hidden
+          className="pointer-events-none absolute top-1/2 -translate-y-1/2"
+          style={{
+            left,
+            width,
+            height: Math.min(28, width), // a round halo when everyone agrees
+            background: lo === hi ? pcol(lo) : `linear-gradient(90deg,${pcol(lo)},${P.along} 50%,${pcol(hi)})`,
+            opacity: 0.6,
+            // feathered on every edge, not just along the line
+            maskImage: "radial-gradient(ellipse closest-side, #000 25%, rgb(0 0 0/.45) 60%, transparent)",
+            WebkitMaskImage: "radial-gradient(ellipse closest-side, #000 25%, rgb(0 0 0/.45) 60%, transparent)",
+            filter: "blur(1.5px)",
+          }}
+        />
+        <span className="absolute top-1/2 size-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full ring-2 ring-surface shadow-sm" style={{ left: posX(mean), background: meanCol(mean) }} />
+      </SoftTrack>
+    </TrackButton>
+  );
+}
+
 const VARIANTS: { id: string; name: string; note: string; where: "top" | "bottom"; sliders?: boolean; C: (p: VariantProps) => ReactNode }[] = [
   { id: "A", name: "Avatar strip", note: "Who and what at once. Click your own avatar to answer.", where: "top", C: AvatarStrip },
   { id: "B", name: "Counts", note: "Smallest. Says how many, not who (hover/expand for names).", where: "top", C: Counts },
@@ -602,6 +642,7 @@ const VARIANTS: { id: string; name: string; note: string; where: "top" | "bottom
   { id: "J", name: "Stacked bar (survey standard)", note: "The usual Likert chart: red / grey / amber segments sized by count; hatched = not answered.", where: "bottom", sliders: true, C: StackedBar },
   { id: "J2", name: "Stacked bar, calm colours", note: "J in one palette: terracotta = sit out, light grey = tag along, green = must do; hatched = not answered.", where: "bottom", sliders: true, C: StackedClean },
   { id: "J3", name: "Diverging stacked bar", note: "Survey-report standard: sit-outs grow left of the centre line, must-dos right. Shows direction and agreement.", where: "bottom", sliders: true, C: StackedDiverging },
+  { id: "H3", name: "Knob + glow", note: "H2 with the band as a feathered glow radiating from the knob, above and below the line. Agreed = small halo; scattered = long, wide glow.", where: "bottom", sliders: true, C: KnobGlow },
   { id: "H2", name: "Knob + band, calm colours", note: "H in the same palette; the band fades at its ends and takes the colours of the answers it spans.", where: "bottom", sliders: true, C: KnobBand2 },
   { id: "I2", name: "Liquid line", note: "The line is part of the blob: answers swell out of it. Clear-cut = a round drop; disagreement = a long swelling.", where: "bottom", sliders: true, C: LiquidLine },
   { id: "K", name: "Donut (consensus tools)", note: "How decision tools like Loomio show a vote: a small ring split by answer, ★ in the middle if anyone must-dos it.", where: "bottom", sliders: true, C: Donut },
@@ -699,7 +740,7 @@ export function ProtoInterest() {
   const [answers, setAnswers] = useState<Answers>(START);
   const [expanded, setExpanded] = useState(false);
   const [shortlist, setShortlist] = useState(true);
-  const SHORTLIST = ["H", "H2", "J", "J2", "J3", "I", "I2"];
+  const SHORTLIST = ["H3", "H2", "J2", "J3", "I2"];
   const people = ALL_PEOPLE.slice(0, count);
   const props: VariantProps = { people, me, answers, set: (a) => setAnswers((x) => ({ ...x, [me]: a })) };
 
