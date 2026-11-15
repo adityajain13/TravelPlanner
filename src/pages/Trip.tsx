@@ -608,6 +608,7 @@ export function TripPage() {
             countdown={overview.countdown}
             readOnly={readOnly}
             history={history}
+            compact={!!scopedSection}
             canSync={canSync}
             syncStatus={syncStatus}
             isOwner={isOwner}
