@@ -1,12 +1,30 @@
 import { Navigate, useParams } from "react-router-dom";
 import { useLiveQuery } from "dexie-react-hooks";
-import { KeyboardSensor, PointerSensor, TouchSensor, useSensor, useSensors } from "@dnd-kit/core";
+import {
+  KeyboardSensor,
+  PointerSensor,
+  TouchSensor,
+  useSensor,
+  useSensors,
+} from "@dnd-kit/core";
 import { sortableKeyboardCoordinates } from "@dnd-kit/sortable";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useConverter } from "../lib/fx";
 import { budgetLines, totals } from "../lib/budget";
 import { setShareToken } from "../lib/shareToken";
-import { addItem, addList, copiesByItem, copyItems, isDraftSection, removeItem, removeItems, setReadOnly, updateItem, type Item, type Reservation } from "../lib/trips";
+import {
+  addItem,
+  addList,
+  copiesByItem,
+  copyItems,
+  isDraftSection,
+  removeItem,
+  removeItems,
+  setReadOnly,
+  updateItem,
+  type Item,
+  type Reservation,
+} from "../lib/trips";
 import { setHistoryAuthor } from "../lib/history";
 import { addPlace, setCollapsed } from "../lib/itemActions";
 import { daysBetween, todayISO } from "../lib/dates";
@@ -34,7 +52,10 @@ import { OverviewContent } from "../components/overview/OverviewContent";
 import { localISO, overviewOf, type OverviewTarget } from "../lib/overview";
 import type { Tab } from "../components/Contents";
 import type { SectionTarget } from "../components/SectionPicker";
-import { ContentsColumn, ContentsDrawer } from "../components/trip/ContentsColumn";
+import {
+  ContentsColumn,
+  ContentsDrawer,
+} from "../components/trip/ContentsColumn";
 import { CollapsedContentsBar } from "../components/trip/CollapsedContentsBar";
 import { TripHero } from "../components/trip/TripHero";
 import { TripTabsBar } from "../components/trip/TripTabsBar";
@@ -50,9 +71,18 @@ import { TravelModeView } from "../components/trip/TravelModeView";
 import { TripDialogs } from "../components/trip/TripDialogs";
 import { HistoryDialog } from "../components/HistoryDialog";
 import { MobileViewSwitch } from "../components/trip/MobileViewSwitch";
-import type { DayFrame, PhotoFill, PlanContext, ReceiptTarget } from "../components/trip/types";
+import type {
+  DayFrame,
+  PhotoFill,
+  PlanContext,
+  ReceiptTarget,
+} from "../components/trip/types";
 // PROTOTYPE (proto/trip-focus)
-import { useTripLayout } from "../lib/protoTripLayout";
+import {
+  useCardStyle,
+  useTripLayout,
+  type CardStyle,
+} from "../lib/protoTripLayout";
 import { LayoutSwitch } from "../components/trip/proto/LayoutSwitch";
 import { ScopeNav, type Scope } from "../components/trip/proto/ScopeNav";
 import { ScopeHeader } from "../components/trip/proto/ScopeHeader";
@@ -62,7 +92,19 @@ import { Rail, AREA_LABEL, type Area } from "../components/trip/proto/Rail";
 import { TripBar } from "../components/trip/proto/TripBar";
 import { OfflineMapButton } from "../components/OfflineMapButton";
 import { IdeasHome } from "../components/trip/proto/IdeasHome";
-import { addedByOf, groupOf, isIdeaItem, isMustDo, isRough, looksLike, removedByOf, setExtra, setWhy, toggleVote, votesOf } from "../lib/protoIdeas";
+import {
+  addedByOf,
+  groupOf,
+  isIdeaItem,
+  isMustDo,
+  isRough,
+  looksLike,
+  removedByOf,
+  setExtra,
+  setWhy,
+  toggleVote,
+  votesOf,
+} from "../lib/protoIdeas";
 import { samePlace } from "../lib/trips";
 import type { PlaceResult } from "../lib/photon";
 import { TripLevel } from "../components/trip/proto/TripLevel";
@@ -80,10 +122,29 @@ export function TripPage() {
   const [checked, setChecked] = useState<Set<string>>(new Set());
   const lastChecked = useRef<string | null>(null);
   // Device-local view state (panel mode, hidden columns, day drafts, unpinned places)
-  const { panelMode, setPanelMode, dayDraft, setDayDraft, contentsHidden, hideContents, planHidden, togglePlan, unpinned, dismissUnpinned, viewing: storedViewing, setViewing } = useTripViewState(id);
+  const {
+    panelMode,
+    setPanelMode,
+    dayDraft,
+    setDayDraft,
+    contentsHidden,
+    hideContents,
+    planHidden,
+    togglePlan,
+    unpinned,
+    dismissUnpinned,
+    viewing: storedViewing,
+    setViewing,
+  } = useTripViewState(id);
   // Whose view of a split day (see lib/branches.ts); a person no longer on the trip falls back to everyone
-  const viewing = storedViewing && state?.meta.travelers?.includes(storedViewing) ? storedViewing : undefined;
-  const [panelInset, setPanelInset] = useState<{ top: number; bottom: number } | null>(null);
+  const viewing =
+    storedViewing && state?.meta.travelers?.includes(storedViewing)
+      ? storedViewing
+      : undefined;
+  const [panelInset, setPanelInset] = useState<{
+    top: number;
+    bottom: number;
+  } | null>(null);
   const [costFor, setCostFor] = useState<string | null>(null); // stop whose cost details are open
   const [focus, setFocus] = useState<string | null>(null); // section shown alone on the map
   const [compareDay, setCompareDay] = useState<string | null>(null);
@@ -98,27 +159,42 @@ export function TripPage() {
   const [mapPicked, setMapPicked] = useState<string | null>(null);
   const [dayFrame, setDayFrame] = useState<DayFrame | null>(null);
   // A spot picked by a long press on the map (its place card is open)
-  const [held, setHeld] = useState<{ at: [number, number]; zoom: number } | null>(null);
+  const [held, setHeld] = useState<{
+    at: [number, number];
+    zoom: number;
+  } | null>(null);
   const [showOverview, setShowOverview] = useState(false);
   const headerRef = useRef<HTMLElement>(null);
   const fx = useConverter(state?.meta.currency ?? "CAD");
-  const [editingRes, setEditingRes] = useState<Partial<Reservation> | null>(null);
+  const [editingRes, setEditingRes] = useState<Partial<Reservation> | null>(
+    null,
+  );
   const [pickingCover, setPickingCover] = useState(false);
   const [photoFill, setPhotoFill] = useState<PhotoFill | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const [waited, setWaited] = useState(false);
 
   // Trip index row tells us whether this is our trip or one opened from a share link
-  const row = useLiveQuery(() => (id ? db.trips.get(id) : undefined), [id], LOADING);
+  const row = useLiveQuery(
+    () => (id ? db.trips.get(id) : undefined),
+    [id],
+    LOADING,
+  );
   const { status: auth } = useSession();
   const shareToken = row !== LOADING ? row?.shareToken : undefined;
   const readOnly = row !== LOADING && row?.role === "view";
-  const isOwner = row !== LOADING && !shareToken && !row?.owner && auth === "in";
+  const isOwner =
+    row !== LOADING && !shareToken && !row?.owner && auth === "in";
   // Owner, or an editor on someone else's trip with their own login: sees forwarded bookings
-  const canReview = isOwner || (row !== LOADING && !!row?.owner && row.role === "edit" && auth === "in");
+  const canReview =
+    isOwner ||
+    (row !== LOADING && !!row?.owner && row.role === "edit" && auth === "in");
   const canSync = row !== LOADING && (!!shareToken || auth === "in");
   setShareToken(shareToken);
-  const { status: syncStatus, synced } = useSync(id, doc, { shareToken, enabled: canSync });
+  const { status: syncStatus, synced } = useSync(id, doc, {
+    shareToken,
+    enabled: canSync,
+  });
   const history = useUndo(doc, readOnly);
 
   useEffect(() => {
@@ -130,7 +206,13 @@ export function TripPage() {
   useEffect(() => {
     if (doc) setHistoryAuthor(doc, myEmail?.toLowerCase());
   }, [doc, myEmail]);
-  const settingsScope = useMemo(() => (doc && myEmail && !readOnly ? { doc, email: myEmail.toLowerCase() } : null), [doc, myEmail, readOnly]);
+  const settingsScope = useMemo(
+    () =>
+      doc && myEmail && !readOnly
+        ? { doc, email: myEmail.toLowerCase() }
+        : null,
+    [doc, myEmail, readOnly],
+  );
   const [settings] = useSettings(settingsScope);
   // Travel mode (phones): the light day view; background lookups (photos, pins, notes) pause
   const [travelOn, setTravelOn] = useTravelMode();
@@ -145,14 +227,22 @@ export function TripPage() {
   const reviewDone = useRef(false);
   useEffect(() => {
     const url = new URL(window.location.href);
-    if (reviewDone.current || url.searchParams.get("review") !== "1" || !inbox.length) return;
+    if (
+      reviewDone.current ||
+      url.searchParams.get("review") !== "1" ||
+      !inbox.length
+    )
+      return;
     reviewDone.current = true;
     url.searchParams.delete("review");
     window.history.replaceState(window.history.state, "", url);
     setTab("plan");
     setMobileView("plan");
     setReviewing(true);
-    setTimeout(() => scrollToId(scrollRef.current, "inbox-review", "start"), 40); // after the tab renders
+    setTimeout(
+      () => scrollToId(scrollRef.current, "inbox-review", "start"),
+      40,
+    ); // after the tab renders
   }, [inbox]);
   useEffect(() => {
     setWaited(false);
@@ -162,40 +252,59 @@ export function TripPage() {
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
-    useSensor(TouchSensor, { activationConstraint: { delay: 180, tolerance: 6 } }),
-    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+    useSensor(TouchSensor, {
+      activationConstraint: { delay: 180, tolerance: 6 },
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    }),
   );
 
   // Settings → Stop times: Auto. Each day's stops get times worked out from the day's start, how
   // long each stop takes and the routes between; the cards show those instead of typed times.
   const autoOn = settings.timing === "auto";
-  const { view, flights, legResults, routes, legsBySection, timed } = useItinerary(state, { focus, dayDraft, autoOn, viewing });
+  const { view, flights, legResults, routes, legsBySection, timed } =
+    useItinerary(state, { focus, dayDraft, autoOn, viewing });
 
   // Background fix-ups (pins, photos, notes, old imports)
   useTripUpkeep({ doc, state, readOnly, lite, auth });
 
   // Worked out once per change (not per card per render): items grouped by name, then matched
-  const copyGroups = useMemo(() => copiesByItem(state?.items ?? []), [state?.items]);
+  const copyGroups = useMemo(
+    () => copiesByItem(state?.items ?? []),
+    [state?.items],
+  );
   // Each day's booking cards, worked out once per change to the bookings (not per day per render)
   const chipsByDay = useMemo(() => {
     const m = new Map<string, ReturnType<typeof dayChips>>();
-    if (state) for (const d of daysBetween(state.meta.startDate, state.meta.endDate)) m.set(d, dayChips(state.reservations, d));
+    if (state)
+      for (const d of daysBetween(state.meta.startDate, state.meta.endDate))
+        m.set(d, dayChips(state.reservations, d));
     return m;
   }, [state?.reservations, state?.meta.startDate, state?.meta.endDate]);
   // "How far can I walk" areas: eye-toggled stops and bookings (per device), drawn for the focused day
   const { toggles: walkToggles, setMany: setWalk } = useWalkToggles(id);
-  const walk = useMemo(() => walkPlan(state, view?.sections ?? [], focus, walkToggles), [state, view, focus, walkToggles]);
+  const walk = useMemo(
+    () => walkPlan(state, view?.sections ?? [], focus, walkToggles),
+    [state, view, focus, walkToggles],
+  );
   const walkAreas = useWalkAreas(walk.targets, settings.walkMinutes);
-  const toggleWalk = (itemId: string) => setWalk(walk.copies.get(itemId) ?? [itemId], !walk.on.has(itemId));
+  const toggleWalk = (itemId: string) =>
+    setWalk(walk.copies.get(itemId) ?? [itemId], !walk.on.has(itemId));
   // PROTOTYPE (proto/trip-focus): variant A scopes the plan and map to one day or list (the map's
   // existing `focus`). During the trip it opens on today; ?today=2026-12-02 tries that.
   const [layout] = useTripLayout();
+  const [cardStyle, setCardStyle] = useCardStyle();
   const scoped = layout !== "current";
   const layoutB = layout === "b";
   const [area, setArea] = useState<Area>("itinerary"); // variant B: which rail area is open
   const [justAdded, setJustAdded] = useState<string | null>(null); // the idea whose "why" field is open
   const [flash, setFlash] = useState<{ id: string; n: number } | null>(null); // an idea to point at
-  const [toast, setToast] = useState<{ text: string; undo?: boolean; n: number } | null>(null);
+  const [toast, setToast] = useState<{
+    text: string;
+    undo?: boolean;
+    n: number;
+  } | null>(null);
   useEffect(() => {
     if (!toast) return;
     const t = setTimeout(() => setToast(null), 5000);
@@ -213,22 +322,43 @@ export function TripPage() {
   useEffect(() => {
     if (!scoped || !view || !id || autoScoped.current === id) return;
     autoScoped.current = id;
-    const t = new URLSearchParams(location.search).get("today")?.slice(0, 10) || todayISO();
+    const t =
+      new URLSearchParams(location.search).get("today")?.slice(0, 10) ||
+      todayISO();
     const d = view.sections.find((s) => s.kind === "day" && s.date === t);
     if (d) setFocus(d.key);
   }, [scoped, view, id]);
-  if (row !== LOADING && !shareToken && auth === "out") return <Navigate to="/login" replace />;
-  if (!ready || row === LOADING) return <div className="grid h-full place-items-center text-muted">Loading…</div>;
-  if (!state || !doc || !view) return <TripUnavailable canSync={canSync} syncStatus={syncStatus} synced={synced} waited={waited} />;
+  if (row !== LOADING && !shareToken && auth === "out")
+    return <Navigate to="/login" replace />;
+  if (!ready || row === LOADING)
+    return (
+      <div className="grid h-full place-items-center text-muted">Loading…</div>
+    );
+  if (!state || !doc || !view)
+    return (
+      <TripUnavailable
+        canSync={canSync}
+        syncStatus={syncStatus}
+        synced={synced}
+        waited={waited}
+      />
+    );
 
   const near = state.meta.center;
   // A day showing a draft: edits and moves into "that day" land in the draft
-  const writeOf = (key: string) => view.sections.find((s) => s.key === key)?.writeKey ?? key;
-  const shownKey = (section: string) => (isDraftSection(section) ? (view.sections.find((s) => s.writeKey === section)?.key ?? section) : section);
+  const writeOf = (key: string) =>
+    view.sections.find((s) => s.key === key)?.writeKey ?? key;
+  const shownKey = (section: string) =>
+    isDraftSection(section)
+      ? (view.sections.find((s) => s.writeKey === section)?.key ?? section)
+      : section;
   // A place can sit on several days/lists (as copies); the day menu ticks and toggles them
   // Notes and checklists aren't in copyGroups: each is its own only copy
-  const copiesOf = (itemId: string) => copyGroups.get(itemId) ?? state.items.filter((x) => x.id === itemId);
-  const sectionsOf = (itemId: string) => [...new Set(copiesOf(itemId).map((x) => shownKey(x.section)))];
+  const copiesOf = (itemId: string) =>
+    copyGroups.get(itemId) ?? state.items.filter((x) => x.id === itemId);
+  const sectionsOf = (itemId: string) => [
+    ...new Set(copiesOf(itemId).map((x) => shownKey(x.section))),
+  ];
   const toggleSection = (itemId: string, shown: string) => {
     if (!doc) return;
     const key = writeOf(shown);
@@ -236,8 +366,12 @@ export function TripPage() {
     const there = copies.filter((x) => x.section === key);
     if (!there.length) return void copyItems(doc, [itemId], key);
     if (there.length >= copies.length) return; // keep it on at least one day or list
-    removeItems(doc, there.map((x) => x.id));
-    if (selectedId && there.some((x) => x.id === selectedId)) setSelectedId(copies.find((x) => x.section !== key)!.id);
+    removeItems(
+      doc,
+      there.map((x) => x.id),
+    );
+    if (selectedId && there.some((x) => x.id === selectedId))
+      setSelectedId(copies.find((x) => x.section !== key)!.id);
   };
   // Scrolls to a booking card in the open tab and flashes it; false if it isn't rendered
   const flashBooking = (resId: string): boolean => {
@@ -274,7 +408,9 @@ export function TripPage() {
       if (flashBooking(resId)) return;
       // Card is inside a collapsed day: open that day, then retry
       const r = state.reservations.find((x) => x.id === resId);
-      const day = r && view.sections.find((s) => s.kind === "day" && s.date === r.startDate);
+      const day =
+        r &&
+        view.sections.find((s) => s.kind === "day" && s.date === r.startDate);
       if (day && (state.meta.collapsed ?? []).includes(day.key)) {
         setCollapsed(doc, state, day.key, false);
         setMobileView("plan");
@@ -295,13 +431,20 @@ export function TripPage() {
 
   const targets: SectionTarget[] = view.sections
     .filter((s) => s.key !== ORPHAN)
-    .map((s) => ({ key: s.key, color: s.color, label: s.kind === "day" ? formatChip(s.date!) : (s.title ?? "List") }));
+    .map((s) => ({
+      key: s.key,
+      color: s.color,
+      label: s.kind === "day" ? formatChip(s.date!) : (s.title ?? "List"),
+    }));
   const flatIds = view.sections.flatMap((s) => s.items.map((i) => i.id));
   const onCheck = (itemId: string, on: boolean, shift: boolean) => {
     // Shift-click selects the whole run since the last box ticked (computed now, not in the updater)
     const a = lastChecked.current ? flatIds.indexOf(lastChecked.current) : -1;
     const b = flatIds.indexOf(itemId);
-    const range = shift && a >= 0 && b >= 0 ? flatIds.slice(Math.min(a, b), Math.max(a, b) + 1) : [itemId];
+    const range =
+      shift && a >= 0 && b >= 0
+        ? flatIds.slice(Math.min(a, b), Math.max(a, b) + 1)
+        : [itemId];
     setChecked((prev) => {
       const next = new Set(prev);
       for (const x of range) on ? next.add(x) : next.delete(x);
@@ -309,39 +452,68 @@ export function TripPage() {
     });
     lastChecked.current = itemId;
   };
-  const clearChecked = () => (setChecked(new Set()), (lastChecked.current = null));
+  const clearChecked = () => (
+    setChecked(new Set()),
+    (lastChecked.current = null)
+  );
   const checkedIds = flatIds.filter((x) => checked.has(x));
   // Days/lists the ticked stops are on now (the selection bar's menus mark them)
-  const checkedHere = [...new Set(checkedIds.map((id) => state.items.find((x) => x.id === id)).filter(Boolean).map((x) => shownKey(x!.section)))];
+  const checkedHere = [
+    ...new Set(
+      checkedIds
+        .map((id) => state.items.find((x) => x.id === id))
+        .filter(Boolean)
+        .map((x) => shownKey(x!.section)),
+    ),
+  ];
 
   // Place panel over the map for the open card
-  const openSection = selectedId ? timed.sections.find((s) => s.items.some((i) => i.id === selectedId)) : undefined;
-  const openItem = openSection?.items.find((i) => i.id === selectedId && i.kind === "place");
-  const openPlaces = openSection?.items.filter((i) => i.kind === "place" && !i.waypoint) ?? [];
-  const openIdx = openItem ? openPlaces.findIndex((i) => i.id === openItem.id) : -1;
+  const openSection = selectedId
+    ? timed.sections.find((s) => s.items.some((i) => i.id === selectedId))
+    : undefined;
+  const openItem = openSection?.items.find(
+    (i) => i.id === selectedId && i.kind === "place",
+  );
+  const openPlaces =
+    openSection?.items.filter((i) => i.kind === "place" && !i.waypoint) ?? [];
+  const openIdx = openItem
+    ? openPlaces.findIndex((i) => i.id === openItem.id)
+    : -1;
   // After adding a stop: scroll so the leg into the stop above it sits at the top, i.e.
   // route → previous stop → route → new stop (the add box stays just below)
   const revealAdded = (newId: string) =>
     requestAnimationFrame(() =>
       requestAnimationFrame(() => {
-        const wrap = document.getElementById(`item-${newId}`)?.closest<HTMLElement>("[data-item-wrap]");
+        const wrap = document
+          .getElementById(`item-${newId}`)
+          ?.closest<HTMLElement>("[data-item-wrap]");
         const prev = wrap?.previousElementSibling as HTMLElement | null;
         const target = prev?.matches("[data-item-wrap]") ? prev : wrap;
-        if (target && scrollRef.current) scrollToEl(scrollRef.current, target, "start");
+        if (target && scrollRef.current)
+          scrollToEl(scrollRef.current, target, "start");
       }),
     );
   const goTo = (itemId: string) => {
     setSelectedId(itemId);
-    requestAnimationFrame(() => scrollToId(scrollRef.current, `item-${itemId}`, "center"));
+    requestAnimationFrame(() =>
+      scrollToId(scrollRef.current, `item-${itemId}`, "center"),
+    );
   };
-  const showContents = () => (window.matchMedia("(min-width: 1024px)").matches ? hideContents(false) : setContentsDrawer(true));
+  const showContents = () =>
+    window.matchMedia("(min-width: 1024px)").matches
+      ? hideContents(false)
+      : setContentsDrawer(true);
   const go = (next: Tab, targetId?: string) => {
     setTab(next);
     setMobileView("plan");
     setContentsDrawer(false);
     // let the tab render before scrolling to its section
     setTimeout(() => {
-      if (!(targetId && scrollToId(scrollRef.current, targetId))) scrollRef.current?.scrollTo({ top: headerRef.current?.offsetHeight ?? 0, behavior: "smooth" });
+      if (!(targetId && scrollToId(scrollRef.current, targetId)))
+        scrollRef.current?.scrollTo({
+          top: headerRef.current?.offsetHeight ?? 0,
+          behavior: "smooth",
+        });
     }, 40);
   };
   const lines = budgetLines(state, fx.convert);
@@ -361,7 +533,10 @@ export function TripPage() {
     if (key !== focus) setSelectedId(null);
     // Variant B: drilling into a day or list also moves the rail to its area
     const sec = key ? view.sections.find((x) => x.key === key) : undefined;
-    if (sec) setArea(sec.kind === "day" ? "itinerary" : isPrep(sec) ? "prep" : "ideas");
+    if (sec)
+      setArea(
+        sec.kind === "day" ? "itinerary" : isPrep(sec) ? "prep" : "ideas",
+      );
     else if (s.tab !== "plan") setArea(s.tab);
     setTab(s.tab);
     setFocus(key);
@@ -371,24 +546,41 @@ export function TripPage() {
   };
   const pickArea = (a: Area) => {
     setArea(a);
-    pickScope(a === "bookings" || a === "budget" ? { tab: a } : { tab: "plan", key: null });
+    pickScope(
+      a === "bookings" || a === "budget"
+        ? { tab: a }
+        : { tab: "plan", key: null },
+    );
     setArea(a);
   };
-  const railArea: Area = tab === "bookings" ? "bookings" : tab === "budget" ? "budget" : area;
-  const scopedSection = scoped && tab === "plan" && focus ? view.sections.find((s) => s.key === focus) : undefined;
+  const railArea: Area =
+    tab === "bookings" ? "bookings" : tab === "budget" ? "budget" : area;
+  const scopedSection =
+    scoped && tab === "plan" && focus
+      ? view.sections.find((s) => s.key === focus)
+      : undefined;
   // Variant B: ideas = places and rough notes in lists that aren't prep (Notes, Packing…); "planned" when a copy is on a day
-  const ideaLists = overviewSections.filter((s) => s.kind === "list" && !isPrep(s));
+  const ideaLists = overviewSections.filter(
+    (s) => s.kind === "list" && !isPrep(s),
+  );
   const allIdeas: Idea[] = layoutB
     ? ideaLists.flatMap((s) =>
         s.items
           .filter(isIdeaItem)
-          .map((item) => ({ item, list: s.title ?? "List", days: sectionsOf(item.id).filter((k) => k.startsWith("day:")), group: groupOf(item), rough: isRough(item) })),
+          .map((item) => ({
+            item,
+            list: s.title ?? "List",
+            days: sectionsOf(item.id).filter((k) => k.startsWith("day:")),
+            group: groupOf(item),
+            rough: isRough(item),
+          })),
       )
     : [];
   const ideas = allIdeas.filter((i) => !removedByOf(i.item));
   const removedIdeas = allIdeas.filter((i) => removedByOf(i.item));
   const people = state.meta.travelers ?? [];
-  const me = meStored && people.includes(meStored) ? meStored : (people[0] ?? null);
+  const me =
+    meStored && people.includes(meStored) ? meStored : (people[0] ?? null);
   const setMe = (who: string) => {
     setMeStored(who);
     try {
@@ -403,20 +595,46 @@ export function TripPage() {
     if (me) setExtra(doc, id, { addedBy: me, votes: [me] });
     setJustAdded(id);
   };
-  const say = (text: string, undo?: boolean) => setToast({ text, undo, n: Date.now() });
+  const say = (text: string, undo?: boolean) =>
+    setToast({ text, undo, n: Date.now() });
   // Capturing something that's already an idea (or already on a day) points at it instead of adding it twice
   const captureOrPoint = (p: PlaceResult) => {
-    const probe = { kind: "place", name: p.name, lat: p.lat, lng: p.lng, osmId: p.osmId, googlePlaceId: p.googlePlaceId } as Item;
+    const probe = {
+      kind: "place",
+      name: p.name,
+      lat: p.lat,
+      lng: p.lng,
+      osmId: p.osmId,
+      googlePlaceId: p.googlePlaceId,
+    } as Item;
     const dup = ideas.find((i) => !i.rough && samePlace(i.item, probe));
     if (dup) {
-      if (people.length >= 2 && me && !votesOf(dup.item).includes(me)) toggleVote(doc, dup.item, me);
-      if (dup.days.length) return say(`${dup.item.name} is already on ${dup.days.map((k) => formatChip(k.slice(4))).join(", ")}`);
+      if (people.length >= 2 && me && !votesOf(dup.item).includes(me))
+        toggleVote(doc, dup.item, me);
+      if (dup.days.length)
+        return say(
+          `${dup.item.name} is already on ${dup.days.map((k) => formatChip(k.slice(4))).join(", ")}`,
+        );
       setFlash({ id: dup.item.id, n: Date.now() });
-      return say(people.length >= 2 ? `Already an idea: added your vote` : "Already an idea");
+      return say(
+        people.length >= 2
+          ? `Already an idea: added your vote`
+          : "Already an idea",
+      );
     }
-    const onDay = state.items.find((x) => x.section.startsWith("day:") && samePlace(x, probe));
-    if (onDay) return say(`${onDay.name} is already on ${formatChip(onDay.section.slice(4))}`);
-    captured(addPlace(doc, poolKey(), p, undefined, { destination: state.meta.destination, near }));
+    const onDay = state.items.find(
+      (x) => x.section.startsWith("day:") && samePlace(x, probe),
+    );
+    if (onDay)
+      return say(
+        `${onDay.name} is already on ${formatChip(onDay.section.slice(4))}`,
+      );
+    captured(
+      addPlace(doc, poolKey(), p, undefined, {
+        destination: state.meta.destination,
+        near,
+      }),
+    );
   };
   // Your own idea goes (undo brings it back); someone else's moves to "Removed" so it can be restored
   const removeIdea = (itemId: string) => {
@@ -437,15 +655,28 @@ export function TripPage() {
   };
   const ideaMapView = (() => {
     if (!layoutB || area !== "ideas" || tab !== "plan" || focus) return null;
-    const openIds = new Set(ideas.filter((i) => !i.days.length && !i.rough).map((i) => i.item.id));
-    const dayIds = new Set(overviewSections.filter((s) => s.kind === "day").flatMap((s) => s.items.map((i) => i.id)));
+    const openIds = new Set(
+      ideas.filter((i) => !i.days.length && !i.rough).map((i) => i.item.id),
+    );
+    const dayIds = new Set(
+      overviewSections
+        .filter((s) => s.kind === "day")
+        .flatMap((s) => s.items.map((i) => i.id)),
+    );
     // Ideas in amber; planned stops stay as faint context
-    const pins = view.pins.flatMap((p) => (openIds.has(p.id) ? [{ ...p, color: "#f59e0b", label: "" }] : dayIds.has(p.id) ? [{ ...p, color: "#b8beba", label: "" }] : []));
+    const pins = view.pins.flatMap((p) =>
+      openIds.has(p.id)
+        ? [{ ...p, color: "#f59e0b", label: "" }]
+        : dayIds.has(p.id)
+          ? [{ ...p, color: "#b8beba", label: "" }]
+          : [],
+    );
     return { ...view, pins };
   })();
   const onOverviewGo = (t: OverviewTarget) => {
     setShowOverview(false);
-    if (scoped && t.kind === "section") return pickScope({ tab: "plan", key: t.key });
+    if (scoped && t.kind === "section")
+      return pickScope({ tab: "plan", key: t.key });
     if (scoped && t.kind === "item") {
       const sec = view.sections.find((s) => s.items.some((i) => i.id === t.id));
       if (sec) pickScope({ tab: "plan", key: sec.key });
@@ -453,7 +684,13 @@ export function TripPage() {
     }
     if (t.kind === "addRes") return void (!readOnly && setEditingRes(t.res));
     if (t.kind === "section") return go("plan", `sec-${t.key}`);
-    if (t.kind === "item") return (setSelectedId(t.id), requestAnimationFrame(() => scrollToId(scrollRef.current, `item-${t.id}`, "center")));
+    if (t.kind === "item")
+      return (
+        setSelectedId(t.id),
+        requestAnimationFrame(() =>
+          scrollToId(scrollRef.current, `item-${t.id}`, "center"),
+        )
+      );
     go(t.tab);
   };
   // Travel mode unmounts the full view, so leave it first, then let the full view mount before navigating
@@ -466,7 +703,10 @@ export function TripPage() {
     sections: view.sections.filter((s) => s.key !== ORPHAN),
     reservations: state.reservations,
     tab,
-    budgetTotal: spent > 0 ? { amount: spent, currency: state.meta.currency ?? "CAD" } : undefined,
+    budgetTotal:
+      spent > 0
+        ? { amount: spent, currency: state.meta.currency ?? "CAD" }
+        : undefined,
     scrollRef,
     go,
     subtitles: state.meta.subtitles,
@@ -529,7 +769,16 @@ export function TripPage() {
         {/* The overview lives below the main return, which travel mode skips, so it's rendered here too */}
         {showOverview && (
           <OverviewScreen onClose={() => setShowOverview(false)}>
-            <OverviewContent state={state} sections={overviewSections} legs={legsBySection} lines={lines} spent={spent} today={today} readOnly={!!readOnly} onGo={onTravelOverviewGo} />
+            <OverviewContent
+              state={state}
+              sections={overviewSections}
+              legs={legsBySection}
+              lines={lines}
+              spent={spent}
+              today={today}
+              readOnly={!!readOnly}
+              onGo={onTravelOverviewGo}
+            />
           </OverviewScreen>
         )}
       </>
@@ -537,214 +786,343 @@ export function TripPage() {
 
   // Plan panel (all variants)
   const planPanel = (
-      <aside
-        className={`flex min-h-0 flex-col border-line bg-bg md:w-[480px] md:shrink-0 md:border-r ${layoutB ? (scopedSection?.kind === "day" ? "lg:w-[480px] xl:w-[540px]" : "lg:w-[600px] xl:w-[700px] 2xl:w-[780px]") : "lg:w-[540px] xl:w-[620px] 2xl:w-[680px]"} ${planHidden ? "md:hidden" : ""} ${
-          mobileView === "map" ? "max-md:hidden" : "flex-1 md:flex-none"
-        }`}
+    <aside
+      className={`flex min-h-0 flex-col border-line bg-bg md:w-[480px] md:shrink-0 md:border-r ${layoutB ? (scopedSection?.kind === "day" ? "lg:w-[480px] xl:w-[540px]" : "lg:w-[600px] xl:w-[700px] 2xl:w-[780px]") : "lg:w-[540px] xl:w-[620px] 2xl:w-[680px]"} ${planHidden ? "md:hidden" : ""} ${
+        mobileView === "map" ? "max-md:hidden" : "flex-1 md:flex-none"
+      }`}
+    >
+      {!layoutB && (
+        <CollapsedContentsBar
+          hidden={contentsHidden}
+          readOnly={readOnly}
+          history={history}
+          onShow={showContents}
+        />
+      )}
+      <div
+        ref={scrollRef}
+        className="min-h-0 flex-1 overflow-y-auto pb-28 md:pb-10"
       >
-        {!layoutB && <CollapsedContentsBar hidden={contentsHidden} readOnly={readOnly} history={history} onShow={showContents} />}
-        <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto pb-28 md:pb-10">
-          {/* PROTOTYPE (proto/trip-focus): one day or list on its own, under a slim bar */}
-          {scopedSection ? (
-            <>
-              <ScopeHeader title={layoutB ? AREA_LABEL[area] : state.meta.title} sections={overviewSections} focus={scopedSection.key} onPick={(key) => pickScope({ tab: "plan", key })}>
-                {checked.size > 0 && (
-                  <SelectionBar doc={doc} checked={checked} checkedIds={checkedIds} here={checkedHere} targets={targets} writeOf={writeOf} selectedId={selectedId} setSelectedId={setSelectedId} onClear={clearChecked} />
-                )}
-              </ScopeHeader>
-              <div className="px-3 pt-2">
-                <ItineraryDays
-                  c={{ ...plan, state: { ...state, meta: { ...state.meta, collapsed: (state.meta.collapsed ?? []).filter((k) => k !== scopedSection.key) } } }}
-                  only={scopedSection.key}
-                  sensors={sensors}
-                  dragging={dragging}
-                  setDragging={setDragging}
-                />
-              </div>
-            </>
-          ) : layoutB && tab === "plan" && area === "ideas" ? (
-            <IdeasHome
-              ideas={ideas}
-              removed={removedIdeas}
-              days={overviewSections.filter((s) => s.kind === "day")}
-              people={people}
-              me={me}
-              readOnly={readOnly}
-              flash={flash}
-              near={near}
-              countryCode={state.meta.countryCode}
-              justAdded={justAdded}
-              onCapturePlace={captureOrPoint}
-              onCaptureRough={(text) => captured(addItem(doc, poolKey(), { kind: "note", name: text }))}
-              onFindPlace={(itemId, p) => {
-                const it = state.items.find((x) => x.id === itemId);
-                const was = it?.name ?? "";
-                updateItem(doc, itemId, {
-                  kind: "place",
-                  name: p.name,
-                  address: p.address || undefined,
-                  category: p.category || undefined,
-                  lat: p.lat,
-                  lng: p.lng,
-                  osmId: p.osmId,
-                  // Keep the original thought (or link) as the why, unless there's one already
-                  notes: it?.notes || (was && was !== p.name ? was : undefined),
-                });
-              }}
-              onAdd={addIdea}
-              onOpenDay={(key) => pickScope({ tab: "plan", key })}
-              onOpen={(itemId) => setSelectedId(itemId)}
-              onVote={(itemId) => {
-                const it = state.items.find((x) => x.id === itemId);
-                if (it && me) toggleVote(doc, it, me);
-              }}
-              onWhy={(itemId, text) => setWhy(doc, itemId, text)}
-              onRemove={removeIdea}
-              onRestore={(itemId) => setExtra(doc, itemId, { removedBy: undefined })}
-              onGroup={(itemId, g) => setExtra(doc, itemId, { groupOverride: g })}
-              onFillDay={(itemIds, dayKey) => {
-                copyItems(doc, itemIds, writeOf(dayKey));
-                say(`Added ${itemIds.length} ideas to ${formatChip(dayKey.slice(4))}`, true);
-              }}
-              subtitles={state.meta.subtitles}
-              country={(() => {
-                try {
-                  return state.meta.countryCode ? new Intl.DisplayNames(["en"], { type: "region" }).of(state.meta.countryCode.toUpperCase()) : state.meta.destination;
-                } catch {
-                  return state.meta.destination;
-                }
-              })()}
-              reservations={state.reservations}
-              selectedId={selectedId}
-              existing={(text) => [
-                ...ideas
-                  .filter((i) => looksLike(text, i.item.name))
-                  .map((i) => ({
-                    id: i.item.id,
-                    name: i.item.name,
-                    onDay: false,
-                    sub: [i.days.length ? `On ${i.days.map((k) => formatChip(k.slice(4))).join(", ")}` : "Already in your ideas", people.length >= 2 && addedByOf(i.item) ? `${addedByOf(i.item) === me ? "your" : addedByOf(i.item) + "'s"} idea` : "", i.item.notes ? `“${i.item.notes}”` : ""].filter(Boolean).join(" · "),
-                  })),
-                ...state.items
-                  .filter((x) => x.kind === "place" && x.section.startsWith("day:") && looksLike(text, x.name) && !ideas.some((i) => samePlace(i.item, x)))
-                  .map((x) => ({ id: x.id, name: x.name, onDay: true, sub: `On ${formatChip(x.section.slice(4))}` })),
-              ]}
-              onExisting={(e) => {
-                const idea = ideas.find((i) => i.item.id === e.id);
-                if (!idea) return pickScope({ tab: "plan", key: state.items.find((x) => x.id === e.id)!.section });
-                if (people.length >= 2 && me && !votesOf(idea.item).includes(me)) toggleVote(doc, idea.item, me);
-                setFlash({ id: e.id, n: Date.now() });
-              }}
-              onMustDo={(itemId) => {
-                const it = state.items.find((x) => x.id === itemId);
-                if (it) setExtra(doc, itemId, { mustDo: isMustDo(it) ? undefined : true });
-              }}
-              onDoneWhy={() => setJustAdded(null)}
-            />
-          ) : layoutB && tab === "plan" ? (
-            <TripLevel
-              area={area === "prep" ? "prep" : "itinerary"}
-              state={state}
+        {/* PROTOTYPE (proto/trip-focus): one day or list on its own, under a slim bar */}
+        {scopedSection ? (
+          <>
+            <ScopeHeader
+              title={layoutB ? AREA_LABEL[area] : state.meta.title}
               sections={overviewSections}
-              today={today}
-              attention={overview.attention}
-              bookingsByDay={new Map([...chipsByDay].map(([d, c]) => [d, c.length]))}
-              onPick={pickScope}
-              onOverview={() => setShowOverview(true)}
-              mustDoLeft={ideas.filter((i) => !i.days.length && isMustDo(i.item)).length}
-              onIdeas={() => pickArea("ideas")}
-            />
-          ) : layoutB ? (
-            <>
-              <div className="px-3 pt-4">
-                {tab === "bookings" && <ReservationsPanel doc={doc} state={state} readOnly={readOnly} tripId={id} canForward={canReview} walkOn={walk.on} onToggleWalk={toggleWalk} />}
-                {tab === "budget" && <BudgetPanel doc={doc} state={state} readOnly={readOnly} />}
-              </div>
-            </>
-          ) : (<>
-          <TripHero
-            headerRef={headerRef}
-            doc={doc}
-            meta={state.meta}
+              focus={scopedSection.key}
+              onPick={(key) => pickScope({ tab: "plan", key })}
+            >
+              {checked.size > 0 && (
+                <SelectionBar
+                  doc={doc}
+                  checked={checked}
+                  checkedIds={checkedIds}
+                  here={checkedHere}
+                  targets={targets}
+                  writeOf={writeOf}
+                  selectedId={selectedId}
+                  setSelectedId={setSelectedId}
+                  onClear={clearChecked}
+                />
+              )}
+            </ScopeHeader>
+            <div className="px-3 pt-2">
+              <ItineraryDays
+                c={{
+                  ...plan,
+                  state: {
+                    ...state,
+                    meta: {
+                      ...state.meta,
+                      collapsed: (state.meta.collapsed ?? []).filter(
+                        (k) => k !== scopedSection.key,
+                      ),
+                    },
+                  },
+                }}
+                only={scopedSection.key}
+                sensors={sensors}
+                dragging={dragging}
+                setDragging={setDragging}
+              />
+            </div>
+          </>
+        ) : layoutB && tab === "plan" && area === "ideas" ? (
+          <IdeasHome
+            ideas={ideas}
+            removed={removedIdeas}
+            days={overviewSections.filter((s) => s.kind === "day")}
+            people={people}
+            me={me}
             readOnly={readOnly}
-            canSync={canSync}
-            syncStatus={syncStatus}
-            isOwner={isOwner}
-            onShare={() => setSharing(true)}
-            onHistory={() => setShowHistory(true)}
-            onSettings={() => setShowSettings(true)}
-            onPickCover={() => setPickingCover(true)}
-          />
-          <TripTabsBar
-            doc={doc}
-            state={state}
-            tripId={id!}
-            view={view}
-            tab={tab}
-            setTab={setTab}
-            scrollRef={scrollRef}
-            setDayFrame={setDayFrame}
-            focus={focus}
-            setFocus={setFocus}
-            checked={checked}
-            checkedIds={checkedIds}
-            here={checkedHere}
-            clearChecked={clearChecked}
-            targets={targets}
-            writeOf={writeOf}
+            flash={flash}
+            near={near}
+            countryCode={state.meta.countryCode}
+            justAdded={justAdded}
+            onCapturePlace={captureOrPoint}
+            onCaptureRough={(text) =>
+              captured(addItem(doc, poolKey(), { kind: "note", name: text }))
+            }
+            onFindPlace={(itemId, p) => {
+              const it = state.items.find((x) => x.id === itemId);
+              const was = it?.name ?? "";
+              updateItem(doc, itemId, {
+                kind: "place",
+                name: p.name,
+                address: p.address || undefined,
+                category: p.category || undefined,
+                lat: p.lat,
+                lng: p.lng,
+                osmId: p.osmId,
+                // Keep the original thought (or link) as the why, unless there's one already
+                notes: it?.notes || (was && was !== p.name ? was : undefined),
+              });
+            }}
+            onAdd={addIdea}
+            onOpenDay={(key) => pickScope({ tab: "plan", key })}
+            onOpen={(itemId) => setSelectedId(itemId)}
+            onVote={(itemId) => {
+              const it = state.items.find((x) => x.id === itemId);
+              if (it && me) toggleVote(doc, it, me);
+            }}
+            onWhy={(itemId, text) => setWhy(doc, itemId, text)}
+            onRemove={removeIdea}
+            onRestore={(itemId) =>
+              setExtra(doc, itemId, { removedBy: undefined })
+            }
+            onGroup={(itemId, g) => setExtra(doc, itemId, { groupOverride: g })}
+            onFillDay={(itemIds, dayKey) => {
+              copyItems(doc, itemIds, writeOf(dayKey));
+              say(
+                `Added ${itemIds.length} ideas to ${formatChip(dayKey.slice(4))}`,
+                true,
+              );
+            }}
+            subtitles={state.meta.subtitles}
+            country={(() => {
+              try {
+                return state.meta.countryCode
+                  ? new Intl.DisplayNames(["en"], { type: "region" }).of(
+                      state.meta.countryCode.toUpperCase(),
+                    )
+                  : state.meta.destination;
+              } catch {
+                return state.meta.destination;
+              }
+            })()}
+            reservations={state.reservations}
             selectedId={selectedId}
-            setSelectedId={setSelectedId}
-            onOpenContents={() => setContentsDrawer(true)}
-            hideNavOnWide={scoped}
+            existing={(text) => [
+              ...ideas
+                .filter((i) => looksLike(text, i.item.name))
+                .map((i) => ({
+                  id: i.item.id,
+                  name: i.item.name,
+                  onDay: false,
+                  sub: [
+                    i.days.length
+                      ? `On ${i.days.map((k) => formatChip(k.slice(4))).join(", ")}`
+                      : "Already in your ideas",
+                    people.length >= 2 && addedByOf(i.item)
+                      ? `${addedByOf(i.item) === me ? "your" : addedByOf(i.item) + "'s"} idea`
+                      : "",
+                    i.item.notes ? `“${i.item.notes}”` : "",
+                  ]
+                    .filter(Boolean)
+                    .join(" · "),
+                })),
+              ...state.items
+                .filter(
+                  (x) =>
+                    x.kind === "place" &&
+                    x.section.startsWith("day:") &&
+                    looksLike(text, x.name) &&
+                    !ideas.some((i) => samePlace(i.item, x)),
+                )
+                .map((x) => ({
+                  id: x.id,
+                  name: x.name,
+                  onDay: true,
+                  sub: `On ${formatChip(x.section.slice(4))}`,
+                })),
+            ]}
+            onExisting={(e) => {
+              const idea = ideas.find((i) => i.item.id === e.id);
+              if (!idea)
+                return pickScope({
+                  tab: "plan",
+                  key: state.items.find((x) => x.id === e.id)!.section,
+                });
+              if (people.length >= 2 && me && !votesOf(idea.item).includes(me))
+                toggleVote(doc, idea.item, me);
+              setFlash({ id: e.id, n: Date.now() });
+            }}
+            onMustDo={(itemId) => {
+              const it = state.items.find((x) => x.id === itemId);
+              if (it)
+                setExtra(doc, itemId, {
+                  mustDo: isMustDo(it) ? undefined : true,
+                });
+            }}
+            onDoneWhy={() => setJustAdded(null)}
           />
-          <div className="px-3">
-            {tab === "bookings" && <ReservationsPanel doc={doc} state={state} readOnly={readOnly} tripId={id} canForward={canReview} walkOn={walk.on} onToggleWalk={toggleWalk} />}
-            {tab === "budget" && <BudgetPanel doc={doc} state={state} readOnly={readOnly} />}
-            {tab === "plan" && (<>
-            <OverviewButton countdown={overview.countdown} attention={overview.attention} onOpen={() => setShowOverview(true)} />
-            <PlanTools
+        ) : layoutB && tab === "plan" ? (
+          <TripLevel
+            area={area === "prep" ? "prep" : "itinerary"}
+            state={state}
+            sections={overviewSections}
+            today={today}
+            attention={overview.attention}
+            bookingsByDay={
+              new Map([...chipsByDay].map(([d, c]) => [d, c.length]))
+            }
+            onPick={pickScope}
+            onOverview={() => setShowOverview(true)}
+            mustDoLeft={
+              ideas.filter((i) => !i.days.length && isMustDo(i.item)).length
+            }
+            onIdeas={() => pickArea("ideas")}
+          />
+        ) : layoutB ? (
+          <>
+            <div className="px-3 pt-4">
+              {tab === "bookings" && (
+                <ReservationsPanel
+                  doc={doc}
+                  state={state}
+                  readOnly={readOnly}
+                  tripId={id}
+                  canForward={canReview}
+                  walkOn={walk.on}
+                  onToggleWalk={toggleWalk}
+                />
+              )}
+              {tab === "budget" && (
+                <BudgetPanel doc={doc} state={state} readOnly={readOnly} />
+              )}
+            </div>
+          </>
+        ) : (
+          <>
+            <TripHero
+              headerRef={headerRef}
+              doc={doc}
+              meta={state.meta}
+              readOnly={readOnly}
+              canSync={canSync}
+              syncStatus={syncStatus}
+              isOwner={isOwner}
+              onShare={() => setSharing(true)}
+              onHistory={() => setShowHistory(true)}
+              onSettings={() => setShowSettings(true)}
+              onPickCover={() => setPickingCover(true)}
+            />
+            <TripTabsBar
               doc={doc}
               state={state}
-              readOnly={readOnly}
-              unpinned={unpinned}
-              onDismissUnpinned={dismissUnpinned}
-              canReview={canReview}
-              inbox={inbox}
-              setInbox={setInbox}
-              autoExpandFirst={reviewing}
-              photoFill={photoFill}
-              setPhotoFill={setPhotoFill}
+              tripId={id!}
+              view={view}
+              tab={tab}
+              setTab={setTab}
+              scrollRef={scrollRef}
+              setDayFrame={setDayFrame}
+              focus={focus}
+              setFocus={setFocus}
+              checked={checked}
+              checkedIds={checkedIds}
+              here={checkedHere}
+              clearChecked={clearChecked}
+              targets={targets}
+              writeOf={writeOf}
+              selectedId={selectedId}
+              setSelectedId={setSelectedId}
+              onOpenContents={() => setContentsDrawer(true)}
+              hideNavOnWide={scoped}
             />
-            <ItineraryDays c={plan} sensors={sensors} dragging={dragging} setDragging={setDragging} />
-            <p className="mt-6 px-2 text-[10px] text-muted/70">
-              Routes: © OpenStreetMap contributors via FOSSGIS OSRM · Transit: <a className="underline" href="https://transitous.org/sources/" target="_blank" rel="noreferrer">Transitous</a>
-            </p>
-            </>)}
-          </div>
-          </>)}
-        </div>
-      </aside>
+            <div className="px-3">
+              {tab === "bookings" && (
+                <ReservationsPanel
+                  doc={doc}
+                  state={state}
+                  readOnly={readOnly}
+                  tripId={id}
+                  canForward={canReview}
+                  walkOn={walk.on}
+                  onToggleWalk={toggleWalk}
+                />
+              )}
+              {tab === "budget" && (
+                <BudgetPanel doc={doc} state={state} readOnly={readOnly} />
+              )}
+              {tab === "plan" && (
+                <>
+                  <OverviewButton
+                    countdown={overview.countdown}
+                    attention={overview.attention}
+                    onOpen={() => setShowOverview(true)}
+                  />
+                  <PlanTools
+                    doc={doc}
+                    state={state}
+                    readOnly={readOnly}
+                    unpinned={unpinned}
+                    onDismissUnpinned={dismissUnpinned}
+                    canReview={canReview}
+                    inbox={inbox}
+                    setInbox={setInbox}
+                    autoExpandFirst={reviewing}
+                    photoFill={photoFill}
+                    setPhotoFill={setPhotoFill}
+                  />
+                  <ItineraryDays
+                    c={plan}
+                    sensors={sensors}
+                    dragging={dragging}
+                    setDragging={setDragging}
+                  />
+                  <p className="mt-6 px-2 text-[10px] text-muted/70">
+                    Routes: © OpenStreetMap contributors via FOSSGIS OSRM ·
+                    Transit:{" "}
+                    <a
+                      className="underline"
+                      href="https://transitous.org/sources/"
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      Transitous
+                    </a>
+                  </p>
+                </>
+              )}
+            </div>
+          </>
+        )}
+      </div>
+    </aside>
   );
   // PROTOTYPE (proto/trip-focus): variant B's ideas shelf beside a day
-  const ideasShelf = layoutB && scopedSection?.kind === "day" && !planHidden && (
-        <div className="hidden shrink-0 border-r border-line bg-bg lg:block">
-          <IdeasShelf
-            day={scopedSection}
-            days={overviewSections.filter((s) => s.kind === "day")}
-            ideas={ideas}
-            readOnly={readOnly}
-            onAdd={(itemId) => addIdea(itemId, scopedSection.key)}
-            onPickDay={(key) => pickScope({ tab: "plan", key })}
-          />
-        </div>
-      );
+  const ideasShelf = layoutB &&
+    scopedSection?.kind === "day" &&
+    !planHidden && (
+      <div className="hidden shrink-0 border-r border-line bg-bg lg:block">
+        <IdeasShelf
+          day={scopedSection}
+          days={overviewSections.filter((s) => s.kind === "day")}
+          ideas={ideas}
+          readOnly={readOnly}
+          onAdd={(itemId) => addIdea(itemId, scopedSection.key)}
+          onPickDay={(key) => pickScope({ tab: "plan", key })}
+        />
+      </div>
+    );
 
   return (
     <div className="flex h-full flex-col md:flex-row">
-
       {/* PROTOTYPE (proto/trip-focus): variant B puts a trip bar over the rail, plan pane and ideas shelf */}
       {layoutB ? (
-        <div className={`flex min-h-0 flex-col md:shrink-0 ${mobileView === "map" ? "max-md:hidden" : "flex-1 md:flex-none"}`}>
+        <div
+          className={`flex min-h-0 flex-col md:shrink-0 ${mobileView === "map" ? "max-md:hidden" : "flex-1 md:flex-none"}`}
+        >
           <TripBar
             doc={doc}
             meta={state.meta}
@@ -761,7 +1139,19 @@ export function TripPage() {
             onPickCover={() => setPickingCover(true)}
             defaults={
               <>
-                <PlanTools doc={doc} state={state} readOnly={readOnly} unpinned={unpinned} onDismissUnpinned={dismissUnpinned} canReview={canReview} inbox={inbox} setInbox={setInbox} autoExpandFirst={reviewing} photoFill={photoFill} setPhotoFill={setPhotoFill} />
+                <PlanTools
+                  doc={doc}
+                  state={state}
+                  readOnly={readOnly}
+                  unpinned={unpinned}
+                  onDismissUnpinned={dismissUnpinned}
+                  canReview={canReview}
+                  inbox={inbox}
+                  setInbox={setInbox}
+                  autoExpandFirst={reviewing}
+                  photoFill={photoFill}
+                  setPhotoFill={setPhotoFill}
+                />
                 <div className="mt-2 px-1">
                   <OfflineMapButton tripId={id!} state={state} />
                 </div>
@@ -769,45 +1159,63 @@ export function TripPage() {
             }
           />
           <div className="flex min-h-0 flex-1">
-            <Rail area={railArea} onArea={pickArea} counts={{ ideas: ideas.filter((i) => !i.days.length).length, bookings: state.reservations.length }} />
+            <Rail
+              area={railArea}
+              onArea={pickArea}
+              counts={{
+                ideas: ideas.filter((i) => !i.days.length).length,
+                bookings: state.reservations.length,
+              }}
+            />
             {planPanel}
             {ideasShelf}
           </div>
         </div>
-      ) : (<>
-      {/* Contents column (wide screens); a drawer below that */}
-      {scoped ? (
-        // PROTOTYPE (proto/trip-focus): variant A's sidebar picks the scope instead of scrolling
-        <div className={`hidden shrink-0 border-r border-line bg-bg ${planHidden || contentsHidden ? "" : "lg:block"}`}>
-          <div className="h-full w-[250px] xl:w-[280px]">
-            <ScopeNav
-              sections={overviewSections}
-              reservations={state.reservations}
-              tab={tab}
-              focus={focus}
-              today={today}
-              subtitles={state.meta.subtitles}
-              budgetTotal={contentsProps.budgetTotal}
-              header={<UndoBar history={history} readOnly={readOnly} />}
-              onPick={pickScope}
-              onOverview={() => setShowOverview(true)}
+      ) : (
+        <>
+          {/* Contents column (wide screens); a drawer below that */}
+          {scoped ? (
+            // PROTOTYPE (proto/trip-focus): variant A's sidebar picks the scope instead of scrolling
+            <div
+              className={`hidden shrink-0 border-r border-line bg-bg ${planHidden || contentsHidden ? "" : "lg:block"}`}
+            >
+              <div className="h-full w-[250px] xl:w-[280px]">
+                <ScopeNav
+                  sections={overviewSections}
+                  reservations={state.reservations}
+                  tab={tab}
+                  focus={focus}
+                  today={today}
+                  subtitles={state.meta.subtitles}
+                  budgetTotal={contentsProps.budgetTotal}
+                  header={<UndoBar history={history} readOnly={readOnly} />}
+                  onPick={pickScope}
+                  onOverview={() => setShowOverview(true)}
+                  onHide={() => hideContents(true)}
+                />
+              </div>
+            </div>
+          ) : (
+            <ContentsColumn
+              collapsed={planHidden || contentsHidden}
+              thin={settings.contentsWidth === "thin"}
+              contents={contentsProps}
+              history={history}
+              readOnly={readOnly}
               onHide={() => hideContents(true)}
             />
-          </div>
-        </div>
-      ) : (
-        <ContentsColumn
-          collapsed={planHidden || contentsHidden}
-          thin={settings.contentsWidth === "thin"}
+          )}
+          {planPanel}
+        </>
+      )}
+      {contentsDrawer && (
+        <ContentsDrawer
           contents={contentsProps}
           history={history}
           readOnly={readOnly}
-          onHide={() => hideContents(true)}
+          onClose={() => setContentsDrawer(false)}
         />
       )}
-      {planPanel}
-      </>)}
-      {contentsDrawer && <ContentsDrawer contents={contentsProps} history={history} readOnly={readOnly} onClose={() => setContentsDrawer(false)} />}
 
       <MapPane
         planHidden={planHidden}
@@ -883,7 +1291,10 @@ export function TripPage() {
             readOnly={readOnly}
             onClose={() => setHeld(null)}
             onAdd={(key, p) => {
-              const newId = addPlace(doc, key, p, undefined, { destination: state.meta.destination, near });
+              const newId = addPlace(doc, key, p, undefined, {
+                destination: state.meta.destination,
+                near,
+              });
               setHeld(null);
               setSelectedId(newId);
               if (mobileView === "plan") revealAdded(newId);
@@ -911,33 +1322,81 @@ export function TripPage() {
       />
       {showOverview && (
         <OverviewScreen onClose={() => setShowOverview(false)}>
-          <OverviewContent state={state} sections={overviewSections} legs={legsBySection} lines={lines} spent={spent} today={today} readOnly={!!readOnly} onGo={onOverviewGo} />
+          <OverviewContent
+            state={state}
+            sections={overviewSections}
+            legs={legsBySection}
+            lines={lines}
+            spent={spent}
+            today={today}
+            readOnly={!!readOnly}
+            onGo={onOverviewGo}
+          />
         </OverviewScreen>
       )}
-      {showHistory && <HistoryDialog doc={doc} state={state} readOnly={readOnly} myEmail={myEmail ?? undefined} onClose={() => setShowHistory(false)} />}
+      {showHistory && (
+        <HistoryDialog
+          doc={doc}
+          state={state}
+          readOnly={readOnly}
+          myEmail={myEmail ?? undefined}
+          onClose={() => setShowHistory(false)}
+        />
+      )}
       <MobileViewSwitch mobileView={mobileView} setMobileView={setMobileView} />
       <LayoutSwitch
         extra={
-          layoutB && people.length > 1 ? (
-            <label title="Prototype only: who you are on this trip (the real app knows from your sign-in)" className="flex items-center gap-1">
-              You are
-              <select value={me ?? ""} onChange={(e) => setMe(e.target.value)} className="cursor-pointer bg-transparent font-semibold text-fg outline-none">
-                {people.map((p) => (
-                  <option key={p} value={p}>
-                    {p}
-                  </option>
-                ))}
-              </select>
-            </label>
+          layoutB ? (
+            <>
+              <label
+                title="Prototype only: idea card style"
+                className="flex items-center gap-1"
+              >
+                Card
+                <select
+                  value={cardStyle}
+                  onChange={(e) => setCardStyle(e.target.value as CardStyle)}
+                  className="cursor-pointer bg-transparent font-semibold text-fg outline-none"
+                >
+                  <option value="zones">Zones</option>
+                  <option value="details">Details</option>
+                </select>
+              </label>
+              {people.length > 1 && (
+                <label
+                  title="Prototype only: who you are on this trip (the real app knows from your sign-in)"
+                  className="flex items-center gap-1"
+                >
+                  You are
+                  <select
+                    value={me ?? ""}
+                    onChange={(e) => setMe(e.target.value)}
+                    className="cursor-pointer bg-transparent font-semibold text-fg outline-none"
+                  >
+                    {people.map((p) => (
+                      <option key={p} value={p}>
+                        {p}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
+            </>
           ) : null
         }
       />
       {/* PROTOTYPE (proto/trip-focus): a short note after removing or pointing at an idea */}
       {layoutB && toast && (
-        <div key={toast.n} className="fixed bottom-16 left-1/2 z-[70] flex -translate-x-1/2 items-center gap-3 rounded-full bg-fg px-4 py-2 text-[13.5px] text-bg shadow-2xl">
+        <div
+          key={toast.n}
+          className="fixed bottom-16 left-1/2 z-[70] flex -translate-x-1/2 items-center gap-3 rounded-full bg-fg px-4 py-2 text-[13.5px] text-bg shadow-2xl"
+        >
           {toast.text}
           {toast.undo && !readOnly && (
-            <button onClick={() => (history.undo(), setToast(null))} className="font-semibold text-accent">
+            <button
+              onClick={() => (history.undo(), setToast(null))}
+              className="font-semibold text-accent"
+            >
               Undo
             </button>
           )}
