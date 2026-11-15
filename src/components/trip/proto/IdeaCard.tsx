@@ -130,7 +130,20 @@ export function IdeaCard({
       <div className="p-3.5">
         <div className="flex items-start gap-3">
           <div className="min-w-0 flex-1">
-            <p className="truncate text-[16px] font-semibold">{it.name}</p>
+            {/* The booking state sits right by the name: amber until it's booked, green once it is */}
+            <div className="flex min-w-0 items-center gap-2">
+              <p className="min-w-0 truncate text-[16px] font-semibold">{it.name}</p>
+              {booking.kind === "needed" && (
+                <span className="flex shrink-0 items-center gap-1 rounded-full bg-amber-400/25 px-2 py-0.5 text-[11.5px] font-semibold text-amber-800 dark:text-amber-300" title="Needs tickets or a reservation">
+                  <Ticket className="size-3" /> Not booked
+                </span>
+              )}
+              {booked && (
+                <span className="flex shrink-0 items-center gap-1 rounded-full bg-accent/15 px-2 py-0.5 text-[11.5px] font-semibold text-accent" title={booked.res.title}>
+                  <Check className="size-3" /> Booked · {bookedText}
+                </span>
+              )}
+            </div>
             <div ref={menu === "category" ? box : undefined} className="relative mt-0.5 flex flex-wrap items-center gap-x-1.5 text-[12.5px] text-muted">
               {where && <span>{where}</span>}
               {where && <span aria-hidden>·</span>}
@@ -143,16 +156,6 @@ export function IdeaCard({
                 {!readOnly && <ChevronDown className="size-3" />}
               </button>
               {menu === "category" && categoryMenu}
-              {booking.kind === "needed" && (
-                <span className="ml-1 flex items-center gap-1 rounded-full bg-amber-400/20 px-2 py-px text-[11.5px] font-semibold text-amber-800 dark:text-amber-300">
-                  <Ticket className="size-3" /> Book ahead
-                </span>
-              )}
-              {booked && (
-                <span className="ml-1 flex items-center gap-1 rounded-full bg-accent/15 px-2 py-px text-[11.5px] font-semibold text-accent" title={booked.res.title}>
-                  <Ticket className="size-3" /> <Check className="-ml-0.5 size-3" /> Booked · {bookedText}
-                </span>
-              )}
             </div>
           </div>
           {!readOnly && (
