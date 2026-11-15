@@ -3,6 +3,8 @@
 // Votes are stored on the item as `votes` (not in his Item type yet); the why note is his `notes` field,
 // so it travels with the stop when the idea is put on a day.
 import type * as Y from "yjs";
+import { useEffect, useState } from "react";
+import { distanceKm } from "./geocode";
 import { updateItem, type Item } from "./trips";
 
 export type Group = "food" | "sights" | "nature" | "experiences" | "shopping" | "other";
@@ -61,3 +63,64 @@ export function mentionParts(text: string, people: string[]): { text: string; wh
 }
 
 export const URL_RE = /^https?:\/\/\S+$/i;
+
+/* ---- Who added it, must-do, soft remove (stored on the item; not in his Item type yet) ---- */
+type Extra = { votes?: string[]; addedBy?: string; mustDo?: boolean; removedBy?: string };
+const extra = (it: Item) => it as Item & Extra;
+export const addedByOf = (it: Item) => extra(it).addedBy;
+export const isMustDo = (it: Item) => !!extra(it).mustDo;
+export const removedByOf = (it: Item) => extra(it).removedBy;
+export const setExtra = (doc: Y.Doc, id: string, patch: Extra) => updateItem(doc, id, patch as Partial<Item>);
+
+/* ---- Areas: ideas clustered by distance, named after the town they're in ---- */
+const AREA_KM = 25;
+export type Area = { key: string; center: [number, number]; ids: string[] };
+
+/** Greedy clustering: each idea joins the first area whose centre is within 25 km */
+export function clusterAreas(items: Item[]): Area[] {
+  const areas: (Area & { sum: [number, number] })[] = [];
+  for (const it of items) {
+    if (it.lat == null || it.lng == null) continue;
+    const at: [number, number] = [it.lng, it.lat];
+    const a = areas.find((x) => distanceKm(x.center, at) <= AREA_KM);
+    if (a) {
+      a.ids.push(it.id);
+      a.sum = [a.sum[0] + at[0], a.sum[1] + at[1]];
+      a.center = [a.sum[0] / a.ids.length, a.sum[1] / a.ids.length];
+    } else areas.push({ key: it.id, center: at, ids: [it.id], sum: at });
+  }
+  return areas.map(({ key, center, ids }) => ({ key, center, ids }));
+}
+
+// One reverse lookup per area, cached for the session (Photon, keyless)
+const nameCache = new Map<string, string>();
+const cacheKey = (c: [number, number]) => `${c[0].toFixed(1)},${c[1].toFixed(1)}`;
+async function areaName(c: [number, number]): Promise<string | null> {
+  const k = cacheKey(c);
+  if (nameCache.has(k)) return nameCache.get(k)!;
+  const res = await fetch(`https://photon.komoot.io/reverse?lon=${c[0]}&lat=${c[1]}&limit=1&lang=en`);
+  if (!res.ok) return null;
+  const p = ((await res.json()) as { features: { properties: Record<string, string> }[] }).features[0]?.properties;
+  const name = p ? (p.city ?? p.town ?? p.village ?? p.county ?? p.state ?? null) : null;
+  if (name) nameCache.set(k, name.replace(/ (City|Prefecture)$/, ""));
+  return name ? nameCache.get(k)! : null;
+}
+export function useAreaNames(areas: Area[]): Map<string, string> {
+  const [names, setNames] = useState<Map<string, string>>(new Map());
+  const sig = areas.map((a) => cacheKey(a.center)).join("|");
+  useEffect(() => {
+    let live = true;
+    (async () => {
+      for (const a of areas) {
+        const n = await areaName(a.center).catch(() => null);
+        if (!live) return;
+        if (n) setNames((m) => (m.get(cacheKey(a.center)) === n ? m : new Map(m).set(cacheKey(a.center), n)));
+      }
+    })();
+    return () => {
+      live = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sig]);
+  return new Map(areas.map((a) => [a.key, names.get(cacheKey(a.center)) ?? nameCache.get(cacheKey(a.center)) ?? ""]));
+}

@@ -1,5 +1,6 @@
 // PROTOTYPE (proto/trip-focus): floating A/B switch for the trip page, only in dev builds (localhost).
 import { FlaskConical } from "lucide-react";
+import type { ReactNode } from "react";
 import { PROTO_ENABLED, useTripLayout, type TripLayout } from "../../../lib/protoTripLayout";
 
 const OPTIONS: { v: TripLayout; label: string; hint: string }[] = [
@@ -8,7 +9,7 @@ const OPTIONS: { v: TripLayout; label: string; hint: string }[] = [
   { v: "b", label: "B", hint: "No sidebar: the plan pane is the navigation, with ideas beside each day" },
 ];
 
-export function LayoutSwitch() {
+export function LayoutSwitch({ extra }: { extra?: ReactNode }) {
   const [layout, setLayout] = useTripLayout();
   if (!PROTO_ENABLED) return null;
   return (
@@ -26,6 +27,7 @@ export function LayoutSwitch() {
           {o.label}
         </button>
       ))}
+      {extra && <span className="ml-1 flex items-center gap-1 border-l border-line pr-2 pl-2 text-muted">{extra}</span>}
     </div>
   );
 }

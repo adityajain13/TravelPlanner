@@ -6,7 +6,7 @@ import type { Item } from "../../../lib/trips";
 import type { SectionInfo } from "../../Section";
 import { bestDay, fitFor } from "../../../lib/protoFit";
 import { formatChip } from "../DayChips";
-import { votesOf, type Group } from "../../../lib/protoIdeas";
+import { isMustDo, votesOf, type Group } from "../../../lib/protoIdeas";
 import { Avatar } from "./MentionInput";
 
 export type Idea = { item: Item; list: string; days: string[]; group: Group; rough: boolean };
@@ -38,7 +38,8 @@ export function IdeasShelf({
       const better = best && best.day.key !== day.key && best.fit.score - fit.score >= 15 ? best.day : null;
       return { idea, fit, better };
     })
-    .sort((a, b) => Number(a.fit.out) - Number(b.fit.out) || b.fit.score + votesOf(b.idea.item).length * 8 - (a.fit.score + votesOf(a.idea.item).length * 8));
+    // Must-dos that aren't on a day yet come first: they have to land somewhere
+    .sort((a, b) => Number(a.fit.out) - Number(b.fit.out) || Number(isMustDo(b.idea.item)) - Number(isMustDo(a.idea.item)) || b.fit.score + votesOf(b.idea.item).length * 8 - (a.fit.score + votesOf(a.idea.item).length * 8));
 
   return (
     <div className="flex h-full w-[320px] flex-col xl:w-[340px]">
@@ -58,7 +59,10 @@ export function IdeasShelf({
             <div key={idea.item.id} className={`rounded-2xl border border-line bg-surface p-3 ${fit.out ? "opacity-60" : ""}`}>
               <div className="flex items-start gap-2">
                 <div className="min-w-0 flex-1">
-                  <p className="truncate font-semibold">{idea.item.name}</p>
+                  <p className="truncate font-semibold">
+                    {isMustDo(idea.item) && <span className="mr-1.5 rounded-full bg-amber-400/20 px-1.5 py-px align-middle text-[10px] font-bold text-amber-700 uppercase dark:text-amber-300">★ Must do</span>}
+                    {idea.item.name}
+                  </p>
                   <p className="flex items-center gap-1.5 text-[11.5px] text-muted">
                     {votesOf(idea.item).length > 0 && (
                       <span className="flex -space-x-1">

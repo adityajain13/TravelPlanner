@@ -53,6 +53,10 @@ export interface Fit {
 
 const at = (it: Item): [number, number] | null => (it.lat != null && it.lng != null ? [it.lng, it.lat] : null);
 const fmtKm = (km: number) => (km < 1 ? `${Math.round(km * 1000 / 50) * 50} m` : `${km < 10 ? km.toFixed(1) : Math.round(km)} km`);
+/** How far, in the terms that matter for deciding: a walk under ~1.5 km, else the distance */
+const howFar = (km: number) => (km <= 1.5 ? `${Math.max(1, Math.round(km * 13))} min walk` : `${fmtKm(km)}`);
+/** Stations and airports are places you pass through, not plans: a weak thing to be "near" */
+const TRANSIT = /station|airport|terminal|駅|空港/i;
 
 export function fitFor(idea: Item, day: { date: string; items: Item[] }): Fit {
   const f = factsOf(idea);
@@ -71,18 +75,19 @@ export function fitFor(idea: Item, day: { date: string; items: Item[] }): Fit {
 
   // Near the day's stops
   const stops = day.items.filter((i) => i.kind === "place" && !i.waypoint && at(i));
+  const anchors = stops.some((s) => !TRANSIT.test(s.name)) ? stops.filter((s) => !TRANSIT.test(s.name)) : stops;
   const here = at(idea);
   if (here && stops.length) {
     let best = { km: Infinity, name: "" };
-    for (const s of stops) {
+    for (const s of anchors) {
       const km = distanceKm(here, at(s)!);
       if (km < best.km) best = { km, name: s.name };
     }
     if (best.km <= 3) {
-      reasons.push({ text: `${fmtKm(best.km)} from ${best.name}`, weight: 30 });
+      reasons.push({ text: `${howFar(best.km)} from ${best.name}`, weight: 30 });
       score += 40 - best.km * 5;
     } else if (best.km <= 15) {
-      reasons.push({ text: `${fmtKm(best.km)} from ${best.name}`, weight: 10 });
+      reasons.push({ text: `${howFar(best.km)} from ${best.name}`, weight: 10 });
       score += 15 - best.km;
     } else if (best.km > 40) {
       blockers.push({ text: `${fmtKm(best.km)} from this day's stops`, weight: 40 });

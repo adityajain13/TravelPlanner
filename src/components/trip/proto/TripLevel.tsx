@@ -1,6 +1,6 @@
 // PROTOTYPE (proto/trip-focus): variant B's Itinerary and Prep areas (the rail picks the area). Itinerary:
 // overview, one row per day (the trip bar above holds the trip's name and dates). Prep: notes and checklists. A row drills in.
-import { ChevronRight, LayoutDashboard, ListChecks, Ticket } from "lucide-react";
+import { ChevronRight, LayoutDashboard, ListChecks, Star, Ticket } from "lucide-react";
 import type { ReactNode } from "react";
 import type { SectionInfo } from "../../Section";
 import type { TripState } from "../../../lib/trips";
@@ -19,6 +19,8 @@ export function TripLevel({
   bookingsByDay,
   onPick,
   onOverview,
+  mustDoLeft = 0,
+  onIdeas,
 }: {
   area: "itinerary" | "prep";
   state: TripState;
@@ -28,6 +30,9 @@ export function TripLevel({
   bookingsByDay: Map<string, number>;
   onPick: (s: Scope) => void;
   onOverview: () => void;
+  /** Must-do ideas not on a day yet */
+  mustDoLeft?: number;
+  onIdeas?: () => void;
 }) {
   const { meta } = state;
   const days = sections.filter((s) => s.kind === "day");
@@ -85,6 +90,16 @@ export function TripLevel({
           <ChevronRight className="size-4" />
         </span>
       </button>
+
+      {mustDoLeft > 0 && onIdeas && (
+        <button onClick={onIdeas} className="mt-2 flex w-full items-center gap-2.5 rounded-2xl border border-amber-400/60 bg-amber-400/[0.06] px-3.5 py-2.5 text-left text-[14px] hover:border-amber-400">
+          <Star className="size-4 shrink-0 fill-amber-400 text-amber-400" />
+          <span>
+            <b>{mustDoLeft}</b> must-do{mustDoLeft === 1 ? " isn't" : "s aren't"} on a day yet
+          </span>
+          <ChevronRight className="ml-auto size-4 text-muted" />
+        </button>
+      )}
 
       {days.length > 0 && heading("Days", `${days.length} days`)}
       {days.map((s) => {

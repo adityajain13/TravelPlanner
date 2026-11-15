@@ -62,7 +62,9 @@ import { Rail, AREA_LABEL, type Area } from "../components/trip/proto/Rail";
 import { TripBar } from "../components/trip/proto/TripBar";
 import { OfflineMapButton } from "../components/OfflineMapButton";
 import { IdeasHome } from "../components/trip/proto/IdeasHome";
-import { groupOf, isIdeaItem, isRough, setWhy, toggleVote } from "../lib/protoIdeas";
+import { addedByOf, groupOf, isIdeaItem, isMustDo, isRough, removedByOf, setExtra, setWhy, toggleVote, votesOf } from "../lib/protoIdeas";
+import { samePlace } from "../lib/trips";
+import type { PlaceResult } from "../lib/photon";
 import { TripLevel } from "../components/trip/proto/TripLevel";
 import { IdeasShelf, type Idea } from "../components/trip/proto/IdeasShelf";
 import { isPrep } from "../components/trip/proto/kinds";
@@ -192,6 +194,13 @@ export function TripPage() {
   const layoutB = layout === "b";
   const [area, setArea] = useState<Area>("itinerary"); // variant B: which rail area is open
   const [justAdded, setJustAdded] = useState<string | null>(null); // the idea whose "why" field is open
+  const [flash, setFlash] = useState<{ id: string; n: number } | null>(null); // an idea to point at
+  const [toast, setToast] = useState<{ text: string; undo?: boolean; n: number } | null>(null);
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(null), 5000);
+    return () => clearTimeout(t);
+  }, [toast]);
   // Who "I" am among the trip's people, for votes (prototype: picked in Ideas, kept per browser)
   const [meStored, setMeStored] = useState<string | null>(() => {
     try {
@@ -369,13 +378,15 @@ export function TripPage() {
   const scopedSection = scoped && tab === "plan" && focus ? view.sections.find((s) => s.key === focus) : undefined;
   // Variant B: ideas = places and rough notes in lists that aren't prep (Notes, Packing…); "planned" when a copy is on a day
   const ideaLists = overviewSections.filter((s) => s.kind === "list" && !isPrep(s));
-  const ideas: Idea[] = layoutB
+  const allIdeas: Idea[] = layoutB
     ? ideaLists.flatMap((s) =>
         s.items
           .filter(isIdeaItem)
           .map((item) => ({ item, list: s.title ?? "List", days: sectionsOf(item.id).filter((k) => k.startsWith("day:")), group: groupOf(item), rough: isRough(item) })),
       )
     : [];
+  const ideas = allIdeas.filter((i) => !removedByOf(i.item));
+  const removedIdeas = allIdeas.filter((i) => removedByOf(i.item));
   const people = state.meta.travelers ?? [];
   const me = meStored && people.includes(meStored) ? meStored : (people[0] ?? null);
   const setMe = (who: string) => {
@@ -389,8 +400,36 @@ export function TripPage() {
   // New ideas go into the first idea list (the pool); one is made if there's none
   const poolKey = () => ideaLists[0]?.key ?? `list:${addList(doc, "Ideas")}`;
   const captured = (id: string) => {
-    if (me) updateItem(doc, id, { votes: [me] } as Partial<Item>);
+    if (me) setExtra(doc, id, { addedBy: me, votes: [me] });
     setJustAdded(id);
+  };
+  const say = (text: string, undo?: boolean) => setToast({ text, undo, n: Date.now() });
+  // Capturing something that's already an idea (or already on a day) points at it instead of adding it twice
+  const captureOrPoint = (p: PlaceResult) => {
+    const probe = { kind: "place", name: p.name, lat: p.lat, lng: p.lng, osmId: p.osmId, googlePlaceId: p.googlePlaceId } as Item;
+    const dup = ideas.find((i) => !i.rough && samePlace(i.item, probe));
+    if (dup) {
+      if (people.length >= 2 && me && !votesOf(dup.item).includes(me)) toggleVote(doc, dup.item, me);
+      if (dup.days.length) return say(`${dup.item.name} is already on ${dup.days.map((k) => formatChip(k.slice(4))).join(", ")}`);
+      setFlash({ id: dup.item.id, n: Date.now() });
+      return say(people.length >= 2 ? `Already an idea: added your vote` : "Already an idea");
+    }
+    const onDay = state.items.find((x) => x.section.startsWith("day:") && samePlace(x, probe));
+    if (onDay) return say(`${onDay.name} is already on ${formatChip(onDay.section.slice(4))}`);
+    captured(addPlace(doc, poolKey(), p, undefined, { destination: state.meta.destination, near }));
+  };
+  // Your own idea goes (undo brings it back); someone else's moves to "Removed" so it can be restored
+  const removeIdea = (itemId: string) => {
+    const it = state.items.find((x) => x.id === itemId);
+    if (!it) return;
+    const by = addedByOf(it);
+    if (by && me && by !== me) {
+      setExtra(doc, itemId, { removedBy: me });
+      say(`Moved to Removed: it was ${by}'s idea`, true);
+    } else {
+      removeItem(doc, itemId);
+      say(`Removed ${it.name}`, true);
+    }
   };
   const addIdea = (itemId: string, dayKey: string) => {
     const [newId] = copyItems(doc, [itemId], writeOf(dayKey));
@@ -526,15 +565,16 @@ export function TripPage() {
           ) : layoutB && tab === "plan" && area === "ideas" ? (
             <IdeasHome
               ideas={ideas}
+              removed={removedIdeas}
               days={overviewSections.filter((s) => s.kind === "day")}
               people={people}
               me={me}
-              setMe={setMe}
               readOnly={readOnly}
+              flash={flash}
               near={near}
               countryCode={state.meta.countryCode}
               justAdded={justAdded}
-              onCapturePlace={(p) => captured(addPlace(doc, poolKey(), p, undefined, { destination: state.meta.destination, near }))}
+              onCapturePlace={captureOrPoint}
               onCaptureRough={(text) => captured(addItem(doc, poolKey(), { kind: "note", name: text }))}
               onFindPlace={(itemId, p) => {
                 const it = state.items.find((x) => x.id === itemId);
@@ -559,7 +599,12 @@ export function TripPage() {
                 if (it && me) toggleVote(doc, it, me);
               }}
               onWhy={(itemId, text) => setWhy(doc, itemId, text)}
-              onRemove={(itemId) => removeItem(doc, itemId)}
+              onRemove={removeIdea}
+              onRestore={(itemId) => setExtra(doc, itemId, { removedBy: undefined })}
+              onMustDo={(itemId) => {
+                const it = state.items.find((x) => x.id === itemId);
+                if (it) setExtra(doc, itemId, { mustDo: isMustDo(it) ? undefined : true });
+              }}
               onDoneWhy={() => setJustAdded(null)}
             />
           ) : layoutB && tab === "plan" ? (
@@ -572,6 +617,8 @@ export function TripPage() {
               bookingsByDay={new Map([...chipsByDay].map(([d, c]) => [d, c.length]))}
               onPick={pickScope}
               onOverview={() => setShowOverview(true)}
+              mustDoLeft={ideas.filter((i) => !i.days.length && isMustDo(i.item)).length}
+              onIdeas={() => pickArea("ideas")}
             />
           ) : layoutB ? (
             <>
@@ -835,7 +882,33 @@ export function TripPage() {
       )}
       {showHistory && <HistoryDialog doc={doc} state={state} readOnly={readOnly} myEmail={myEmail ?? undefined} onClose={() => setShowHistory(false)} />}
       <MobileViewSwitch mobileView={mobileView} setMobileView={setMobileView} />
-      <LayoutSwitch />
+      <LayoutSwitch
+        extra={
+          layoutB && people.length > 1 ? (
+            <label title="Prototype only: who you are on this trip (the real app knows from your sign-in)" className="flex items-center gap-1">
+              You are
+              <select value={me ?? ""} onChange={(e) => setMe(e.target.value)} className="cursor-pointer bg-transparent font-semibold text-fg outline-none">
+                {people.map((p) => (
+                  <option key={p} value={p}>
+                    {p}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : null
+        }
+      />
+      {/* PROTOTYPE (proto/trip-focus): a short note after removing or pointing at an idea */}
+      {layoutB && toast && (
+        <div key={toast.n} className="fixed bottom-16 left-1/2 z-[70] flex -translate-x-1/2 items-center gap-3 rounded-full bg-fg px-4 py-2 text-[13.5px] text-bg shadow-2xl">
+          {toast.text}
+          {toast.undo && !readOnly && (
+            <button onClick={() => (history.undo(), setToast(null))} className="font-semibold text-accent">
+              Undo
+            </button>
+          )}
+        </div>
+      )}
     </div>
   );
 }
