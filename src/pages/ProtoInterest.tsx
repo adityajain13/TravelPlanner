@@ -173,11 +173,160 @@ function Exceptions({ people, me, answers, set }: VariantProps) {
   );
 }
 
-const VARIANTS: { id: string; name: string; note: string; where: "top" | "bottom"; C: (p: VariantProps) => ReactNode }[] = [
+
+/* ---------- the scale as a track (variants E–G): ✕ sit out · tag along · ★ must do ---------- */
+
+const TRACK_W = 112;
+const posX = (v: number) => ((v + 1) / 2) * TRACK_W; // −1 → 0, 0 → middle, +1 → end
+const answered = (people: string[], ans: Answers): number[] => people.map((p) => ans[p] ?? null).filter((a): a is -1 | 0 | 1 => a !== null);
+const DOT = (a: Answer | number) => (a === 1 ? "#f59e0b" : a === -1 ? "#ef4444" : a === 0 ? "#8a918d" : "transparent");
+
+/** The bare track: a red → grey → green line with ✕ and ★ at its ends (not colour alone) */
+function Track({ children, w = TRACK_W, faint }: { children?: ReactNode; w?: number; faint?: boolean }) {
+  return (
+    <span className="flex items-center gap-1.5">
+      <X className="size-3 shrink-0 text-red-500" />
+      <span className="relative h-4 shrink-0" style={{ width: w }}>
+        <span
+          className={`absolute inset-x-0 top-1/2 h-1 -translate-y-1/2 rounded-full ${faint ? "opacity-35" : "opacity-70"}`}
+          style={{ background: "linear-gradient(90deg,#ef4444,#9ca3a0 50%,#22a35a)" }}
+        />
+        {children}
+      </span>
+      <Star className="size-3 shrink-0 text-amber-500" />
+    </span>
+  );
+}
+
+/** Opens your choices when the summary is clicked (the folded track is a read-out, not a slider) */
+function TrackButton({ props, children, extra }: { props: VariantProps; children: ReactNode; extra?: ReactNode }) {
+  const { people, me, answers, set } = props;
+  const unanswered = people.filter((p) => (answers[p] ?? null) === null).length;
+  return (
+    <Popover
+      trigger={(t) => (
+        <button onClick={t} title={sorted(people, answers).map((p) => `${p === me ? "You" : p}: ${LABEL[key(answers[p] ?? null)]}`).join("\n")} className="flex items-center gap-2 rounded-full px-1.5 py-0.5 hover:bg-surface-2">
+          {children}
+          {extra}
+          {unanswered > 0 && <span className="text-[11.5px] text-muted">{unanswered} ?</span>}
+        </button>
+      )}
+    >
+      <span className="block px-1 pb-1.5 text-[11px] text-muted">You ({me})</span>
+      <Choices value={answers[me] ?? null} set={set} />
+    </Popover>
+  );
+}
+
+/** E: one knob at the group's average (as drafted in Figma) */
+function MeanKnob(props: VariantProps) {
+  const a = answered(props.people, props.answers);
+  const mean = a.length ? a.reduce((x, y) => x + y, 0) / a.length : null;
+  return (
+    <TrackButton props={props}>
+      <Track faint={mean === null}>
+        {mean !== null && (
+          <span
+            className="absolute top-1/2 size-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full ring-2 ring-surface"
+            style={{ left: posX(mean), background: mean > 0.15 ? "#22a35a" : mean < -0.15 ? "#ef4444" : "#8a918d" }}
+          />
+        )}
+      </Track>
+    </TrackButton>
+  );
+}
+
+/** F: a dot per person at their answer, side by side where several share a stop */
+function DotPlot(props: VariantProps) {
+  const { people, me, answers } = props;
+  const byStop = new Map<number, string[]>();
+  for (const p of sorted(people, answers)) {
+    const a = answers[p] ?? null;
+    if (a !== null) byStop.set(a, [...(byStop.get(a) ?? []), p]);
+  }
+  return (
+    <TrackButton props={props}>
+      <Track>
+        {[...byStop].flatMap(([a, ps]) =>
+          ps.map((p, i) => (
+            <span
+              key={p}
+              title={`${p === me ? "You" : p}: ${LABEL[key(a as Answer)]}`}
+              className={`absolute top-1/2 size-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full ring-2 ${p === me ? "ring-fg" : "ring-surface"}`}
+              style={{ left: Math.min(TRACK_W, Math.max(0, posX(a) + (i - (ps.length - 1) / 2) * 8)), background: DOT(a as Answer) }}
+            />
+          )),
+        )}
+      </Track>
+    </TrackButton>
+  );
+}
+
+/** G: the stretch from the lowest to the highest answer, with a tick at the average */
+function RangeBar(props: VariantProps) {
+  const a = answered(props.people, props.answers);
+  if (!a.length)
+    return (
+      <TrackButton props={props}>
+        <Track faint />
+      </TrackButton>
+    );
+  const lo = Math.min(...a);
+  const hi = Math.max(...a);
+  const mean = a.reduce((x, y) => x + y, 0) / a.length;
+  const contested = lo === -1 && hi === 1;
+  return (
+    <TrackButton props={props} extra={contested ? <span className="text-[11.5px] font-semibold text-red-600 dark:text-red-400">split?</span> : undefined}>
+      <Track faint>
+        <span
+          className="absolute top-1/2 h-2.5 -translate-y-1/2 rounded-full"
+          style={{
+            left: posX(lo) - 5,
+            width: posX(hi) - posX(lo) + 10,
+            background: lo === hi ? DOT(lo) : `linear-gradient(90deg,${DOT(lo)},${DOT(hi)})`,
+          }}
+        />
+        <span className="absolute top-1/2 h-4 w-0.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-fg" style={{ left: posX(mean) }} />
+      </Track>
+    </TrackButton>
+  );
+}
+
+/** Expanded view for the track variants: one snapping three-stop slider per person (yours is clickable) */
+function PersonSlider({ a, editable, onSet }: { a: Answer; editable: boolean; onSet: (a: Answer) => void }) {
+  const stops: (-1 | 0 | 1)[] = [-1, 0, 1];
+  const W = 150;
+  return (
+    <span className="flex items-center gap-1.5">
+      <X className="size-3 text-red-500" />
+      <span className="relative h-5" style={{ width: W }}>
+        <span className="absolute inset-x-0 top-1/2 h-1 -translate-y-1/2 rounded-full opacity-60" style={{ background: "linear-gradient(90deg,#ef4444,#9ca3a0 50%,#22a35a)" }} />
+        {stops.map((v) => (
+          <button
+            key={v}
+            disabled={!editable}
+            onClick={() => onSet(a === v ? null : v)}
+            title={LABEL[key(v)]}
+            className={`absolute top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full transition-all ${
+              a === v ? "size-4 ring-2 ring-surface" : `size-2 bg-surface ring-1 ring-line ${editable ? "hover:size-3 hover:ring-fg" : ""}`
+            } ${editable ? "cursor-pointer" : "cursor-default"}`}
+            style={{ left: ((v + 1) / 2) * W, ...(a === v ? { background: DOT(v) } : {}) }}
+          />
+        ))}
+      </span>
+      <Star className="size-3 text-amber-500" />
+    </span>
+  );
+}
+
+const VARIANTS: { id: string; name: string; note: string; where: "top" | "bottom"; sliders?: boolean; C: (p: VariantProps) => ReactNode }[] = [
   { id: "A", name: "Avatar strip", note: "Who and what at once. Click your own avatar to answer.", where: "top", C: AvatarStrip },
   { id: "B", name: "Counts", note: "Smallest. Says how many, not who (hover/expand for names).", where: "top", C: Counts },
   { id: "C", name: "Mood bar", note: "One block per person, coloured by answer. Your ✕ / ★ are always one tap.", where: "bottom", C: MoodBar },
   { id: "D", name: "Exceptions in words", note: "Only must-dos and sit-outs, by name. Quiet when everyone's fine.", where: "bottom", C: Exceptions },
+  { id: "E", name: "Average knob", note: "Your Figma draft: one knob at the group's average. Click it to answer.", where: "bottom", sliders: true, C: MeanKnob },
+  { id: "F", name: "Dot plot", note: "One dot per person at their answer, so a split shows as dots at both ends. Yours has a dark ring.", where: "bottom", sliders: true, C: DotPlot },
+  { id: "G", name: "Range", note: "Highlights lowest → highest answer, tick at the average; says “split?” when it spans the whole scale.", where: "bottom", sliders: true, C: RangeBar },
 ];
 
 /* ---------- the card shell around a variant ---------- */
@@ -228,7 +377,12 @@ function Card({ v, props, expanded }: { v: (typeof VARIANTS)[number]; props: Var
               <li key={p} className="flex items-center gap-2.5 text-[13px]">
                 <AnswerAvatar name={p} a={answers[p] ?? null} size={20} />
                 <span className="w-16 truncate font-semibold">{p === me ? "You" : p}</span>
-                {p === me ? (
+                {v.sliders ? (
+                  <span className="flex items-center gap-2.5">
+                    <PersonSlider a={answers[p] ?? null} editable={p === me} onSet={set} />
+                    <span className={`text-[12px] ${(answers[p] ?? null) === null ? "text-muted italic" : "text-muted"}`}>{LABEL[key(answers[p] ?? null)]}</span>
+                  </span>
+                ) : p === me ? (
                   <Choices value={answers[p] ?? null} set={set} />
                 ) : (
                   <span className={answers[p] === 1 ? "text-amber-700 dark:text-amber-300" : answers[p] === -1 ? "text-red-600 dark:text-red-400" : answers[p] === null || answers[p] === undefined ? "text-muted italic" : ""}>
