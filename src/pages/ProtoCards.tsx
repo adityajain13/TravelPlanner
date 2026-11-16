@@ -215,11 +215,12 @@ const clock = (m: number) => `${String(Math.floor(m / 60)).padStart(2, "0")}:${S
 const BUFFER = 20; // minutes to get between stops
 
 /** Where the idea lands in the day's clock: before, between or after the stops, and what it pushes back */
-function placeInDay(f: DayFit, mins: number, openHours?: string) {
+function placeInDay(f: DayFit, mins: number, openHours?: string, fixed?: string) {
   const times = (STOP_TIMES[f.day] ?? []).map(([t, d]) => ({ start: hm(t), end: hm(t) + d }));
   const s = f.slot;
   let start = 10 * 60;
-  if (s && times.length) {
+  if (fixed) start = hm(fixed);
+  else if (s && times.length) {
     if (s.kind === "start") start = times[0].start - BUFFER - mins;
     else if (s.kind === "end") start = times[times.length - 1].end + BUFFER;
     else start = times[s.i].end + BUFFER;
@@ -228,12 +229,14 @@ function placeInDay(f: DayFit, mins: number, openHours?: string) {
   const opens = m ? +m[1] * 60 : undefined;
   const closes = m ? +m[2] * 60 : undefined;
   // Arriving before it opens? Wait for it (the rest of the day then shifts, shown as a push)
-  if (opens !== undefined && start < opens && s?.kind !== "start") start = opens;
-  const end = start + mins;
+  if (!fixed && opens !== undefined && start < opens && s?.kind !== "start") start = opens;
+  // A booked slot is fixed: the visit just ends when the place closes (only the start can be "outside")
+  const cut = !!fixed && closes !== undefined && start + mins > closes;
+  const end = cut ? closes! : start + mins;
   const next = s?.kind === "between" ? times[s.i + 1] : s?.kind === "start" ? times[0] : undefined;
   const push = next ? Math.max(0, end + BUFFER - next.start) : 0;
   const outside = opens !== undefined && closes !== undefined && (start < opens || end > closes);
-  return { times, start, end, push, nextIndex: s?.kind === "between" ? s.i + 1 : s?.kind === "start" ? 0 : -1, opens, closes, outside };
+  return { cut, times, start, end, push, nextIndex: s?.kind === "between" ? s.i + 1 : s?.kind === "start" ? 0 : -1, opens, closes, outside };
 }
 /** Other ideas in the pool and how far they are, per idea (demo) */
 const CLOSE_IDEAS: Record<string, string[]> = { ghibli: ["Inokashira Park", "Kichijoji Harmonica Yokocho"], hakone: ["Hakone Open-Air Museum", "Hakone Shrine"] };
@@ -2078,15 +2081,15 @@ function WeekPicker({ fits, sel, bookedDay, onPick }: { fits: DayFit[]; sel?: Da
 }
 
 /** The chosen day as its stop list, with the idea slotted in where it fits (and anything it pushes back) */
-function DayList({ f, idea, mins, openHours }: { f: DayFit; idea: Demo; mins: number; openHours?: string }) {
-  const p = placeInDay(f, mins, openHours);
+function DayList({ f, idea, mins, openHours, fixed }: { f: DayFit; idea: Demo; mins: number; openHours?: string; fixed?: string }) {
+  const p = placeInDay(f, mins, openHours, fixed);
   const ghost = (
     <li key="ghost" className={`flex items-start gap-2.5 rounded-lg border border-dashed px-2.5 py-1.5 ${p.outside ? "border-red-400 bg-red-500/5" : "border-amber-500 bg-amber-400/10"}`}>
       <span className="w-11 shrink-0 text-[11.5px] font-semibold text-amber-700 tabular-nums dark:text-amber-300">{clock(p.start)}</span>
       <span className="grid size-5 shrink-0 place-items-center rounded-full bg-amber-400 text-[11px] font-bold text-white">+</span>
       <span className="min-w-0 text-[12.5px]">
         <b className="font-semibold">{idea.name}</b>
-        <span className="text-muted"> · until {clock(p.end)}</span>
+        <span className="text-muted"> · until {clock(p.end)}{p.cut ? " (closing)" : ""}</span>
         {p.outside && <span className="block text-red-600 dark:text-red-400">Outside opening hours ({openHours})</span>}
       </span>
     </li>
@@ -2123,8 +2126,8 @@ function DayList({ f, idea, mins, openHours }: { f: DayFit; idea: Demo; mins: nu
 }
 
 /** The chosen day on a clock (8:00–22:00): stops as blocks, the idea as an amber block, its opening hours behind it */
-function DayClock({ f, idea, mins, openHours }: { f: DayFit; idea: Demo; mins: number; openHours?: string }) {
-  const p = placeInDay(f, mins, openHours);
+function DayClock({ f, idea, mins, openHours, fixed }: { f: DayFit; idea: Demo; mins: number; openHours?: string; fixed?: string }) {
+  const p = placeInDay(f, mins, openHours, fixed);
   const H0 = 8 * 60;
   const H1 = 22 * 60;
   const x = (m: number) => `${((Math.min(Math.max(m, H0), H1) - H0) / (H1 - H0)) * 100}%`;
@@ -2191,7 +2194,20 @@ function FitCard({ idea, open, toggle, me, setMine, view = "map" }: Props & { vi
     (planned ? fits.find((f) => f.state === "free") : undefined);
   const [pick, setPick] = useState<string | null>(null);
   useEffect(() => setPick(null), [idea.id, STAGE]);
-  const sel = fits.find((f) => f.day === pick) ?? proposal;
+  let sel = fits.find((f) => f.day === pick) ?? proposal;
+  // Booked: it goes where its booked time falls in that day (by the clock), not where it's closest on the map
+  if (sel && sel.day === bookedDay && bookedTime && place.at && sel.stops.length) {
+    const st = sel.stops;
+    const at = place.at;
+    const k = (STOP_TIMES[sel.day] ?? []).filter(([t]) => hm(t) < hm(bookedTime)).length;
+    const slot: Slot =
+      k === 0
+        ? { kind: "start", i: 0, detour: kmBetween(at, st[0].at), near: 0 }
+        : k >= st.length
+          ? { kind: "end", i: st.length - 1, detour: kmBetween(st[st.length - 1].at, at), near: st.length - 1 }
+          : { kind: "between", i: k - 1, detour: kmBetween(st[k - 1].at, at) + kmBetween(at, st[k].at) - kmBetween(st[k - 1].at, st[k].at), near: kmBetween(st[k - 1].at, at) < kmBetween(st[k].at, at) ? k - 1 : k };
+    sel = { ...sel, slot, state: "fits" };
+  }
 
   // Every reason, once, about the selected day; ✕ for other days that are ruled out
   const bestTime = idea.facts.find((f) => f.startsWith("Best "));
@@ -2263,25 +2279,23 @@ function FitCard({ idea, open, toggle, me, setMine, view = "map" }: Props & { vi
     // The week is the one day control; open, where in that day it lands
     <>
       <WeekPicker fits={fits} sel={sel} bookedDay={bookedDay} onPick={setPick} />
-      <div className="mt-2 space-y-0.5">{(open ? lines : glance).map(line)}</div>
+      {/* Day first, then that day's times (open), then the reasons */}
       {sel && (
         <Grow open={open}>
           <div className="pt-3">
-            <Cap>
-              Where it lands on {sel.day} · {DAY_TITLE[sel.day]}
-            </Cap>
             {sel.state === "closed" ? (
               <p className="text-[12.5px] text-red-600 dark:text-red-400">Closed that day</p>
             ) : sel.state === "far" || sel.state === "travel" ? (
               <p className="text-[12.5px] text-muted">{sel.state === "far" ? `Too far from ${sel.day}'s stops to slot in` : `${sel.day} is a travel day`}</p>
             ) : view === "list" ? (
-              <DayList f={sel} idea={idea} mins={VISIT_MIN[idea.id] ?? 90} openHours={place.hours?.[sel.day]} />
+              <DayList f={sel} idea={idea} mins={VISIT_MIN[idea.id] ?? 90} openHours={place.hours?.[sel.day]} fixed={sel.day === bookedDay ? (bookedTime ?? undefined) : undefined} />
             ) : (
-              <DayClock f={sel} idea={idea} mins={VISIT_MIN[idea.id] ?? 90} openHours={place.hours?.[sel.day]} />
+              <DayClock f={sel} idea={idea} mins={VISIT_MIN[idea.id] ?? 90} openHours={place.hours?.[sel.day]} fixed={sel.day === bookedDay ? (bookedTime ?? undefined) : undefined} />
             )}
           </div>
         </Grow>
       )}
+      <div className="mt-2.5 space-y-0.5">{(open ? lines : glance).map(line)}</div>
     </>
   ) : (
     <>
