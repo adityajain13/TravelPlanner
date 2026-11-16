@@ -8,7 +8,7 @@ import type { SectionInfo } from "../../Section";
 import type { PlaceResult } from "../../../lib/photon";
 import type { Reservation } from "../../../lib/trips";
 import { factsOf, fitFor, isGoodFit } from "../../../lib/protoFit";
-import { addedByOf, bookingState, clusterAreas, GROUP_LABEL, GROUP_ORDER, isMustDo, mentionParts, placeLine, removedByOf, useAreaNames, votesOf, type Group } from "../../../lib/protoIdeas";
+import { addedByOf, bookingState, clusterAreas, GROUP_LABEL, GROUP_ORDER, interestOf, isMustDo, mentionParts, placeLine, removedByOf, useAreaNames, votesOf, type Answer, type Group } from "../../../lib/protoIdeas";
 import { IdeaCard } from "./IdeaCard";
 import { dayShort, type DayFit } from "./DayMenu";
 import { formatChip } from "../DayChips";
@@ -40,6 +40,7 @@ export function IdeasHome({
   onCaptureRough,
   onFindPlace,
   onAdd,
+  onAnswer,
   onOpenDay,
   onOpen,
   onVote,
@@ -73,7 +74,9 @@ export function IdeasHome({
   onCapturePlace: (p: PlaceResult) => void;
   onCaptureRough: (text: string) => void;
   onFindPlace: (itemId: string, p: PlaceResult) => void;
-  onAdd: (itemId: string, dayKey: string) => void;
+  onAdd: (itemId: string, dayKey: string, opts?: import("./IdeaFitCard").AddOptions) => void;
+  /** Your answer in an idea's group poll */
+  onAnswer: (itemId: string, a: Answer) => void;
   onOpenDay: (key: string) => void;
   /** Open the place's card over the map */
   onOpen: (itemId: string) => void;
@@ -109,7 +112,7 @@ export function IdeasHome({
   const placeIdeas = open.filter((i) => !i.rough);
   const planned = ideas.filter((i) => i.days.length);
   const dayFits = (i: Idea): DayFit[] =>
-    days.map((d, n) => ({ key: d.key, date: d.date!, title: subtitles?.[d.key] || (placesIn(d).length ? placesIn(d).map((x) => x.name).slice(0, 2).join(" · ") : `Day ${n + 1} · nothing planned`), fit: fitFor(i.item, { date: d.date!, items: d.items }) }));
+    days.map((d, n) => ({ key: d.key, date: d.date!, title: subtitles?.[d.key] || (placesIn(d).length ? placesIn(d).map((x) => x.name).slice(0, 2).join(" · ") : `Day ${n + 1} · nothing planned`), fit: fitFor(i.item, { date: d.date!, items: d.items }), stops: placesIn(d).filter((x) => x.lat != null && x.lng != null).map((x) => ({ id: x.id, name: x.name, at: [x.lat!, x.lng!] as [number, number] })) }));
   const fits = new Map(
     placeIdeas.map((i) => {
       const all = dayFits(i);
@@ -298,7 +301,9 @@ export function IdeasHome({
         selected={selectedId === idea.item.id}
         booking={bookingState(idea.item, reservations, !!factsOf(idea.item).book)}
         startWhy={justAdded === idea.item.id}
-        onAdd={(k) => onAdd(idea.item.id, k)}
+        onAdd={(k, o) => onAdd(idea.item.id, k, o)}
+        answers={interestOf(idea.item, people)}
+        onAnswer={(a) => onAnswer(idea.item.id, a)}
         onOpen={() => onOpen(idea.item.id)}
         onVote={() => onVote(idea.item.id)}
         onMustDo={() => onMustDo(idea.item.id)}

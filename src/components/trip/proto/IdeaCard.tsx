@@ -33,6 +33,7 @@ import {
 } from "../../../lib/protoIdeas";
 import { Avatar, MentionInput } from "./MentionInput";
 import { DayMenu, dayShort, type DayFit } from "./DayMenu";
+import { IdeaFitCard, type AddOptions } from "./IdeaFitCard";
 import type { Idea } from "./IdeasShelf";
 
 const BEST_TIME = {
@@ -70,6 +71,8 @@ export function IdeaCard({
   onGroup,
   onRemove,
   onDoneWhy,
+  answers,
+  onAnswer,
 }: {
   idea: Idea;
   /** "Kyoto, Japan" */
@@ -86,7 +89,10 @@ export function IdeaCard({
   booking: BookingState;
   /** Just captured: open the why field */
   startWhy: boolean;
-  onAdd: (dayKey: string) => void;
+  onAdd: (dayKey: string, opts?: AddOptions) => void;
+  /** Each person's answer in the poll (the "fit" card) */
+  answers: Record<string, Answer>;
+  onAnswer: (a: Answer) => void;
   onOpen: () => void;
   onVote: () => void;
   onMustDo: () => void;
@@ -97,6 +103,29 @@ export function IdeaCard({
 }) {
   const it = idea.item;
   const [style] = useCardStyle();
+  if (style === "fit")
+    return (
+      <IdeaFitCard
+        idea={idea}
+        where={where}
+        days={days}
+        best={best}
+        people={people}
+        me={me}
+        answers={answers}
+        readOnly={readOnly}
+        highlight={highlight}
+        selected={selected}
+        booking={booking}
+        startWhy={startWhy}
+        onAdd={onAdd}
+        onOpen={onOpen}
+        onAnswer={onAnswer}
+        onWhy={onWhy}
+        onRemove={onRemove}
+        onDoneWhy={onDoneWhy}
+      />
+    );
   const group = people.length >= 2;
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState(false);

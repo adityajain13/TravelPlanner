@@ -37,14 +37,15 @@ export function useTripLayout(): [TripLayout, (v: TripLayout) => void] {
 }
 
 // Idea card style: "details" = folded card plus a Details appendix; "zones" = the same four zones fold and unfold in place
-export type CardStyle = "details" | "zones";
+export type CardStyle = "details" | "zones" | "fit";
 const CARD_KEY = "proto:idea-card";
 const CARD_EVENT = "proto-idea-card";
 function readCard(): CardStyle {
   try {
-    return localStorage.getItem(CARD_KEY) === "details" ? "details" : "zones";
+    const v = localStorage.getItem(CARD_KEY);
+    return v === "details" || v === "zones" ? v : "fit";
   } catch {
-    return "zones";
+    return "fit";
   }
 }
 export function useCardStyle(): [CardStyle, (v: CardStyle) => void] {

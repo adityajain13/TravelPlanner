@@ -70,10 +70,30 @@ export function mentionParts(text: string, people: string[]): { text: string; wh
 export const URL_RE = /^https?:\/\/\S+$/i;
 
 /* ---- Who added it, must-do, soft remove (stored on the item; not in his Item type yet) ---- */
-type Extra = { votes?: string[]; addedBy?: string; mustDo?: boolean; removedBy?: string; groupOverride?: Group };
+type Extra = { votes?: string[]; addedBy?: string; mustDo?: boolean; removedBy?: string; groupOverride?: Group; interest?: Record<string, -1 | 0 | 1> };
 const extra = (it: Item) => it as Item & Extra;
 export const addedByOf = (it: Item) => extra(it).addedBy;
-export const isMustDo = (it: Item) => !!extra(it).mustDo;
+
+/* ---- How each person feels about an idea (the poll): 1 = Yes!, 0 = Sure, -1 = Not for me, missing = no answer ----
+   Older 👍 votes read as Yes! until that person answers. Must-do is now derived: anyone said Yes!. */
+export type Answer = -1 | 0 | 1 | null;
+export function interestOf(it: Item, people: string[]): Record<string, Answer> {
+  const saved = extra(it).interest ?? {};
+  const votes = votesOf(it);
+  return Object.fromEntries(people.map((p) => [p, p in saved ? saved[p] : votes.includes(p) ? 1 : null]));
+}
+export function setInterest(doc: Y.Doc, it: Item, who: string, a: Answer) {
+  const cur = { ...(extra(it).interest ?? {}) };
+  if (a === null) delete cur[who];
+  else cur[who] = a;
+  // A 👍 left over from before would otherwise come back as Yes! when the answer is cleared
+  const votes = votesOf(it).filter((v) => v !== who);
+  updateItem(doc, it.id, { interest: Object.keys(cur).length ? cur : undefined, votes: votes.length ? votes : undefined } as Partial<Item>);
+}
+export const isMustDo = (it: Item) => {
+  const saved = extra(it).interest ?? {};
+  return !!extra(it).mustDo || Object.values(saved).includes(1) || votesOf(it).some((v) => !(v in saved));
+};
 export const removedByOf = (it: Item) => extra(it).removedBy;
 export const setExtra = (doc: Y.Doc, id: string, patch: Extra) => updateItem(doc, id, patch as Partial<Item>);
 

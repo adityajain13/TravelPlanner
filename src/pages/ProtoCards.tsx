@@ -1902,12 +1902,12 @@ function WhoGoing({ idea, day, me, onAdd, onCancel }: { idea: Demo; day: DayFit;
   const preview = everyone
     ? `Everyone goes to ${idea.name} on ${day.day}. No split.`
     : !st.length || !s
-      ? `On ${day.day} (nothing planned yet), ${listNames(going, me, true)} go to ${idea.name}${visit ? ` (${visit})` : ""}. ${listNames(out, me)} ${out.length > 1 ? "have" : "has"} the day free.`
+      ? `On ${day.day} (nothing planned yet), ${listNames(going, me, true)} go to ${idea.name}${visit ? ` (${visit})` : ""}. ${listNames(out, me)} ${out.length > 1 || out[0] === me ? "have" : "has"} the day free.`
       : s.kind === "between"
-        ? `After ${s.i + 1} ${st[s.i].name}, ${listNames(going, me, true)} go to ${idea.name}${visit ? ` (${visit})` : ""}. ${listNames(out, me)} ${others === "own" && own ? `${out.length > 1 ? "go" : "goes"} to ${own}` : `${out.length > 1 ? "have" : "has"} free time`}. Everyone meets again at ${s.i + 2} ${st[s.i + 1].name}.`
+        ? `After ${s.i + 1} ${st[s.i].name}, ${listNames(going, me, true)} go to ${idea.name}${visit ? ` (${visit})` : ""}. ${listNames(out, me)} ${others === "own" && own ? `${out.length > 1 || out[0] === me ? "go" : "goes"} to ${own}` : `${out.length > 1 || out[0] === me ? "have" : "has"} free time`}. Everyone meets again at ${s.i + 2} ${st[s.i + 1].name}.`
         : s.kind === "start"
-          ? `${listNames(going, me)} start ${day.day} at ${idea.name}. ${listNames(out, me)} ${out.length > 1 ? "join" : "joins"} you at 1 ${st[0].name}.`
-          : `After ${st.length} ${st[st.length - 1].name}, ${listNames(going, me, true)} go to ${idea.name}. ${listNames(out, me)} ${out.length > 1 ? "are" : "is"} done for the day.`;
+          ? `${listNames(going, me)} start ${day.day} at ${idea.name}. ${listNames(out, me)} ${out.length > 1 || out[0] === me ? "join" : "joins"} you at 1 ${st[0].name}.`
+          : `After ${st.length} ${st[st.length - 1].name}, ${listNames(going, me, true)} go to ${idea.name}. ${listNames(out, me)} ${out.length > 1 || out[0] === me ? "are" : "is"} done for the day.`;
 
   const notes: { warn: boolean; text: string }[] = [];
   if (!going.length) notes.push({ warn: true, text: "Pick at least one person" });
@@ -2279,8 +2279,11 @@ function FitCard({ idea, open, toggle, me, setMine }: Props) {
                   {listNames(drift, me)} changed {drift.length === 1 && drift[0] === me ? "your" : "their"} {drift.length > 1 ? "answers" : "answer"} since this was added. <button onClick={() => setAsking(true)} className="font-semibold underline">Update who's going?</button>
                 </p>
               )}
-              <div className="mt-auto pt-4 @min-[600px]:mt-0">
-                <span className={`flex w-full items-center overflow-hidden rounded-full text-[12.5px] font-semibold ${sel && !rough && sel.state !== "closed" ? "bg-accent text-on-accent" : "border border-line bg-surface text-fg"}`}>
+              <div className="mt-auto flex items-center gap-1.5 pt-4 @min-[600px]:mt-0">
+                <button aria-label="Remove idea" title="Remove idea" className="grid size-8 shrink-0 place-items-center rounded-full border border-line bg-surface text-muted hover:border-red-400 hover:text-red-600">
+                  <Trash2 className="size-3.5" />
+                </button>
+                <span className={`flex min-w-0 flex-1 items-center overflow-hidden rounded-full text-[12.5px] font-semibold ${sel && !rough && sel.state !== "closed" ? "bg-accent text-on-accent" : "border border-line bg-surface text-fg"}`}>
                   <button onClick={press} className="flex flex-1 items-center justify-center gap-1.5 px-3 py-1.5">
                     {label}
                     {selWarn && <CircleAlert className="size-3.5 text-amber-200" aria-label="Something to watch on the left" />}
@@ -2313,11 +2316,6 @@ function FitCard({ idea, open, toggle, me, setMine }: Props) {
               <span className="absolute left-3 flex items-center gap-1 text-[12px] text-accent">
                 <Check className="size-3.5" /> On {added.day}
               </span>
-            )}
-            {open && (
-              <button className="absolute left-3 flex items-center gap-1 text-[12px] text-muted hover:text-red-600">
-                <Trash2 className="size-3.5" /> Remove idea
-              </button>
             )}
             <button onClick={toggle} className="flex flex-1 items-center justify-center gap-1 py-1.5 text-[12px] text-muted hover:text-fg">
               {open ? "Show less" : "Show more"}

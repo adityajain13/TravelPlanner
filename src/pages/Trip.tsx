@@ -18,6 +18,7 @@ import {
   copiesByItem,
   copyItems,
   isDraftSection,
+  moveItem,
   removeItem,
   removeItems,
   setReadOnly,
@@ -26,6 +27,7 @@ import {
   type Reservation,
 } from "../lib/trips";
 import { setHistoryAuthor } from "../lib/history";
+import type { AddOptions } from "../components/trip/proto/IdeaFitCard";
 import { addPlace, setCollapsed } from "../lib/itemActions";
 import { daysBetween, todayISO } from "../lib/dates";
 import { scrollToEl, scrollToId } from "../lib/scroll";
@@ -103,6 +105,7 @@ import {
   setExtra,
   setWhy,
   toggleVote,
+  setInterest,
   votesOf,
 } from "../lib/protoIdeas";
 import { samePlace } from "../lib/trips";
@@ -649,9 +652,18 @@ export function TripPage() {
       say(`Removed ${it.name}`, true);
     }
   };
-  const addIdea = (itemId: string, dayKey: string) => {
-    const [newId] = copyItems(doc, [itemId], writeOf(dayKey));
-    if (newId) revealAdded(newId);
+  // opts (from the idea card): who's going (a split; the day lays it out by itself) and where it slots into the route
+  const addIdea = (itemId: string, dayKey: string, opts?: AddOptions) => {
+    const section = writeOf(dayKey);
+    const before = state.items.filter((x) => x.section === section).sort((a, b) => (a.order < b.order ? -1 : a.order > b.order ? 1 : 0));
+    const [newId] = copyItems(doc, [itemId], section);
+    if (!newId) return;
+    if (opts?.who?.length) updateItem(doc, newId, { who: opts.who });
+    if (opts && opts.afterId !== undefined) {
+      const at = opts.afterId === null ? 0 : before.findIndex((x) => x.id === opts.afterId) + 1;
+      if (at >= 0 && at < before.length) moveItem(doc, newId, section, at);
+    }
+    revealAdded(newId);
   };
   const ideaMapView = (() => {
     if (!layoutB || area !== "ideas" || tab !== "plan" || focus) return null;
@@ -884,6 +896,10 @@ export function TripPage() {
             onVote={(itemId) => {
               const it = state.items.find((x) => x.id === itemId);
               if (it && me) toggleVote(doc, it, me);
+            }}
+            onAnswer={(itemId, a) => {
+              const it = state.items.find((x) => x.id === itemId);
+              if (it && me) setInterest(doc, it, me, a);
             }}
             onWhy={(itemId, text) => setWhy(doc, itemId, text)}
             onRemove={removeIdea}
@@ -1358,7 +1374,8 @@ export function TripPage() {
                   onChange={(e) => setCardStyle(e.target.value as CardStyle)}
                   className="cursor-pointer bg-transparent font-semibold text-fg outline-none"
                 >
-                  <option value="zones">Zones</option>
+                  <option value="fit">Evidence | decision</option>
+                <option value="zones">Zones</option>
                   <option value="details">Details</option>
                 </select>
               </label>
