@@ -975,7 +975,279 @@ function GroupBlock({ idea, open, me, setMine }: { idea: Demo; open: boolean; me
   );
 }
 
-function Detail({ idea, open, toggle, me, setMine, long }: Props & { long: "sticky" | "scroll" }) {
+/* ---------- round 5: the group, rethought ----------
+   What the block answers: "is the group in?" and "what do I think?". Each option shows the group one way only. */
+
+type GroupStyle = "track" | "G1" | "G2" | "G3" | "G4";
+const T = PALETTES.teal;
+const BUCKETS: { a: Answer; label: string; short: string }[] = [
+  { a: 1, label: "Must do", short: "must do" },
+  { a: 0, label: "Happy to come", short: "happy to come" },
+  { a: -1, label: "Sitting out", short: "sitting out" },
+  { a: null, label: "No answer yet", short: "haven't answered" },
+];
+const whoIs = (answers: Answers, a: Answer, me: string) => {
+  const ps = Object.keys(answers).filter((p) => answers[p] === a);
+  return [...ps.filter((p) => p === me), ...ps.filter((p) => p !== me)];
+};
+const nameOf = (p: string, me: string) => (p === me ? "You" : p);
+
+/** Your answer as a 3-way choice: ✕ Skip · Happy to · ★ Must do (click again to clear) */
+function Choice({ value, onSet }: { value: Answer; onSet: (a: Answer) => void }) {
+  const opt = (a: -1 | 0 | 1, label: ReactNode, bg: string, fg: string) => {
+    const on = value === a;
+    return (
+      <button
+        onClick={() => onSet(on ? null : a)}
+        className={`flex flex-1 items-center justify-center gap-1 rounded-full px-1 py-1 text-[11.5px] whitespace-nowrap font-semibold transition-colors ${on ? "" : "text-muted hover:text-fg"}`}
+        style={on ? { background: bg, color: fg } : undefined}
+      >
+        {label}
+      </button>
+    );
+  };
+  return (
+    <div className="flex rounded-full border border-line bg-surface p-0.5">
+      {opt(-1, <><X className="size-3" strokeWidth={3} /> Skip</>, T.out, "#fff")}
+      {opt(0, "Happy to", "rgb(0 0 0 / .08)", "inherit")}
+      {opt(1, <><Star className="size-3 fill-current" /> Must do</>, T.must, "#fff")}
+    </div>
+  );
+}
+
+function Stack({ names, max, size = 18, me }: { names: string[]; max: number; size?: number; me?: string }) {
+  return (
+    <span className="flex items-center -space-x-1.5">
+      {names.slice(0, max).map((p) => (
+        <span key={p} className={p === me ? "rounded-full ring-2 ring-accent" : ""} title={p}>
+          <Ava name={p} size={size} />
+        </span>
+      ))}
+      {names.length > max && <span className="pl-2 text-[11px] text-muted">+{names.length - max}</span>}
+    </span>
+  );
+}
+
+/** G1: your answer + who's in. Folded: the choice and one line of who's where; open: names per answer */
+function GroupChoice({ idea, open, me, setMine }: GroupProps) {
+  const n = Object.keys(idea.answers).length;
+  const icon = (a: Answer) => (a === 1 ? <Star className="size-3" style={{ color: T.must, fill: T.must }} /> : a === -1 ? <X className="size-3" style={{ color: T.out }} strokeWidth={3} /> : a === 0 ? <span className="text-[11px] text-muted">~</span> : <span className="text-[11px] text-muted">?</span>);
+  return (
+    <div>
+      <Cap>{n === 1 ? "Your take" : "You"}</Cap>
+      <Choice value={idea.answers[me]} onSet={setMine} />
+      {n > 1 && (
+        <div className="mt-4">
+          <Cap>Group · {n}</Cap>
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+            {BUCKETS.map(({ a }) => {
+              const who = whoIs(idea.answers, a, me);
+              return who.length > 0 && (
+                <span key={String(a)} className="flex items-center gap-1">
+                  {icon(a)}
+                  <Stack names={who} max={3} me={me} />
+                </span>
+              );
+            })}
+          </div>
+          <Grow open={open}>
+            <ul className="space-y-1 pt-2.5 text-[12px]">
+              {BUCKETS.map(({ a, label }) => {
+                const who = whoIs(idea.answers, a, me);
+                return who.length > 0 && (
+                  <li key={String(a)} className="flex gap-2">
+                    <span className="w-24 shrink-0 text-muted">{label}</span>
+                    <span className="text-fg/85">{who.map((p) => nameOf(p, me)).join(", ")}</span>
+                  </li>
+                );
+              })}
+            </ul>
+          </Grow>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** G2 / G3 share a 3-stop track sized to the panel. Stops sit at fixed x so columns can line up under them. */
+const GW = 196;
+const STOPS: Record<string, number> = { "-1": 30, "0": 98, "1": 166 };
+function StopTrack({ children, faint }: { children?: ReactNode; faint?: boolean }) {
+  return (
+    <div className="relative h-8" style={{ width: GW }}>
+      <span className={`absolute top-1/2 h-[3px] -translate-y-1/2 rounded-full ${faint ? "opacity-60" : ""}`} style={{ left: STOPS["-1"], right: GW - STOPS["1"], background: `linear-gradient(90deg,${T.out}99,${T.line} 25%,${T.line} 75%,${T.must}99)` }} />
+      <span className="absolute top-1/2 h-2 w-px -translate-y-1/2 bg-fg/25" style={{ left: STOPS["0"] }} />
+      {children}
+    </div>
+  );
+}
+const Under = ({ children }: { children: ReactNode }) => (
+  <div className="grid text-center text-[10.5px] text-muted" style={{ width: GW, gridTemplateColumns: `${STOPS["-1"] * 2}px 1fr ${(GW - STOPS["1"]) * 2}px` }}>
+    {children}
+  </div>
+);
+const stopLabels = (
+  <Under>
+    <span style={{ color: T.out }}>Skip</span>
+    <span>Happy to</span>
+    <span style={{ color: T.must }}>Must do</span>
+  </Under>
+);
+
+/** Columns of names lined up under the three stops (G2 and G3, open) */
+function StopColumns({ idea, me }: { idea: Demo; me: string }) {
+  const col = (a: Answer) => (
+    <ul className="min-w-0 space-y-0.5">
+      {whoIs(idea.answers, a, me).map((p) => (
+        <li key={p} className={`truncate ${p === me ? "font-semibold text-fg" : "text-fg/80"}`}>
+          {nameOf(p, me)}
+        </li>
+      ))}
+    </ul>
+  );
+  const none = whoIs(idea.answers, null, me);
+  return (
+    <div className="pt-2.5 text-[12px]">
+      <div className="grid gap-1 text-center" style={{ width: GW, gridTemplateColumns: "1fr 1fr 1fr" }}>
+        {col(-1)}
+        {col(0)}
+        {col(1)}
+      </div>
+      {none.length > 0 && <p className="mt-2 text-[11.5px] text-muted">No answer yet: {none.map((p) => nameOf(p, me)).join(", ")}</p>}
+    </div>
+  );
+}
+
+/** G2: everyone on one track. Avatars sit at their answer and stack; yours has a ring. Click a stop to move yourself. */
+function GroupOnTrack({ idea, open, me, setMine }: GroupProps) {
+  const n = Object.keys(idea.answers).length;
+  const none = whoIs(idea.answers, null, me);
+  return (
+    <div>
+      <Cap>{n === 1 ? "Your take" : `Group · ${n}`}</Cap>
+      <StopTrack faint={answeredOf(idea.answers).length === 0}>
+        {([-1, 0, 1] as const).map((a) => {
+          const who = whoIs(idea.answers, a, me);
+          return (
+            <button
+              key={a}
+              onClick={() => setMine(idea.answers[me] === a ? null : a)}
+              title={`You: ${LABEL[key(a)]}`}
+              className="absolute top-1/2 flex min-h-6 min-w-6 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full hover:bg-fg/5"
+              style={{ left: STOPS[String(a)] }}
+            >
+              {who.length ? (
+                <Stack names={who} max={3} me={me} size={open ? 22 : 20} />
+              ) : a === 1 ? (
+                <Star className="size-3.5" style={{ color: T.must, fill: T.must }} />
+              ) : a === -1 ? (
+                <span className="grid size-3.5 place-items-center rounded-full" style={{ background: T.out }}>
+                  <X className="size-2.5 text-white" strokeWidth={3.5} />
+                </span>
+              ) : (
+                <span className="size-2 rounded-full bg-fg/25" />
+              )}
+            </button>
+          );
+        })}
+      </StopTrack>
+      {stopLabels}
+      {!open && none.length > 0 && n > 1 && (
+        <p className="mt-1.5 flex items-center gap-1.5 text-[11.5px] text-muted">
+          Waiting on <Stack names={none} max={4} size={16} me={me} />
+        </p>
+      )}
+      {n > 1 && (
+        <Grow open={open}>
+          <StopColumns idea={idea} me={me} />
+        </Grow>
+      )}
+    </div>
+  );
+}
+
+/** G3: the knob + band summary, labelled stops; open, names line up in columns under the stops. Your answer is the Choice. */
+function GroupColumns({ idea, open, me, setMine }: GroupProps) {
+  const n = Object.keys(idea.answers).length;
+  const a = answeredOf(idea.answers);
+  const lo = a.length ? Math.min(...a) : 0;
+  const hi = a.length ? Math.max(...a) : 0;
+  const mean = a.length ? a.reduce((p, q) => p + q, 0) / a.length : 0;
+  const x = (v: number) => STOPS["-1"] + ((v + 1) / 2) * (STOPS["1"] - STOPS["-1"]);
+  if (n === 1)
+    return (
+      <div>
+        <Cap>Your take</Cap>
+        <Choice value={idea.answers[me]} onSet={setMine} />
+      </div>
+    );
+  return (
+    <div>
+      <Cap>Group · {n}</Cap>
+      <StopTrack faint={!a.length}>
+        {hi > lo && (
+          <span
+            className="absolute top-1/2 h-3 -translate-y-1/2 rounded-full"
+            style={{ left: x(lo) - 6, width: x(hi) - x(lo) + 12, background: `linear-gradient(90deg,${stopsBetween(lo, hi, "66")})`, maskImage: "linear-gradient(90deg,transparent,#000 22%,#000 78%,transparent)" }}
+          />
+        )}
+        {a.length > 0 && <Knob value={mean} x={x(mean)} />}
+      </StopTrack>
+      {stopLabels}
+      <p className="mt-1 text-[11.5px] text-muted">{groupSummary(idea.answers)}</p>
+      <Grow open={open}>
+        <StopColumns idea={idea} me={me} />
+      </Grow>
+      <div className="mt-3">
+        <Choice value={idea.answers[me]} onSet={setMine} />
+      </div>
+    </div>
+  );
+}
+
+/** G4: a sentence, then your choice. Folded abbreviates long lists; open spells out every name. */
+function GroupSentence({ idea, open, me, setMine }: GroupProps) {
+  const n = Object.keys(idea.answers).length;
+  const list = (ps: string[]) => {
+    const names = ps.map((p) => nameOf(p, me));
+    const shown = !open && names.length > 3 ? [...names.slice(0, 2), `${names.length - 2} others`] : names;
+    return shown.length > 1 ? `${shown.slice(0, -1).join(", ")} and ${shown.at(-1)}` : shown[0];
+  };
+  const parts = BUCKETS.map(({ a }) => {
+    const who = whoIs(idea.answers, a, me).filter((p) => !(n > 1 && p === me && a === null));
+    if (!who.length) return null;
+    const plural = who.length > 1 || who[0] === me;
+    const verb = a === 1 ? (plural ? "must do this" : "must do this") : a === 0 ? (plural ? "are happy to come" : "is happy to come") : a === -1 ? (plural ? "are sitting out" : "is sitting out") : plural ? "haven't answered" : "hasn't answered";
+    return (
+      <span key={String(a)} className="block">
+        <b className={`font-semibold ${a === 1 ? "" : ""}`} style={{ color: a === 1 ? T.must : a === -1 ? T.out : undefined }}>
+          {list(who)}
+        </b>{" "}
+        <span className="text-fg/75">{verb}</span>
+      </span>
+    );
+  }).filter(Boolean);
+  return (
+    <div>
+      {n > 1 && (
+        <>
+          <Cap>Group · {n}</Cap>
+          <p className="space-y-0.5 text-[12.5px] leading-snug">{parts.length ? parts : <span className="text-muted">Nobody has answered yet</span>}</p>
+        </>
+      )}
+      <div className={n > 1 ? "mt-3" : ""}>
+        {n === 1 && <Cap>Your take</Cap>}
+        <Choice value={idea.answers[me]} onSet={setMine} />
+      </div>
+    </div>
+  );
+}
+
+type GroupProps = { idea: Demo; open: boolean; me: string; setMine: (a: Answer) => void };
+const GROUPS: Record<GroupStyle, (p: GroupProps) => ReactNode> = { track: GroupBlock, G1: GroupChoice, G2: GroupOnTrack, G3: GroupColumns, G4: GroupSentence };
+
+function Detail({ idea, open, toggle, me, setMine, long, group = "track" }: Props & { long: "sticky" | "scroll"; group?: GroupStyle }) {
+  const GroupView = GROUPS[group];
   const ex = EXTRA[idea.id];
   // Solo trips: only your own notes (nobody else to comment)
   const solo = Object.keys(idea.answers).length === 1;
@@ -1092,7 +1364,9 @@ function Detail({ idea, open, toggle, me, setMine, long }: Props & { long: "stic
             <span className="absolute top-2 right-2">
               <More />
             </span>
-            <GroupBlock idea={idea} open={open} me={me} setMine={setMine} />
+            <div className="pr-6">
+              <GroupView idea={idea} open={open} me={me} setMine={setMine} />
+            </div>
 
             <div className={`mt-auto ${SECTION}`}>
               <Cap>When</Cap>
@@ -1126,7 +1400,11 @@ function Detail({ idea, open, toggle, me, setMine, long }: Props & { long: "stic
   );
 }
 
-const VARIANTS: { id: string; name: string; note: string; wideOpen?: boolean; round: 1 | 2 | 3 | 4; C: (p: Props) => ReactNode }[] = [
+const VARIANTS: { id: string; name: string; note: string; wideOpen?: boolean; round: 1 | 2 | 3 | 4 | 5; C: (p: Props) => ReactNode }[] = [
+  { id: "G1", round: 5, name: "Group · your answer + who's in", note: "a 3-way choice for you; one line of avatars per answer; open lists names", C: (p) => <Detail {...p} long="sticky" group="G1" /> },
+  { id: "G2", round: 5, name: "Group · people on one track", note: "everyone's avatar sits at their answer; click a stop to move yours; open lines names up under the stops", C: (p) => <Detail {...p} long="sticky" group="G2" /> },
+  { id: "G3", round: 5, name: "Group · band + columns", note: "the knob + band summary on labelled stops; open puts names in columns under them; your choice below", C: (p) => <Detail {...p} long="sticky" group="G3" /> },
+  { id: "G4", round: 5, name: "Group · a sentence", note: "plain words for who's where, then your choice", C: (p) => <Detail {...p} long="sticky" group="G4" /> },
   { id: "E1", round: 4, name: "Details | verdict · growing card", note: "left holds all the details and grows; right: group at the top, when + button at the bottom", C: (p) => <Detail {...p} long="sticky" /> },
   { id: "E2", round: 4, name: "Details | verdict · scrolling details", note: "same, but an expanded card is capped and the left scrolls inside it", C: (p) => <Detail {...p} long="scroll" /> },
   { id: "D1", round: 3, name: "Idea | verdict · booking in the button", note: "left: what and why; tinted right: group → when → blocker → button. Booked shows on the button itself", C: (p) => <Verdict {...p} merge /> },
@@ -1160,7 +1438,7 @@ export function ProtoCards() {
   const [mine, setMineMap] = useState<Record<string, Answer>>({});
   const [live, setLive] = useState<Record<string, boolean>>({});
   const [mode, setMode] = useState<"pair" | "live">("pair");
-  const [earlier, setEarlier] = useState<0 | 1 | 2 | 3>(0);
+  const [earlier, setEarlier] = useState<0 | 1 | 2 | 3 | 4>(0);
   const base = IDEAS.find((i) => i.id === ideaId)!;
   const sizedAnswers = sized(base.answers, ideaId, groupSize);
   const idea: Demo = { ...base, answers: { ...sizedAnswers, ...(ideaId in mine ? { [me]: mine[ideaId] } : {}) } };
@@ -1213,10 +1491,11 @@ export function ProtoCards() {
           </label>
           <label className="flex items-center gap-2">
             Earlier rounds
-            <select value={earlier} onChange={(e) => setEarlier(+e.target.value as 0 | 1 | 2 | 3)} className="rounded-lg border border-line bg-bg px-2 py-1">
+            <select value={earlier} onChange={(e) => setEarlier(+e.target.value as 0 | 1 | 2 | 3 | 4)} className="rounded-lg border border-line bg-bg px-2 py-1">
               <option value={0}>Hide</option>
-              <option value={3}>Round 3 (D1–D2)</option>
-              <option value={2}>Rounds 2–3</option>
+              <option value={4}>Round 4 (E1–E2, old group)</option>
+              <option value={3}>Rounds 3–4</option>
+              <option value={2}>Rounds 2–4</option>
               <option value={1}>All rounds</option>
             </select>
           </label>
@@ -1224,7 +1503,7 @@ export function ProtoCards() {
         </div>
 
         <div className="mt-6 space-y-10">
-          {VARIANTS.filter((v) => v.round === 4 || (earlier !== 0 && v.round >= earlier)).map((v) => (
+          {VARIANTS.filter((v) => v.round === 5 || (earlier !== 0 && v.round >= earlier)).map((v) => (
             <section key={v.id}>
               <p className="mb-2 text-[14px]">
                 <b>
