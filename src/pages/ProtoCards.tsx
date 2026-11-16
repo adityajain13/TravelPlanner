@@ -127,9 +127,11 @@ const EXTRA: Record<string, { comments: Comment[]; bookings: Booking[]; more: An
   },
 };
 /* Place data the real app already stores (Google details, cover photo, cost), as demo values; plus nearby ideas and source */
-type PlaceInfo = { photo?: boolean; rating?: number; ratingCount?: string; price?: string; cost?: string; hours?: Record<string, string>; website?: string; phone?: string; nearby?: string[]; source?: string };
+type PlaceInfo = { desc?: string; costShort?: string; photo?: boolean; rating?: number; ratingCount?: string; price?: string; cost?: string; hours?: Record<string, string>; website?: string; phone?: string; nearby?: string[]; source?: string };
 const PLACE: Record<string, PlaceInfo> = {
   ghibli: {
+    desc: "Museum of Studio Ghibli's animation, with a short film you can only see here",
+    costShort: "¥1,000 pp",
     photo: true,
     rating: 4.4,
     ratingCount: "12k",
@@ -141,6 +143,8 @@ const PLACE: Record<string, PlaceInfo> = {
     source: "Saved from a Google Maps link · Nov 2",
   },
   hakone: {
+    desc: "Day-use hot spring with outdoor baths over the river, plus private family baths",
+    costShort: "¥1,500 pp",
     photo: true,
     rating: 4.3,
     ratingCount: "3.1k",
@@ -1357,16 +1361,24 @@ function Detail({ idea, open, toggle, me, setMine, long, group = "track" }: Prop
   const booked = idea.booking?.kind === "booked" ? idea.booking : null;
   const time = booked?.text.split(", ")[1];
   const label = idea.best ? `Add to ${idea.best.day}${time ? `, ${time}` : ""}` : idea.where === "Needs a place" ? "Find a place" : "Add to a day";
-  const reasons = idea.good.filter((g) => !g.startsWith("Booked"));
+  // Timing facts belong to When: that day's hours, the visit length, and the best time only when it matters
+  const dayHours = idea.best ? place.hours?.[idea.best.day] : undefined;
+  const visit = idea.facts.find((f) => f.startsWith("About "))?.replace("About ", "about ");
+  const bestTime = idea.facts.find((f) => f.startsWith("Best "));
+  const slotHour = time ? parseInt(time) : null;
+  const timingClash = bestTime === "Best early" && slotHour !== null && slotHour >= 12 ? `Best early · your slot is ${time}` : null;
+  const reasons = [...idea.good.filter((g) => !g.startsWith("Booked")), ...(bestTime && !booked ? [bestTime] : [])];
   const blockers = [
     ...(idea.booking?.kind === "needed" ? [{ out: false, text: "Book ahead · not booked yet" }] : []),
+    ...(timingClash ? [{ out: false, text: timingClash }] : []),
     ...idea.warn.map((t) => ({ out: false, text: t })),
     ...(idea.out ? [{ out: true, text: idea.out }] : []),
   ];
   // Folded shows the first reason and the first blocker; open adds the rest under them, in the same format
   const lines = [...reasons.map((t) => ({ kind: "good" as const, text: t })), ...blockers.map((b) => ({ kind: b.out ? ("out" as const) : ("warn" as const), text: b.text }))];
   const firstGood = lines.find((l) => l.kind === "good");
-  const firstBad = lines.find((l) => l.kind !== "good");
+  // "Won't work" outranks "watch out" for the one folded blocker
+  const firstBad = lines.find((l) => l.kind === "out") ?? lines.find((l) => l.kind === "warn");
   const glance = [firstGood, firstBad].filter(Boolean) as typeof lines;
   const rest = lines.filter((l) => !glance.includes(l));
   const leftCap = long === "scroll" && open ? "max-h-[360px] overflow-y-auto" : "";
@@ -1401,22 +1413,22 @@ function Detail({ idea, open, toggle, me, setMine, long, group = "track" }: Prop
       <div className="grid grid-cols-1 @min-[600px]:grid-cols-[minmax(0,1fr)_252px]">
         {/* Left: the idea, all of its details. Each section keeps its folded lines and grows under them. */}
         <div className={`min-w-0 px-4 pt-3.5 pb-4 pr-11 @min-[600px]:pr-4 ${leftCap}`}>
+          {/* What is it, and is it worth it? Timing lives on the When side. */}
           <div className="flex items-start gap-3">
             <div className="min-w-0 flex-1">
               <Title idea={idea} size={16.5} badge={false} />
-              {(place.rating || place.price) && (
+              {(place.rating || place.costShort || place.price) && (
                 <p className="mt-1 flex items-center gap-1.5 text-[12px] text-fg/80">
                   {place.rating && (
                     <>
                       <Star className="size-3 fill-amber-400 text-amber-400" /> {place.rating} <span className="text-muted">({place.ratingCount})</span>
                     </>
                   )}
-                  {place.rating && place.price && <span className="text-muted">·</span>}
-                  {place.price && <span>{place.price}</span>}
+                  {place.rating && (place.costShort || place.price) && <span className="text-muted">·</span>}
+                  {(place.costShort || place.price) && <span>{place.costShort ?? place.price}</span>}
                 </p>
               )}
             </div>
-            {/* The cover photo the app already keeps per place; no photo, no space */}
             {place.photo && (
               <div
                 className="grid size-[76px] shrink-0 place-items-center rounded-xl text-white/70"
@@ -1427,43 +1439,24 @@ function Detail({ idea, open, toggle, me, setMine, long, group = "track" }: Prop
               </div>
             )}
           </div>
-          <div className="mt-3">
-            <Cap>About the place</Cap>
-            {idea.facts.length > 0 ? <p className="text-[12.5px] text-fg/80">{idea.facts.join(" · ")}</p> : <p className="text-[12.5px] text-muted">Pick a place to see its details</p>}
+          {place.desc ? (
+            <p className={`mt-2.5 text-[13px] leading-snug text-fg/85 ${open ? "" : "line-clamp-2"}`}>{place.desc}</p>
+          ) : (
+            idea.where === "Needs a place" && <p className="mt-2.5 text-[12.5px] text-muted">Pick a place to see what it is</p>
+          )}
+          {idea.address && (
             <Grow open={open}>
-              {/* Hours only for the trip's days; the best day is marked, closed days in red */}
-              {place.hours && (
-                <div className="mt-2 flex flex-wrap gap-1">
-                  {Object.entries(place.hours).map(([d, h]) => {
-                    const closed = h === "Closed";
-                    const best = idea.best?.day === d;
-                    return (
-                      <span
-                        key={d}
-                        className={`rounded-md px-1.5 py-0.5 text-[11px] ${closed ? "bg-red-500/10 text-red-600 line-through dark:text-red-400" : best ? "bg-accent/15 font-semibold text-accent" : "bg-surface-2 text-fg/75"}`}
-                      >
-                        {d.split(" ")[0]} {closed ? "" : h}
-                      </span>
-                    );
-                  })}
-                </div>
-              )}
-              {place.cost && <p className="mt-2 text-[12.5px] text-fg/80">{place.cost} <span className="text-muted">· counted in Budget</span></p>}
-              {idea.address && <p className="mt-1 text-[12.5px] text-muted">{idea.address}</p>}
-              {idea.address && (
-                <p className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-[12.5px] text-accent">
-                  <span className="flex items-center gap-1">
-                    <MapIcon className="size-3.5" /> Map
-                  </span>
-                  <span className="flex items-center gap-1">
-                    <ExternalLink className="size-3.5" /> Google Maps
-                  </span>
-                  {place.website && <span>{place.website}</span>}
-                  {place.phone && <span>{place.phone}</span>}
-                </p>
-              )}
+              <p className="mt-2 flex flex-wrap gap-x-3 gap-y-0.5 text-[12.5px] text-accent">
+                <span className="flex items-center gap-1">
+                  <MapIcon className="size-3.5" /> Map
+                </span>
+                <span className="flex items-center gap-1">
+                  <ExternalLink className="size-3.5" /> Google Maps
+                </span>
+                {place.website && <span>Website</span>}
+              </p>
             </Grow>
-          </div>
+          )}
 
           {comments.length > 0 && (
             <div className={SECTION}>
@@ -1539,10 +1532,15 @@ function Detail({ idea, open, toggle, me, setMine, long, group = "track" }: Prop
             <div className="flex min-w-0 flex-col @min-[600px]:mt-auto @min-[600px]:block @min-[600px]:pt-6">
               <Cap>When</Cap>
               {idea.best ? (
-                <p className="text-[13px]">
-                  <b>{idea.best.day}</b>
-                  <span className="text-muted"> · {idea.best.title}</span>
-                </p>
+                <>
+                  <p className="text-[13px]">
+                    <b>{idea.best.day}</b>
+                    <span className="text-muted"> · {idea.best.title}</span>
+                  </p>
+                  {(dayHours || visit) && (
+                    <p className="text-[12px] text-muted">{[dayHours && `Open ${dayHours}`, visit].filter(Boolean).join(" · ")}</p>
+                  )}
+                </>
               ) : (
                 <p className="text-[12.5px] text-muted">{idea.where === "Needs a place" ? "Needs a place first" : "No day stands out yet"}</p>
               )}
