@@ -2217,10 +2217,10 @@ function CalmWeek({ fits, sel, bookedDay, onPick, tab, small }: { fits: DayFit[]
             title={`${f.day} · ${DAY_TITLE[f.day]}`}
             aria-pressed={on}
             className={`relative flex min-w-0 flex-1 flex-col items-center leading-tight transition ${small ? "rounded-md py-1" : "py-1.5"} ${
-              on ? `bg-fg text-bg ${tab ? "z-10 -mb-[2px] rounded-t-lg pb-3" : "rounded-lg"}` : `${small ? "" : "rounded-lg"} bg-surface-2/70 text-fg/80 hover:bg-surface-2`
+              on ? `bg-surface text-fg shadow-sm ring-[1.5px] ring-fg/55 ring-inset ${tab ? "z-10 -mb-[2px] rounded-t-lg pb-3" : "rounded-lg"}` : `${small ? "" : "rounded-lg"} bg-surface-2/70 text-fg/70 hover:bg-surface-2`
             }`}
           >
-            <span className={`text-[10px] font-semibold uppercase ${on ? "opacity-90" : "text-muted"}`}>{wd}</span>
+            <span className={`text-[10px] font-semibold uppercase ${on ? "text-fg/80" : "text-muted"}`}>{wd}</span>
             <span className={`${small ? "text-[12px]" : "text-[13px]"} font-semibold ${f.state === "closed" ? "line-through" : ""}`}>{dn}</span>
             {!small && (
               <span className="flex items-center gap-1 text-[9.5px]">
@@ -2230,7 +2230,7 @@ function CalmWeek({ fits, sel, bookedDay, onPick, tab, small }: { fits: DayFit[]
                 </span>
               </span>
             )}
-            {small && <span className={`mt-0.5 size-1.5 rounded-full ${on ? "ring-1 ring-bg/60" : ""}`} style={{ background: DOT[f.state] }} />}
+            {small && <span className="mt-0.5 size-1.5 rounded-full" style={{ background: DOT[f.state] }} />}
           </button>
         );
       })}
