@@ -4,7 +4,7 @@
 //   What it is · How the group feels · Why and fit · Decision
 // To try another layout, add a component to VARIANTS.
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
-import { Check, ChevronDown, CircleAlert, ExternalLink, ImageIcon, Map as MapIcon, MoreHorizontal, Star, Ticket, X } from "lucide-react";
+import { Check, ChevronDown, CircleAlert, ExternalLink, ImageIcon, Map as MapIcon, MoreHorizontal, Star, Ticket, Trash2, X } from "lucide-react";
 import { hue, Knob, LABEL, key, PALETTES, PersonTrack, SoftTrack, stopsBetween, usePalette, type Answer, type Answers } from "./ProtoInterest";
 
 /* ---------- demo ideas ---------- */
@@ -1865,6 +1865,146 @@ function FitMap({ f, at, near, tall }: { f: DayFit; at: [number, number]; near: 
   );
 }
 
+/* ---------- Who's going? (adding an idea only some of the group want) ----------
+   Opens from the day button when the poll isn't unanimous. Ticks come from the poll (Yes!/Sure and unanswered
+   = going). The app splits the day on its own once a stop has a `who` (branches.ts), so this only has to say,
+   in plain words, where the group splits, what the others do, and where everyone meets again. */
+
+/** Who drives on each day when the trip is by car (demo) */
+const DRIVER: Record<string, string> = { "Wed 16": "Sam" };
+/** One of each person's own Yes! ideas nearby, offered to the people sitting out (demo) */
+const OWN_IDEA: Record<string, Record<string, string>> = { hakone: { Sam: "Hakone Open-Air Museum" }, ghibli: { Sam: "Kichijoji Harmonica Yokocho" } };
+
+/** "You, Maya and Aditya" at the start of a sentence; "you, Maya and Aditya" inside one (names keep their capitals) */
+const listNames = (ps: string[], me: string, mid = false) => {
+  const n = ps.map((p) => (p === me ? "you" : p));
+  const t = n.length > 1 ? `${n.slice(0, -1).join(", ")} and ${n.at(-1)}` : (n[0] ?? "");
+  return mid || !t ? t : t[0].toUpperCase() + t.slice(1);
+};
+
+function WhoGoing({ idea, day, me, onAdd, onCancel }: { idea: Demo; day: DayFit; me: string; onAdd: (who: string[]) => void; onCancel: () => void }) {
+  const people = [me, ...Object.keys(idea.answers).filter((p) => p !== me)];
+  const [going, setGoing] = useState<string[]>(people.filter((p) => idea.answers[p] !== -1));
+  const [others, setOthers] = useState<"free" | "own">("free");
+  const [ride, setRide] = useState<"drop" | "own">("drop");
+  const out = people.filter((p) => !going.includes(p));
+  const everyone = out.length === 0;
+  const st = day.stops;
+  const s = day.slot;
+  const visit = idea.facts.find((f) => f.startsWith("About "))?.replace("About ", "about ");
+  const tag = (a: Answer) => (a === 1 ? POLL[0] : a === 0 ? POLL[1] : a === -1 ? POLL[2] : "hasn't answered");
+  const own = out.length === 1 ? OWN_IDEA[idea.id]?.[out[0]] : undefined;
+  const driver = DRIVER[day.day];
+  const rejoin = s && s.kind === "between" ? st[s.i + 1] : s && s.kind === "start" ? st[0] : undefined;
+  const place = PLACE[idea.id];
+  const farKm = rejoin && place?.at ? kmBetween(place.at, rejoin.at) : 0;
+
+  const preview = everyone
+    ? `Everyone goes to ${idea.name} on ${day.day}. No split.`
+    : !st.length || !s
+      ? `On ${day.day} (nothing planned yet), ${listNames(going, me, true)} go to ${idea.name}${visit ? ` (${visit})` : ""}. ${listNames(out, me)} ${out.length > 1 ? "have" : "has"} the day free.`
+      : s.kind === "between"
+        ? `After ${s.i + 1} ${st[s.i].name}, ${listNames(going, me, true)} go to ${idea.name}${visit ? ` (${visit})` : ""}. ${listNames(out, me)} ${others === "own" && own ? `${out.length > 1 ? "go" : "goes"} to ${own}` : `${out.length > 1 ? "have" : "has"} free time`}. Everyone meets again at ${s.i + 2} ${st[s.i + 1].name}.`
+        : s.kind === "start"
+          ? `${listNames(going, me)} start ${day.day} at ${idea.name}. ${listNames(out, me)} ${out.length > 1 ? "join" : "joins"} you at 1 ${st[0].name}.`
+          : `After ${st.length} ${st[st.length - 1].name}, ${listNames(going, me, true)} go to ${idea.name}. ${listNames(out, me)} ${out.length > 1 ? "are" : "is"} done for the day.`;
+
+  const notes: { warn: boolean; text: string }[] = [];
+  if (!going.length) notes.push({ warn: true, text: "Pick at least one person" });
+  if (going.length && !going.includes(me)) notes.push({ warn: false, text: "You're not going: it'll show on your day as their plan" });
+  const unanswered = going.filter((p) => idea.answers[p] === null && p !== me);
+  if (unanswered.length) notes.push({ warn: false, text: `${listNames(unanswered, me)} hasn't answered yet. You can change who's going later.` });
+  if (!everyone && farKm > 5) notes.push({ warn: true, text: `${idea.name} is ${kmText(farKm)} from ${rejoin!.name}, where you meet again` });
+
+  return (
+    <div className="absolute right-2 bottom-11 z-30 w-[min(360px,calc(100%-16px))] rounded-2xl border border-line bg-surface p-4 text-[13px] shadow-2xl" role="dialog" aria-label="Who's going?">
+      <p className="text-[14px] font-semibold">
+        Who's going to {idea.name} on {day.day}?
+      </p>
+      <ul className="mt-2.5 space-y-1">
+        {people.map((p) => {
+          const on = going.includes(p);
+          const a = idea.answers[p];
+          return (
+            <li key={p}>
+              <label className="flex cursor-pointer items-center gap-2 rounded-lg px-1.5 py-1 hover:bg-surface-2">
+                <input type="checkbox" checked={on} onChange={() => setGoing((g) => (on ? g.filter((x) => x !== p) : [...g, p]))} className="accent-[var(--accent)]" />
+                <Ava name={p} size={20} />
+                <span className={p === me ? "font-semibold" : ""}>{p === me ? "You" : p}</span>
+                <span className={`ml-auto text-[11.5px] ${a === -1 ? "" : "text-muted"}`} style={a === -1 ? { color: T.out } : a === 1 ? { color: T.must } : undefined}>
+                  {tag(a)}
+                </span>
+              </label>
+            </li>
+          );
+        })}
+      </ul>
+
+      <div className="mt-3 rounded-xl bg-surface-2/70 px-3 py-2.5">
+        <Cap>Your day</Cap>
+        <p className="leading-snug text-fg/85">{going.length ? preview : "Nobody's going yet."}</p>
+      </div>
+
+      {!everyone && going.length > 0 && (
+        <div className="mt-3">
+          <Cap>What will {listNames(out, me, true)} do?</Cap>
+          <div className="space-y-1">
+            <label className="flex items-center gap-2">
+              <input type="radio" checked={others === "free"} onChange={() => setOthers("free")} /> Free time
+            </label>
+            {own && (
+              <label className="flex items-center gap-2">
+                <input type="radio" checked={others === "own"} onChange={() => setOthers("own")} /> One of {out[0]}'s ideas: <b className="font-semibold">{own}</b>
+              </label>
+            )}
+            <button onClick={() => setGoing(people)} className="text-[12.5px] text-accent hover:underline">
+              Everyone comes along instead
+            </button>
+          </div>
+        </div>
+      )}
+
+      {!everyone && driver && out.includes(driver) && going.length > 0 && (
+        <div className="mt-3">
+          <Cap>Getting there · {driver} is driving on {day.day}</Cap>
+          <div className="space-y-1">
+            <label className="flex items-center gap-2">
+              <input type="radio" checked={ride === "drop"} onChange={() => setRide("drop")} /> {driver} drops you off and picks you up
+            </label>
+            <label className="flex items-center gap-2">
+              <input type="radio" checked={ride === "own"} onChange={() => setRide("own")} /> You'll get there yourselves
+            </label>
+          </div>
+        </div>
+      )}
+
+      {notes.length > 0 && (
+        <div className="mt-3 space-y-1">
+          {notes.map((n) => (
+            <p key={n.text} className={`flex items-start gap-1.5 text-[12px] ${n.warn ? "text-amber-700 dark:text-amber-300" : "text-muted"}`}>
+              <CircleAlert className="mt-px size-3.5 shrink-0" />
+              {n.text}
+            </p>
+          ))}
+        </div>
+      )}
+
+      <div className="mt-4 flex items-center justify-end gap-2">
+        <button onClick={onCancel} className="rounded-full px-3 py-1.5 text-muted hover:text-fg">
+          Cancel
+        </button>
+        <button
+          disabled={!going.length}
+          onClick={() => onAdd(going)}
+          className="rounded-full bg-accent px-4 py-1.5 font-semibold text-on-accent disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          {everyone ? "Add for everyone" : `Add for ${going.length}`}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function FitCard({ idea, open, toggle, me, setMine }: Props) {
   const ex = EXTRA[idea.id];
   const place = PLACE[idea.id] ?? {};
@@ -1974,16 +2114,41 @@ function FitCard({ idea, open, toggle, me, setMine }: Props) {
     </>
   );
 
-  const label = rough ? "Find a place" : sel ? `Add to ${sel.day}${sel.day === bookedDay && bookedTime ? `, ${bookedTime}` : ""}` : "Add to a day";
+  const groupTrip = Object.keys(idea.answers).length > 1;
+  const sittingOut = Object.keys(idea.answers).filter((p) => idea.answers[p] === -1);
+  const goingCount = Object.keys(idea.answers).length - sittingOut.length;
+  const label = rough
+    ? "Find a place"
+    : sel
+      ? `Add to ${sel.day}${sel.day === bookedDay && bookedTime ? `, ${bookedTime}` : ""}${groupTrip && sittingOut.length ? ` · ${goingCount} going` : ""}`
+      : "Add to a day";
+  const [asking, setAsking] = useState(false);
+  const [added, setAdded0] = useState<{ day: string; who: string[]; then: Answers } | null>(null);
+  const [toast, setToast] = useState(false);
+  const setAdded = (a: { day: string; who: string[] } | null) => (setAdded0(a && { ...a, then: { ...idea.answers } }), setToast(!!a));
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(false), 6000);
+    return () => clearTimeout(t);
+  }, [toast]);
+  useEffect(() => (setAdded0(null), setAsking(false)), [idea.id, STAGE]);
+  const press = () => {
+    if (rough || !sel || sel.state === "closed") return;
+    if (groupTrip && sittingOut.length) setAsking(true);
+    else setAdded({ day: sel.day, who: Object.keys(idea.answers) });
+  };
+  // After adding: someone changed their answer since, and it no longer matches who's going. Say so; never change it silently.
+  const drift = added
+    ? Object.keys(idea.answers).filter(
+        (p) => idea.answers[p] !== added.then[p] && (added.who.includes(p) ? idea.answers[p] === -1 : idea.answers[p] === 1 || idea.answers[p] === 0),
+      )
+    : [];
 
   return (
     <div className={`@container relative rounded-2xl border bg-surface ${answeredOf(idea.answers).includes(1) ? "border-amber-400/60" : "border-line"}`}>
-      <span className="absolute top-2 right-2 z-10">
-        <More />
-      </span>
       <div className="grid grid-cols-1 @min-[600px]:grid-cols-[minmax(0,1fr)_252px]">
         {/* Evidence */}
-        <div className="min-w-0 px-4 pt-3.5 pr-11 pb-4 @min-[600px]:pr-4">
+        <div className="min-w-0 px-4 pt-3.5 pb-4">
           <div className="flex items-start gap-3">
             <div className="min-w-0 flex-1">
               <Title idea={idea} size={16.5} badge={false} />
@@ -2094,7 +2259,7 @@ function FitCard({ idea, open, toggle, me, setMine }: Props) {
         {/* Decision: your vote, the proposed day, the button */}
         <div className="min-w-0 border-t border-line bg-surface-2/60 @min-[600px]:rounded-tr-2xl @min-[600px]:border-t-0">
           <div className="grid h-full grid-cols-[194px_minmax(0,1fr)] gap-x-5 px-4 pt-3.5 pb-4 @min-[600px]:flex @min-[600px]:flex-col">
-            <div className="min-w-0 @min-[600px]:pr-6">
+            <div className="min-w-0">
               <GroupPoll idea={idea} open={open} me={me} setMine={setMine} />
             </div>
             <div className="flex min-w-0 flex-col @min-[600px]:mt-auto @min-[600px]:block @min-[600px]:pt-6">
@@ -2109,12 +2274,17 @@ function FitCard({ idea, open, toggle, me, setMine }: Props) {
               ) : (
                 <p className="text-[12.5px] text-muted">{rough ? "Needs a place first" : "Pick a day"}</p>
               )}
+              {drift.length > 0 && added && (
+                <p className="mt-2 rounded-lg bg-amber-400/15 px-2 py-1.5 text-[12px] text-amber-800 dark:text-amber-300">
+                  {listNames(drift, me)} changed {drift.length === 1 && drift[0] === me ? "your" : "their"} {drift.length > 1 ? "answers" : "answer"} since this was added. <button onClick={() => setAsking(true)} className="font-semibold underline">Update who's going?</button>
+                </p>
+              )}
               <div className="mt-auto pt-4 @min-[600px]:mt-0">
                 <span className={`flex w-full items-center overflow-hidden rounded-full text-[12.5px] font-semibold ${sel && !rough && sel.state !== "closed" ? "bg-accent text-on-accent" : "border border-line bg-surface text-fg"}`}>
-                  <span className="flex flex-1 items-center justify-center gap-1.5 px-3 py-1.5">
+                  <button onClick={press} className="flex flex-1 items-center justify-center gap-1.5 px-3 py-1.5">
                     {label}
                     {selWarn && <CircleAlert className="size-3.5 text-amber-200" aria-label="Something to watch on the left" />}
-                  </span>
+                  </button>
                   <span className={`grid place-items-center self-stretch border-l px-2 ${sel && !rough ? "border-white/30" : "border-line"}`}>
                     <ChevronDown className="size-3.5" />
                   </span>
@@ -2124,7 +2294,38 @@ function FitCard({ idea, open, toggle, me, setMine }: Props) {
           </div>
         </div>
       </div>
-      <Toggle open={open} toggle={toggle} />
+
+      {asking && sel && <WhoGoing key={sel.day} idea={idea} day={sel} me={me} onCancel={() => setAsking(false)} onAdd={(who) => (setAdded({ day: sel.day, who }), setAsking(false))} />}
+
+      {/* Bottom strip: Show more / less; open, a quiet Remove on the left (rare and destructive, so never at the top) */}
+      <div className="relative flex items-center border-t border-line">
+        {added && toast ? (
+          <p className="flex flex-1 items-center justify-center gap-2 py-1.5 text-[12px]">
+            <Check className="size-3.5 text-accent" />
+            Added to {added.day} {added.who.length === Object.keys(idea.answers).length ? "for everyone" : `for ${listNames(added.who, me, true)}`}
+            <button onClick={() => setAdded(null)} className="font-semibold text-accent hover:underline">
+              Undo
+            </button>
+          </p>
+        ) : (
+          <>
+            {added && !open && (
+              <span className="absolute left-3 flex items-center gap-1 text-[12px] text-accent">
+                <Check className="size-3.5" /> On {added.day}
+              </span>
+            )}
+            {open && (
+              <button className="absolute left-3 flex items-center gap-1 text-[12px] text-muted hover:text-red-600">
+                <Trash2 className="size-3.5" /> Remove idea
+              </button>
+            )}
+            <button onClick={toggle} className="flex flex-1 items-center justify-center gap-1 py-1.5 text-[12px] text-muted hover:text-fg">
+              {open ? "Show less" : "Show more"}
+              <ChevronDown className={`size-3.5 transition-transform ${open ? "rotate-180" : ""}`} />
+            </button>
+          </>
+        )}
+      </div>
     </div>
   );
 }
