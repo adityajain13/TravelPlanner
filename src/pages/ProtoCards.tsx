@@ -978,7 +978,7 @@ function GroupBlock({ idea, open, me, setMine }: { idea: Demo; open: boolean; me
 /* ---------- round 5: the group, rethought ----------
    What the block answers: "is the group in?" and "what do I think?". Each option shows the group one way only. */
 
-type GroupStyle = "track" | "G1" | "G2" | "G3" | "G4";
+type GroupStyle = "track" | "G1" | "G2" | "G3" | "G4" | "P";
 const T = PALETTES.teal;
 const BUCKETS: { a: Answer; label: string; short: string }[] = [
   { a: 1, label: "Must do", short: "must do" },
@@ -1243,8 +1243,80 @@ function GroupSentence({ idea, open, me, setMine }: GroupProps) {
   );
 }
 
+/* ---------- round 6: a poll (WhatsApp-style), with friendlier answers ----------
+   Three rows, each: label · count, faces on the right, a thin bar underneath. Tapping a row is your vote (tap again
+   to clear), so the result is also the input. Open adds names under each row and a "Waiting on" line. */
+
+const LABEL_SETS: Record<string, { name: string; l: [string, string, string] }> = {
+  yes: { name: "Yes! / Sure / Not for me", l: ["Yes!", "Sure", "Not for me"] },
+  ya: { name: "Ya! / Sure / Not for me", l: ["Ya!", "Sure", "Not for me"] },
+  keen: { name: "Keen / Sure / Pass", l: ["Keen", "Sure", "Pass"] },
+  base: { name: "Must do / Happy to / Skip", l: ["Must do", "Happy to", "Skip"] },
+};
+let POLL = LABEL_SETS.yes.l; // set by the page's picker on each render
+
+function GroupPoll({ idea, open, me, setMine }: GroupProps) {
+  const people = Object.keys(idea.answers);
+  const n = people.length;
+  const solo = n === 1;
+  const rows: { a: -1 | 0 | 1; label: string; col: string; icon: ReactNode }[] = [
+    { a: 1, label: POLL[0], col: T.must, icon: <Star className="size-3 fill-current" /> },
+    { a: 0, label: POLL[1], col: "#8f9a95", icon: <Check className="size-3" strokeWidth={3} /> },
+    { a: -1, label: POLL[2], col: T.out, icon: <X className="size-3" strokeWidth={3} /> },
+  ];
+  const waiting = whoIs(idea.answers, null, me);
+  return (
+    <div>
+      <Cap>{solo ? "Your take" : `Group · ${n}`}</Cap>
+      <ul className="space-y-1">
+        {rows.map((r) => {
+          const who = whoIs(idea.answers, r.a, me);
+          const mine = idea.answers[me] === r.a;
+          return (
+            <li key={r.a}>
+              <button
+                onClick={() => setMine(mine ? null : r.a)}
+                aria-pressed={mine}
+                className={`-mx-1.5 block w-[calc(100%+12px)] rounded-lg px-1.5 py-1 text-left transition-colors ${mine ? "bg-surface" : "hover:bg-surface/70"}`}
+              >
+                <span className="flex h-5 items-center gap-1.5 text-[12.5px]">
+                  <span className="grid size-4 shrink-0 place-items-center rounded-full" style={mine ? { background: r.col, color: "#fff" } : { color: r.col }}>
+                    {r.icon}
+                  </span>
+                  <span className={mine ? "font-semibold" : ""}>{r.label}</span>
+                  {!solo && <span className="text-muted">· {who.length}</span>}
+                  {!solo && who.length > 0 && (
+                    <span className="ml-auto">
+                      <Stack names={who} max={4} size={16} me={me} />
+                    </span>
+                  )}
+                </span>
+                {!solo && (
+                  <span className="mt-1 block h-[3px] rounded-full bg-fg/8">
+                    <span className="block h-full rounded-full transition-[width] duration-300" style={{ width: `${(who.length / n) * 100}%`, background: r.col }} />
+                  </span>
+                )}
+                {!solo && who.length > 0 && (
+                  <Grow open={open}>
+                    <span className="block pt-1 text-[11.5px] text-muted">{who.map((p) => nameOf(p, me)).join(", ")}</span>
+                  </Grow>
+                )}
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+      {!solo && waiting.length > 0 && (
+        <p className="mt-1.5 text-[11.5px] text-muted">
+          {open ? `Waiting on ${waiting.map((p) => nameOf(p, me)).join(", ")}` : `${waiting.length} ${waiting.length === 1 ? "hasn't" : "haven't"} answered`}
+        </p>
+      )}
+    </div>
+  );
+}
+
 type GroupProps = { idea: Demo; open: boolean; me: string; setMine: (a: Answer) => void };
-const GROUPS: Record<GroupStyle, (p: GroupProps) => ReactNode> = { track: GroupBlock, G1: GroupChoice, G2: GroupOnTrack, G3: GroupColumns, G4: GroupSentence };
+const GROUPS: Record<GroupStyle, (p: GroupProps) => ReactNode> = { track: GroupBlock, G1: GroupChoice, G2: GroupOnTrack, G3: GroupColumns, G4: GroupSentence, P: GroupPoll };
 
 function Detail({ idea, open, toggle, me, setMine, long, group = "track" }: Props & { long: "sticky" | "scroll"; group?: GroupStyle }) {
   const GroupView = GROUPS[group];
@@ -1400,7 +1472,8 @@ function Detail({ idea, open, toggle, me, setMine, long, group = "track" }: Prop
   );
 }
 
-const VARIANTS: { id: string; name: string; note: string; wideOpen?: boolean; round: 1 | 2 | 3 | 4 | 5; C: (p: Props) => ReactNode }[] = [
+const VARIANTS: { id: string; name: string; note: string; wideOpen?: boolean; round: 1 | 2 | 3 | 4 | 5 | 6; C: (p: Props) => ReactNode }[] = [
+  { id: "P1", round: 6, name: "Group · poll", note: "WhatsApp-style rows: label · count, faces, a thin bar; tap a row to vote; open adds names and who's missing. Try the label sets above", C: (p) => <Detail {...p} long="sticky" group="P" /> },
   { id: "G1", round: 5, name: "Group · your answer + who's in", note: "a 3-way choice for you; one line of avatars per answer; open lists names", C: (p) => <Detail {...p} long="sticky" group="G1" /> },
   { id: "G2", round: 5, name: "Group · people on one track", note: "everyone's avatar sits at their answer; click a stop to move yours; open lines names up under the stops", C: (p) => <Detail {...p} long="sticky" group="G2" /> },
   { id: "G3", round: 5, name: "Group · band + columns", note: "the knob + band summary on labelled stops; open puts names in columns under them; your choice below", C: (p) => <Detail {...p} long="sticky" group="G3" /> },
@@ -1424,6 +1497,8 @@ export function ProtoCards() {
   usePalette("teal");
   const [ideaId, setIdeaId] = useState("ghibli");
   const [groupSize, setGroupSize] = useState(4);
+  const [labelSet, setLabelSet] = useState("yes");
+  POLL = LABEL_SETS[labelSet].l;
   // The trip page's Ideas pane is 480 / 600 / 700 / 780px at md / lg / xl / 2xl, with 20px padding each side
   const autoW = () => { const w = window.innerWidth; return w >= 1536 ? 740 : w >= 1280 ? 660 : w >= 1024 ? 560 : 440; };
   const [widthPick, setWidthPick] = useState<"auto" | number>("auto");
@@ -1438,7 +1513,7 @@ export function ProtoCards() {
   const [mine, setMineMap] = useState<Record<string, Answer>>({});
   const [live, setLive] = useState<Record<string, boolean>>({});
   const [mode, setMode] = useState<"pair" | "live">("pair");
-  const [earlier, setEarlier] = useState<0 | 1 | 2 | 3 | 4>(0);
+  const [earlier, setEarlier] = useState<0 | 1 | 2 | 3 | 4 | 5>(0);
   const base = IDEAS.find((i) => i.id === ideaId)!;
   const sizedAnswers = sized(base.answers, ideaId, groupSize);
   const idea: Demo = { ...base, answers: { ...sizedAnswers, ...(ideaId in mine ? { [me]: mine[ideaId] } : {}) } };
@@ -1490,12 +1565,23 @@ export function ProtoCards() {
             </select>
           </label>
           <label className="flex items-center gap-2">
+            Answers
+            <select value={labelSet} onChange={(e) => setLabelSet(e.target.value)} className="rounded-lg border border-line bg-bg px-2 py-1">
+              {Object.entries(LABEL_SETS).map(([k, v]) => (
+                <option key={k} value={k}>
+                  {v.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="flex items-center gap-2">
             Earlier rounds
-            <select value={earlier} onChange={(e) => setEarlier(+e.target.value as 0 | 1 | 2 | 3 | 4)} className="rounded-lg border border-line bg-bg px-2 py-1">
+            <select value={earlier} onChange={(e) => setEarlier(+e.target.value as 0 | 1 | 2 | 3 | 4 | 5)} className="rounded-lg border border-line bg-bg px-2 py-1">
               <option value={0}>Hide</option>
-              <option value={4}>Round 4 (E1–E2, old group)</option>
-              <option value={3}>Rounds 3–4</option>
-              <option value={2}>Rounds 2–4</option>
+              <option value={5}>Round 5 (G1–G4)</option>
+              <option value={4}>Rounds 4–5</option>
+              <option value={3}>Rounds 3–5</option>
+              <option value={2}>Rounds 2–5</option>
               <option value={1}>All rounds</option>
             </select>
           </label>
@@ -1503,7 +1589,7 @@ export function ProtoCards() {
         </div>
 
         <div className="mt-6 space-y-10">
-          {VARIANTS.filter((v) => v.round === 5 || (earlier !== 0 && v.round >= earlier)).map((v) => (
+          {VARIANTS.filter((v) => v.round === 6 || (earlier !== 0 && v.round >= earlier)).map((v) => (
             <section key={v.id}>
               <p className="mb-2 text-[14px]">
                 <b>
