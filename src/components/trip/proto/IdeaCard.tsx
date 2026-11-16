@@ -30,6 +30,7 @@ import {
   votesOf,
   type BookingState,
   type Group,
+  type Answer,
 } from "../../../lib/protoIdeas";
 import { Avatar, MentionInput } from "./MentionInput";
 import { DayMenu, dayShort, type DayFit } from "./DayMenu";

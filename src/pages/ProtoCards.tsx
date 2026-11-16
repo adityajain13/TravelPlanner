@@ -200,6 +200,41 @@ const CLOSE_AT: Record<string, [number, number]> = {
 };
 const CLOSED_ON: Record<string, string[]> = { ghibli: ["Tue 15"] };
 const TRAVEL_DAYS = ["Thu 17"];
+/** Planned stop times per day, in the same order as DAY_STOPS: start "HH:MM" and minutes there (demo) */
+const STOP_TIMES: Record<string, [string, number][]> = {
+  "Mon 14": [["09:30", 60], ["12:00", 90], ["18:00", 90]],
+  "Tue 15": [["09:00", 120], ["12:00", 90], ["15:00", 120]],
+  "Wed 16": [["09:00", 30], ["11:00", 120], ["14:30", 90]],
+  "Thu 17": [["09:00", 30], ["12:00", 30]],
+  "Fri 18": [["09:00", 150], ["13:00", 90]],
+  "Sat 19": [["09:30", 180], ["14:30", 60]],
+};
+const VISIT_MIN: Record<string, number> = { ghibli: 150, hakone: 120 };
+const hm = (t: string) => +t.slice(0, 2) * 60 + +t.slice(3, 5);
+const clock = (m: number) => `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(Math.round(m % 60)).padStart(2, "0")}`;
+const BUFFER = 20; // minutes to get between stops
+
+/** Where the idea lands in the day's clock: before, between or after the stops, and what it pushes back */
+function placeInDay(f: DayFit, mins: number, openHours?: string) {
+  const times = (STOP_TIMES[f.day] ?? []).map(([t, d]) => ({ start: hm(t), end: hm(t) + d }));
+  const s = f.slot;
+  let start = 10 * 60;
+  if (s && times.length) {
+    if (s.kind === "start") start = times[0].start - BUFFER - mins;
+    else if (s.kind === "end") start = times[times.length - 1].end + BUFFER;
+    else start = times[s.i].end + BUFFER;
+  }
+  const m = openHours?.match(/(\d+)–(\d+)/);
+  const opens = m ? +m[1] * 60 : undefined;
+  const closes = m ? +m[2] * 60 : undefined;
+  // Arriving before it opens? Wait for it (the rest of the day then shifts, shown as a push)
+  if (opens !== undefined && start < opens && s?.kind !== "start") start = opens;
+  const end = start + mins;
+  const next = s?.kind === "between" ? times[s.i + 1] : s?.kind === "start" ? times[0] : undefined;
+  const push = next ? Math.max(0, end + BUFFER - next.start) : 0;
+  const outside = opens !== undefined && closes !== undefined && (start < opens || end > closes);
+  return { times, start, end, push, nextIndex: s?.kind === "between" ? s.i + 1 : s?.kind === "start" ? 0 : -1, opens, closes, outside };
+}
 /** Other ideas in the pool and how far they are, per idea (demo) */
 const CLOSE_IDEAS: Record<string, string[]> = { ghibli: ["Inokashira Park", "Kichijoji Harmonica Yokocho"], hakone: ["Hakone Open-Air Museum", "Hakone Shrine"] };
 
@@ -226,7 +261,7 @@ function Band({ answers, w = 112 }: { answers: Answers; w?: number }) {
   if (!a.length) return <SoftTrack faint w={w} />;
   const lo = Math.min(...a);
   const hi = Math.max(...a);
-  const mean = a.reduce((p, q) => p + q, 0) / a.length;
+  const mean = a.reduce<number>((p, q) => p + q, 0) / a.length;
   return (
     <SoftTrack faint w={w}>
       {hi > lo && (
@@ -958,7 +993,7 @@ function SummaryTrack({ answers }: { answers: Answers }) {
   if (!a.length) return <SoftTrack faint w={TW} />;
   const lo = Math.min(...a);
   const hi = Math.max(...a);
-  const mean = a.reduce((p, q) => p + q, 0) / a.length;
+  const mean = a.reduce<number>((p, q) => p + q, 0) / a.length;
   return (
     <SoftTrack faint w={TW}>
       {hi > lo && (
@@ -1253,7 +1288,7 @@ function GroupColumns({ idea, open, me, setMine }: GroupProps) {
   const a = answeredOf(idea.answers);
   const lo = a.length ? Math.min(...a) : 0;
   const hi = a.length ? Math.max(...a) : 0;
-  const mean = a.length ? a.reduce((p, q) => p + q, 0) / a.length : 0;
+  const mean = a.length ? a.reduce<number>((p, q) => p + q, 0) / a.length : 0;
   const x = (v: number) => STOPS["-1"] + ((v + 1) / 2) * (STOPS["1"] - STOPS["-1"]);
   if (n === 1)
     return (
@@ -2005,7 +2040,139 @@ function WhoGoing({ idea, day, me, onAdd, onCancel }: { idea: Demo; day: DayFit;
   );
 }
 
-function FitCard({ idea, open, toggle, me, setMine }: Props) {
+/* ---------- round 8: the week, then the day ----------
+   Folded: a week strip is the one day control. Each day is green (fits), grey (free), red (closed / far) or amber
+   (travel), with the detour; tap a day to propose it, and the button follows. Open: where in that day it lands,
+   either as the day's stop list with the idea slotted in, or on the day's clock against the place's opening hours. */
+
+function WeekPicker({ fits, sel, bookedDay, onPick }: { fits: DayFit[]; sel?: DayFit; bookedDay: string | null; onPick: (day: string) => void }) {
+  return (
+    <div className="flex gap-1">
+      {fits.map((f) => {
+        const on = f.day === sel?.day;
+        const [wd, dn] = f.day.split(" ");
+        const tone =
+          f.state === "fits"
+            ? "bg-accent/14 text-accent"
+            : f.state === "closed" || f.state === "far"
+              ? "bg-red-500/10 text-red-600 dark:text-red-400"
+              : f.state === "travel"
+                ? "bg-amber-400/15 text-amber-700 dark:text-amber-300"
+                : "bg-surface-2 text-muted";
+        const sub = f.day === bookedDay ? "booked" : f.state === "fits" ? (f.slot!.detour < 1 ? "+<1 km" : `+${Math.round(f.slot!.detour)} km`) : f.state;
+        return (
+          <button
+            key={f.day}
+            onClick={() => onPick(f.day)}
+            title={`${f.day} · ${DAY_TITLE[f.day]}`}
+            className={`flex min-w-0 flex-1 flex-col items-center rounded-lg py-1 leading-tight transition ${tone} ${on ? "ring-2 ring-accent ring-offset-1 ring-offset-surface" : "hover:brightness-95"}`}
+          >
+            <span className="text-[10px] font-semibold uppercase opacity-80">{wd}</span>
+            <span className={`text-[13px] font-semibold ${f.state === "closed" ? "line-through" : ""}`}>{dn}</span>
+            <span className="text-[9.5px] opacity-85">{sub}</span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+/** The chosen day as its stop list, with the idea slotted in where it fits (and anything it pushes back) */
+function DayList({ f, idea, mins, openHours }: { f: DayFit; idea: Demo; mins: number; openHours?: string }) {
+  const p = placeInDay(f, mins, openHours);
+  const ghost = (
+    <li key="ghost" className={`flex items-start gap-2.5 rounded-lg border border-dashed px-2.5 py-1.5 ${p.outside ? "border-red-400 bg-red-500/5" : "border-amber-500 bg-amber-400/10"}`}>
+      <span className="w-11 shrink-0 text-[11.5px] font-semibold text-amber-700 tabular-nums dark:text-amber-300">{clock(p.start)}</span>
+      <span className="grid size-5 shrink-0 place-items-center rounded-full bg-amber-400 text-[11px] font-bold text-white">+</span>
+      <span className="min-w-0 text-[12.5px]">
+        <b className="font-semibold">{idea.name}</b>
+        <span className="text-muted"> · until {clock(p.end)}</span>
+        {p.outside && <span className="block text-red-600 dark:text-red-400">Outside opening hours ({openHours})</span>}
+      </span>
+    </li>
+  );
+  if (!f.stops.length)
+    return (
+      <ul className="space-y-1">
+        {ghost}
+        <li className="pl-14 text-[12px] text-muted">Nothing else planned on {f.day} yet</li>
+      </ul>
+    );
+  const at = f.slot?.kind === "start" ? 0 : f.slot?.kind === "between" ? f.slot.i + 1 : f.stops.length;
+  const rows: ReactNode[] = f.stops.map((x, i) => {
+    const t = p.times[i];
+    const pushed = i >= p.nextIndex && p.nextIndex >= 0 && p.push > 0;
+    return (
+      <li key={x.name} className="flex items-start gap-2.5 px-2.5 py-1">
+        <span className="w-11 shrink-0 text-[11.5px] text-muted tabular-nums">
+          {t ? clock(t.start + (pushed ? p.push : 0)) : ""}
+          {pushed && <span className="block text-[10px] text-amber-700 line-through decoration-1 dark:text-amber-300">{clock(t.start)}</span>}
+        </span>
+        <span className="grid size-5 shrink-0 place-items-center rounded-full border border-fg/30 text-[10.5px] font-bold text-fg/70">{i + 1}</span>
+        <span className="min-w-0 text-[12.5px] text-fg/85">{x.name}</span>
+      </li>
+    );
+  });
+  rows.splice(at, 0, ghost);
+  return (
+    <div>
+      <ul className="space-y-0.5">{rows}</ul>
+      {p.push > 0 && <p className="mt-1.5 text-[12px] text-amber-700 dark:text-amber-300">Pushes the rest of {f.day} back about {Math.round(p.push / 5) * 5} min</p>}
+    </div>
+  );
+}
+
+/** The chosen day on a clock (8:00–22:00): stops as blocks, the idea as an amber block, its opening hours behind it */
+function DayClock({ f, idea, mins, openHours }: { f: DayFit; idea: Demo; mins: number; openHours?: string }) {
+  const p = placeInDay(f, mins, openHours);
+  const H0 = 8 * 60;
+  const H1 = 22 * 60;
+  const x = (m: number) => `${((Math.min(Math.max(m, H0), H1) - H0) / (H1 - H0)) * 100}%`;
+  const w = (a: number, b: number) => `${((Math.min(b, H1) - Math.max(a, H0)) / (H1 - H0)) * 100}%`;
+  return (
+    <div>
+      <div className="relative h-[52px] rounded-lg bg-surface-2/50">
+        {p.opens !== undefined && p.closes !== undefined && (
+          <div className="absolute inset-y-0 rounded-md bg-accent/10" style={{ left: x(p.opens), width: w(p.opens, p.closes) }} title={`${idea.name} is open ${openHours}`} />
+        )}
+        {p.times.map((t, i) => {
+          const shift = p.nextIndex >= 0 && i >= p.nextIndex ? p.push : 0;
+          return (
+            <div
+              key={i}
+              className="absolute top-2 grid h-[18px] place-items-center rounded bg-fg/18 text-[10px] font-bold text-fg/70"
+              style={{ left: x(t.start + shift), width: w(t.start + shift, t.end + shift) }}
+              title={`${i + 1} ${f.stops[i]?.name} · ${clock(t.start + shift)}`}
+            >
+              {i + 1}
+            </div>
+          );
+        })}
+        <div
+          className={`absolute bottom-2 grid h-[18px] place-items-center rounded border border-dashed text-[10px] font-bold ${p.outside ? "border-red-500 bg-red-500/15 text-red-700" : "border-amber-500 bg-amber-400/40 text-amber-800 dark:text-amber-200"}`}
+          style={{ left: x(p.start), width: w(p.start, p.end) }}
+          title={`${idea.name} · ${clock(p.start)}–${clock(p.end)}`}
+        >
+          +
+        </div>
+      </div>
+      <div className="mt-0.5 flex justify-between text-[10px] text-muted tabular-nums">
+        {[8, 10, 12, 14, 16, 18, 20, 22].map((h) => (
+          <span key={h}>{h}</span>
+        ))}
+      </div>
+      <p className="mt-1.5 text-[12px] text-fg/80">
+        <b className="font-semibold">{clock(p.start)}–{clock(p.end)}</b> {idea.name}
+        {openHours && <span className="text-muted"> · open {openHours}</span>}
+        {f.stops.length > 0 && <span className="text-muted"> · {f.stops.map((s, i) => `${i + 1} ${s.name}`).join(" · ")}</span>}
+      </p>
+      {p.push > 0 && <p className="text-[12px] text-amber-700 dark:text-amber-300">Pushes the rest of {f.day} back about {Math.round(p.push / 5) * 5} min</p>}
+      {p.outside && <p className="text-[12px] text-red-600 dark:text-red-400">Lands outside its opening hours</p>}
+    </div>
+  );
+}
+
+function FitCard({ idea, open, toggle, me, setMine, view = "map" }: Props & { view?: "map" | "list" | "clock" }) {
   const ex = EXTRA[idea.id];
   const place = PLACE[idea.id] ?? {};
   const solo = Object.keys(idea.answers).length === 1;
@@ -2046,7 +2213,6 @@ function FitCard({ idea, open, toggle, me, setMine }: Props) {
   const closedOther = fits.filter((f) => f.state === "closed" && f.day !== sel?.day);
   if (closedOther.length) lines.push({ kind: "out", text: `Closed ${closedOther.map((f) => f.day).join(", ")}` });
   const glance = [lines.find((l) => l.kind === "good"), lines.find((l) => l.kind === "out") ?? lines.find((l) => l.kind === "warn")].filter(Boolean) as Line[];
-  const selWarn = lines.some((l) => l.kind === "warn") && sel?.day;
 
   const near = Object.entries(CLOSE_AT)
     .filter(([n]) => (CLOSE_IDEAS[idea.id] ?? []).includes(n))
@@ -2093,6 +2259,30 @@ function FitCard({ idea, open, toggle, me, setMine }: Props) {
     ) : (
       <p className="text-[12.5px] text-muted">No days planned yet</p>
     )
+  ) : view !== "map" ? (
+    // The week is the one day control; open, where in that day it lands
+    <>
+      <WeekPicker fits={fits} sel={sel} bookedDay={bookedDay} onPick={setPick} />
+      <div className="mt-2 space-y-0.5">{(open ? lines : glance).map(line)}</div>
+      {sel && (
+        <Grow open={open}>
+          <div className="pt-3">
+            <Cap>
+              Where it lands on {sel.day} · {DAY_TITLE[sel.day]}
+            </Cap>
+            {sel.state === "closed" ? (
+              <p className="text-[12.5px] text-red-600 dark:text-red-400">Closed that day</p>
+            ) : sel.state === "far" || sel.state === "travel" ? (
+              <p className="text-[12.5px] text-muted">{sel.state === "far" ? `Too far from ${sel.day}'s stops to slot in` : `${sel.day} is a travel day`}</p>
+            ) : view === "list" ? (
+              <DayList f={sel} idea={idea} mins={VISIT_MIN[idea.id] ?? 90} openHours={place.hours?.[sel.day]} />
+            ) : (
+              <DayClock f={sel} idea={idea} mins={VISIT_MIN[idea.id] ?? 90} openHours={place.hours?.[sel.day]} />
+            )}
+          </div>
+        </Grow>
+      )}
+    </>
   ) : (
     <>
       {sel && place.at && sel.stops.length > 0 && (
@@ -2284,9 +2474,8 @@ function FitCard({ idea, open, toggle, me, setMine }: Props) {
                   <Trash2 className="size-3.5" />
                 </button>
                 <span className={`flex min-w-0 flex-1 items-center overflow-hidden rounded-full text-[12.5px] font-semibold ${sel && !rough && sel.state !== "closed" ? "bg-accent text-on-accent" : "border border-line bg-surface text-fg"}`}>
-                  <button onClick={press} className="flex flex-1 items-center justify-center gap-1.5 px-3 py-1.5">
-                    {label}
-                    {selWarn && <CircleAlert className="size-3.5 text-amber-200" aria-label="Something to watch on the left" />}
+                  <button onClick={press} className="flex min-w-0 flex-1 items-center justify-center gap-1.5 px-3 py-1.5">
+                    <span className="truncate">{label}</span>
                   </button>
                   <span className={`grid place-items-center self-stretch border-l px-2 ${sel && !rough ? "border-white/30" : "border-line"}`}>
                     <ChevronDown className="size-3.5" />
@@ -2328,7 +2517,9 @@ function FitCard({ idea, open, toggle, me, setMine }: Props) {
   );
 }
 
-const VARIANTS: { id: string; name: string; note: string; wideOpen?: boolean; round: 1 | 2 | 3 | 4 | 5 | 6 | 7; C: (p: Props) => ReactNode }[] = [
+const VARIANTS: { id: string; name: string; note: string; wideOpen?: boolean; round: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8; C: (p: Props) => ReactNode }[] = [
+  { id: "W1", round: 8, name: "Week strip → the day's stops", note: "folded: the week is the day control (green fits, red closed/far, grey free); open: the chosen day's stop list with the idea slotted in, and what it pushes back", C: (p) => <FitCard {...p} view="list" /> },
+  { id: "W2", round: 8, name: "Week strip → the day's clock", note: "same week strip; open: the day on a clock with the idea as a block against its opening hours", C: (p) => <FitCard {...p} view="clock" /> },
   { id: "H1", round: 7, name: "Evidence | decision", note: "left: what it is, how it fits (map of the day, every reason once), comment count; right: your vote, the proposed day, the button. Tap a day under the map (open) to change the proposal", C: (p) => <FitCard {...p} /> },
   { id: "P1", round: 6, name: "Group · poll", note: "WhatsApp-style rows: label · count, faces, a thin bar; tap a row to vote; open adds names and who's missing. Try the label sets above", C: (p) => <Detail {...p} long="sticky" group="P" /> },
   { id: "G1", round: 5, name: "Group · your answer + who's in", note: "a 3-way choice for you; one line of avatars per answer; open lists names", C: (p) => <Detail {...p} long="sticky" group="G1" /> },
@@ -2449,9 +2640,9 @@ export function ProtoCards() {
             Earlier rounds
             <select value={earlier} onChange={(e) => setEarlier(+e.target.value)} className="rounded-lg border border-line bg-bg px-2 py-1">
               <option value={0}>Hide</option>
-              {[6, 5, 4, 3, 2, 1].map((r) => (
+              {[7, 6, 5, 4, 3, 2, 1].map((r) => (
                 <option key={r} value={r}>
-                  {r === 6 ? "Round 6 (P1 poll)" : `Back to round ${r}`}
+                  {r === 7 ? "Round 7 (H1 map)" : `Back to round ${r}`}
                 </option>
               ))}
             </select>
@@ -2460,7 +2651,7 @@ export function ProtoCards() {
         </div>
 
         <div className="mt-6 space-y-10">
-          {VARIANTS.filter((v) => v.round === 7 || (earlier !== 0 && v.round >= earlier)).map((v) => (
+          {VARIANTS.filter((v) => v.round === 8 || (earlier !== 0 && v.round >= earlier)).map((v) => (
             <section key={v.id}>
               <p className="mb-2 text-[14px]">
                 <b>
