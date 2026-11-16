@@ -188,14 +188,14 @@ function BookBadge({ idea }: { idea: Demo }) {
   );
 }
 
-function Title({ idea, size = 16 }: { idea: Demo; size?: number }) {
+function Title({ idea, size = 16, badge = true }: { idea: Demo; size?: number; badge?: boolean }) {
   return (
     <div className="min-w-0">
       <div className="flex min-w-0 items-center gap-2">
         <p className="min-w-0 truncate font-semibold" style={{ fontSize: size }}>
           {idea.name}
         </p>
-        <BookBadge idea={idea} />
+        {badge && <BookBadge idea={idea} />}
       </div>
       <p className="mt-0.5 truncate text-[12.5px] text-muted">
         {idea.where} · {idea.category} <ChevronDown className="inline size-3" />
@@ -668,7 +668,134 @@ function DayBtnFull({ idea }: { idea: Demo }) {
   );
 }
 
-const VARIANTS: { id: string; name: string; note: string; wideOpen?: boolean; round: 1 | 2; C: (p: Props) => ReactNode }[] = [
+/* ---------- round 3: the idea vs the verdict ----------
+   C3's tinted layout with one job per side. Left (plain): the idea in people's words: name, place, the why, and
+   (expanded) the place's facts. Right (tinted): the verdict, in the order you'd decide: how the group feels → the
+   best day and why → the worst blocker → booking → the button. Booking appears only on the right. */
+
+const Cap = ({ children }: { children: ReactNode }) => <p className="mb-1 text-[10.5px] font-semibold tracking-wider text-muted uppercase">{children}</p>;
+
+function Verdict({ idea, open, toggle, me, setMine, merge }: Props & { /** Booked: the button carries the booking */ merge: boolean }) {
+  const b = idea.booking;
+  const booked = b?.kind === "booked" ? b : null;
+  const bestDay = idea.days.find((d) => d.state === "best");
+  const reason = idea.good.filter((g) => !g.startsWith("Booked"))[0] ?? bestDay?.reason;
+  const blocker = idea.out ? { out: true, text: idea.out } : idea.warn[0] ? { out: false, text: idea.warn[0] } : null;
+  const blockLine = (x: { out: boolean; text: string }) => (
+    <p key={x.text} className={`flex items-start gap-1.5 text-[12px] ${x.out ? "text-red-600 dark:text-red-400" : "text-amber-700 dark:text-amber-300"}`}>
+      {x.out ? <X className="mt-px size-3.5 shrink-0" /> : <CircleAlert className="mt-px size-3.5 shrink-0" />}
+      <span>{x.text}</span>
+    </p>
+  );
+  const ticketLine = b && !(merge && booked) && (
+    <p className={`flex items-start gap-1.5 text-[12px] ${booked ? "text-accent" : "text-amber-700 dark:text-amber-300"}`}>
+      <Ticket className="mt-px size-3.5 shrink-0" />
+      <span>
+        {booked ? `Booked ${booked.text}` : "Book ahead · not booked yet"}
+        {open && booked?.conf && <span className="block text-muted">#{booked.conf}</span>}
+      </span>
+    </p>
+  );
+  const label = idea.best ? `Add to ${idea.best.day}` : idea.where === "Needs a place" ? "Find a place" : "Add to a day";
+  const button = (
+    <span className={`flex w-full items-center overflow-hidden rounded-full font-semibold ${idea.best ? "bg-accent text-on-accent" : "border border-line bg-surface text-fg"}`}>
+      <span className="flex flex-1 flex-col items-center px-3 py-1.5 leading-tight">
+        <span className="flex items-center gap-1.5 text-[12.5px]">
+          {merge && booked && <Ticket className="size-3.5" />}
+          {label}
+          {merge && booked && `, ${booked.text.split(", ")[1] ?? ""}`}
+        </span>
+        {merge && booked && <span className="text-[10.5px] font-medium opacity-85">Booked{open && booked.conf ? ` · #${booked.conf}` : ""}</span>}
+      </span>
+      <span className={`self-stretch border-l px-2 ${idea.best ? "border-white/30" : "border-line"} grid place-items-center`}>
+        <ChevronDown className="size-3.5" />
+      </span>
+    </span>
+  );
+
+  return (
+    <Shell idea={idea}>
+      <div className="grid" style={{ gridTemplateColumns: "minmax(0,1fr) 244px" }}>
+        {/* The idea */}
+        <div className="min-w-0 space-y-3 px-4 py-3.5">
+          <Title idea={idea} size={16.5} badge={false} />
+          <Why idea={idea} clamp={!open} />
+          {open && (
+            <div className="border-t border-line pt-3">
+              <Cap>About the place</Cap>
+              <Facts idea={idea} />
+            </div>
+          )}
+        </div>
+
+        {/* The verdict */}
+        <div className="relative flex min-w-0 flex-col gap-3 bg-surface-2/60 px-4 py-3.5">
+          <span className="absolute top-2 right-2">
+            <More />
+          </span>
+          <div className="pr-6">
+            <Cap>Group</Cap>
+            {open ? (
+              <People idea={idea} me={me} setMine={setMine} w={84} compact />
+            ) : (
+              <>
+                <span className="-ml-2 block">
+                  <Band answers={idea.answers} w={120} />
+                </span>
+                <p className="mt-0.5 truncate text-[11.5px] text-muted">{groupSummary(idea.answers)}</p>
+              </>
+            )}
+          </div>
+
+          <div>
+            <Cap>When</Cap>
+            {idea.best ? (
+              <>
+                <p className="text-[13px]">
+                  <b>{idea.best.day}</b>
+                  {open && <span className="text-muted"> · {idea.best.title}</span>}
+                </p>
+                {!open && reason && <p className="truncate text-[12px] text-muted">{reason}</p>}
+                {open && (
+                  <ul className="mt-1 space-y-0.5 text-[12px]">
+                    {idea.good
+                      .filter((g) => !g.startsWith("Booked"))
+                      .map((g) => (
+                        <li key={g} className="flex items-start gap-1.5 text-accent">
+                          <Check className="mt-px size-3.5 shrink-0" />
+                          <span className="text-fg/85">{g}</span>
+                        </li>
+                      ))}
+                  </ul>
+                )}
+              </>
+            ) : (
+              <p className="text-[12.5px] text-muted">{idea.where === "Needs a place" ? "Needs a place first" : "No day stands out yet"}</p>
+            )}
+            <div className="mt-1 space-y-0.5">
+              {open ? [...idea.warn.map((t) => ({ out: false, text: t })), ...(idea.out ? [{ out: true, text: idea.out }] : [])].map(blockLine) : blocker && blockLine(blocker)}
+            </div>
+            {open && idea.best && (
+              <p className="mt-1 text-[12px] text-muted">
+                Also fits: {idea.days.filter((d) => d.state === "good").map((d) => d.d).join(", ") || "no other day"}
+              </p>
+            )}
+          </div>
+
+          <div className="mt-auto space-y-2">
+            {ticketLine}
+            {button}
+          </div>
+        </div>
+      </div>
+      <Toggle open={open} toggle={toggle} />
+    </Shell>
+  );
+}
+
+const VARIANTS: { id: string; name: string; note: string; wideOpen?: boolean; round: 1 | 2 | 3; C: (p: Props) => ReactNode }[] = [
+  { id: "D1", round: 3, name: "Idea | verdict · booking in the button", note: "left: what and why; tinted right: group → when → blocker → button. Booked shows on the button itself", C: (p) => <Verdict {...p} merge /> },
+  { id: "D2", round: 3, name: "Idea | verdict · booking line", note: "same split; booking is one line above the button", C: (p) => <Verdict {...p} merge={false} /> },
   { id: "C1", round: 2, name: "Corners · whitespace", note: "no lines; a gutter and the grid do the separating", C: (p) => <CleanCorners {...p} sep="space" /> },
   { id: "C2", round: 2, name: "Corners · column line", note: "one hairline between the columns", C: (p) => <CleanCorners {...p} sep="line" /> },
   { id: "C3", round: 2, name: "Corners · tinted side", note: "the group + decision column sits on a faint tint", C: (p) => <CleanCorners {...p} sep="tint" /> },
@@ -687,7 +814,7 @@ export function ProtoCards() {
   const [mine, setMineMap] = useState<Record<string, Answer>>({});
   const [live, setLive] = useState<Record<string, boolean>>({});
   const [mode, setMode] = useState<"pair" | "live">("pair");
-  const [earlier, setEarlier] = useState(false);
+  const [earlier, setEarlier] = useState<0 | 1 | 2>(0);
   const base = IDEAS.find((i) => i.id === ideaId)!;
   const idea: Demo = { ...base, answers: { ...base.answers, ...(ideaId in mine ? { [me]: mine[ideaId] } : {}) } };
   const setMine = (a: Answer) => setMineMap((m) => ({ ...m, [ideaId]: a }));
@@ -718,13 +845,18 @@ export function ProtoCards() {
             ))}
           </span>
           <label className="flex items-center gap-2">
-            <input type="checkbox" checked={earlier} onChange={(e) => setEarlier(e.target.checked)} /> Show round 1 (Q1–Q5)
+            Earlier rounds
+            <select value={earlier} onChange={(e) => setEarlier(+e.target.value as 0 | 1 | 2)} className="rounded-lg border border-line bg-bg px-2 py-1">
+              <option value={0}>Hide</option>
+              <option value={2}>Round 2 (C1–C4)</option>
+              <option value={1}>Rounds 1–2 (all)</option>
+            </select>
           </label>
           <span className="text-muted">Colours: {PALETTES.teal.name}</span>
         </div>
 
         <div className="mt-6 space-y-10">
-          {VARIANTS.filter((v) => v.round === 2 || earlier).map((v) => (
+          {VARIANTS.filter((v) => v.round === 3 || (earlier !== 0 && v.round >= earlier)).map((v) => (
             <section key={v.id}>
               <p className="mb-2 text-[14px]">
                 <b>
