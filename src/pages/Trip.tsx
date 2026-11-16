@@ -17,6 +17,7 @@ import {
   addList,
   copiesByItem,
   copyItems,
+  edit,
   isDraftSection,
   moveItem,
   removeItem,
@@ -656,14 +657,22 @@ export function TripPage() {
   const addIdea = (itemId: string, dayKey: string, opts?: AddOptions) => {
     const section = writeOf(dayKey);
     const before = state.items.filter((x) => x.section === section).sort((a, b) => (a.order < b.order ? -1 : a.order > b.order ? 1 : 0));
-    const [newId] = copyItems(doc, [itemId], section);
+    // One transaction, so one Undo takes back the whole add (copy, who, time, position)
+    let newId: string | undefined;
+    edit(doc, () => {
+      [newId] = copyItems(doc, [itemId], section);
+      if (!newId) return;
+      if (opts?.who?.length || opts?.time) updateItem(doc, newId, { ...(opts.who?.length ? { who: opts.who } : {}), ...(opts.time ? { startTime: opts.time } : {}) });
+      if (opts && opts.afterId !== undefined) {
+        const at = opts.afterId === null ? 0 : before.findIndex((x) => x.id === opts.afterId) + 1;
+        if (at >= 0 && at < before.length) moveItem(doc, newId, section, at);
+      }
+    });
     if (!newId) return;
-    if (opts?.who?.length) updateItem(doc, newId, { who: opts.who });
-    if (opts && opts.afterId !== undefined) {
-      const at = opts.afterId === null ? 0 : before.findIndex((x) => x.id === opts.afterId) + 1;
-      if (at >= 0 && at < before.length) moveItem(doc, newId, section, at);
-    }
     revealAdded(newId);
+    // The card leaves the open list once it's on a day, so say where it went (with Undo)
+    const name = state.items.find((x) => x.id === itemId)?.name ?? "Idea";
+    say(`Added ${name} to ${formatChip(dayKey.slice(4))}${opts?.time ? `, ${opts.time}` : ""}${opts?.who?.length ? ` for ${opts.who.length}` : ""}`, true);
   };
   const ideaMapView = (() => {
     if (!layoutB || area !== "ideas" || tab !== "plan" || focus) return null;

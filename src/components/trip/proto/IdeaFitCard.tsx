@@ -14,7 +14,7 @@ import type { Idea } from "./IdeasShelf";
 const POLL: [string, string, string] = ["Yes!", "Sure", "Not for me"];
 const C = { must: "#178a7c", along: "#8f9a95", out: "#c8604a" };
 
-export type AddOptions = { who?: string[]; afterId?: string | null };
+export type AddOptions = { who?: string[]; afterId?: string | null; /** "HH:MM", sets the stop's start time */ time?: string };
 
 type DayState = "fits" | "far" | "free" | "closed";
 type Fitted = { d: DayFit; state: DayState; slot?: Slot; stops: Stop[] };
@@ -304,7 +304,10 @@ export function IdeaFitCard({
   const closedOther = fitted.filter((f) => f.state === "closed" && f !== sel);
   if (closedOther.length) lines.push({ kind: "out", text: `${closedOther[0].d.fit.blockers[0]?.text ?? "Closed"}: ${closedOther.map((f) => dayShort(f.d.date)).join(", ")}` });
   const glance = [lines.find((l) => l.kind === "good"), lines.find((l) => l.kind === "out") ?? lines.find((l) => l.kind === "warn")].filter(Boolean) as Line[];
-  const watch = lines.some((l) => l.kind === "warn");
+  // The day and time picker on ▾: every day with how it fits, the chosen day's reasons, an optional time
+  const [picking, setPicking] = useState(false);
+  const [time, setTime] = useState("");
+  const bookedTimeOn = (f: Fitted) => (booked?.date === f.d.date ? booked.time : undefined);
 
   // The split, if someone said "Not for me"
   const sittingOut = Object.keys(answers).filter((p) => answers[p] === -1);
@@ -321,12 +324,13 @@ export function IdeaFitCard({
     !f.slot ? undefined : f.slot.kind === "start" ? null : f.slot.kind === "between" ? f.stops[f.slot.i].id : f.stops[f.stops.length - 1].id;
   const doAdd = (f: Fitted, who: string[]) => {
     const all = who.length >= Object.keys(answers).length;
-    onAdd(f.d.key, { who: all || !group ? undefined : who, afterId: afterId(f) });
+    onAdd(f.d.key, { who: all || !group ? undefined : who, afterId: afterId(f), time: bookedTimeOn(f) || time || undefined });
     setAdded({ day: dayShort(f.d.date), who, then: { ...answers } });
     setToast(true);
   };
   const press = () => {
     if (readOnly || rough || !sel || sel.state === "closed") return;
+    setPicking(false);
     if (group && sittingOut.length) setAsking(true);
     else doAdd(sel, Object.keys(answers));
   };
@@ -359,7 +363,8 @@ export function IdeaFitCard({
     );
   };
 
-  const label = rough ? "Find a place" : sel ? `Add to ${dayShort(sel.d.date)}${booked?.date === sel.d.date && booked.time ? `, ${booked.time}` : ""}${group && sittingOut.length ? ` · ${goingN} going` : ""}` : "Add to a day";
+  const shownTime = sel ? bookedTimeOn(sel) || time : "";
+  const label = rough ? "Find a place" : sel ? `Add to ${dayShort(sel.d.date)}${shownTime ? `, ${shownTime}` : ""}${group && sittingOut.length ? ` · ${goingN} going` : ""}` : "Add to a day";
   const cost = it.cost ? `${it.costCurrency ?? ""} ${it.cost.toLocaleString()}`.trim() : null;
   const rating = it.google?.rating;
 
@@ -542,9 +547,8 @@ export function IdeaFitCard({
                   <span className={`flex min-w-0 flex-1 items-center overflow-hidden rounded-full text-[12.5px] font-semibold ${sel && !rough && sel.state !== "closed" ? "bg-accent text-on-accent" : "border border-line bg-surface text-fg"}`}>
                     <button onClick={press} className="flex min-w-0 flex-1 items-center justify-center gap-1.5 px-3 py-1.5">
                       <span className="truncate">{label}</span>
-                      {watch && sel && <CircleAlert className="size-3.5 shrink-0 text-amber-200" aria-label="Something to watch: see How it fits" />}
                     </button>
-                    <button onClick={() => setOpen(true)} aria-label="Other days" className={`grid place-items-center self-stretch border-l px-2 ${sel && !rough ? "border-white/30" : "border-line"}`}>
+                    <button onClick={() => (setAsking(false), setPicking((p) => !p))} aria-label="Pick a day and time" aria-expanded={picking} className={`grid place-items-center self-stretch border-l px-2 ${sel && !rough ? "border-white/30" : "border-line"}`}>
                       <ChevronDown className="size-3.5" />
                     </button>
                   </span>
@@ -554,6 +558,44 @@ export function IdeaFitCard({
           </div>
         </div>
       </div>
+
+      {picking && sel && (
+        <div className="absolute right-2 bottom-11 z-30 w-[min(380px,calc(100%-16px))] rounded-2xl border border-line bg-surface p-4 text-[13px] shadow-2xl" role="dialog" aria-label="Pick a day and time">
+          <p className="text-[14px] font-semibold">Add {it.name} to…</p>
+          <div className="mt-2.5 flex gap-1">{fitted.map(tag)}</div>
+          <div className="mt-3">
+            <Cap>On {dayShort(sel.d.date)}</Cap>
+            <div className="space-y-0.5">{lines.length ? lines.map(line) : <p className="text-[12.5px] text-muted">Nothing to flag</p>}</div>
+          </div>
+          <div className="mt-3">
+            <Cap>Time</Cap>
+            {bookedTimeOn(sel) ? (
+              <p className="flex items-center gap-1.5 text-[12.5px] text-fg/85">
+                <Ticket className="size-3.5 text-accent" /> Booked for {bookedTimeOn(sel)}. Change it in the booking.
+              </p>
+            ) : (
+              <label className="flex items-center gap-2 text-[12.5px] text-muted">
+                <input type="time" value={time} onChange={(e) => setTime(e.target.value)} className="rounded-lg border border-line bg-bg px-2 py-1 text-fg" />
+                {time ? (
+                  <button onClick={() => setTime("")} className="hover:text-fg">
+                    Clear
+                  </button>
+                ) : (
+                  "Optional: leave it empty to keep it in the day's order"
+                )}
+              </label>
+            )}
+          </div>
+          <div className="mt-4 flex items-center justify-end gap-2">
+            <button onClick={() => setPicking(false)} className="rounded-full px-3 py-1.5 text-muted hover:text-fg">
+              Cancel
+            </button>
+            <button disabled={sel.state === "closed"} onClick={press} className="rounded-full bg-accent px-4 py-1.5 font-semibold text-on-accent disabled:cursor-not-allowed disabled:opacity-40">
+              {sel.state === "closed" ? "Closed that day" : `Add to ${dayShort(sel.d.date)}${bookedTimeOn(sel) || time ? `, ${bookedTimeOn(sel) || time}` : ""}`}
+            </button>
+          </div>
+        </div>
+      )}
 
       {asking && sel && (
         <WhoGoing key={sel.d.key} name={it.name} f={sel} answers={answers} me={me} visit={visit} onCancel={() => setAsking(false)} onAdd={(who) => (doAdd(sel, who), setAsking(false))} />
