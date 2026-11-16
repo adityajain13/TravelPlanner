@@ -3,7 +3,7 @@
 // way each region grows is visible side by side. The four regions are always the same:
 //   What it is · How the group feels · Why and fit · Decision
 // To try another layout, add a component to VARIANTS.
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { Check, ChevronDown, CircleAlert, ExternalLink, ImageIcon, Map as MapIcon, MoreHorizontal, Star, Ticket, X } from "lucide-react";
 import { hue, Knob, LABEL, key, PALETTES, PersonTrack, SoftTrack, stopsBetween, usePalette, type Answer, type Answers } from "./ProtoInterest";
 
@@ -1113,6 +1113,16 @@ export function ProtoCards() {
   usePalette("teal");
   const [ideaId, setIdeaId] = useState("ghibli");
   const [groupSize, setGroupSize] = useState(4);
+  // The trip page's Ideas pane is 480 / 600 / 700 / 780px at md / lg / xl / 2xl, with 20px padding each side
+  const autoW = () => { const w = window.innerWidth; return w >= 1536 ? 740 : w >= 1280 ? 660 : w >= 1024 ? 560 : 440; };
+  const [widthPick, setWidthPick] = useState<"auto" | number>("auto");
+  const [winW, setWinW] = useState(autoW);
+  useEffect(() => {
+    const on = () => setWinW(autoW());
+    window.addEventListener("resize", on);
+    return () => window.removeEventListener("resize", on);
+  }, []);
+  const cardW = widthPick === "auto" ? winW : widthPick;
   const [me] = useState("Vishal");
   const [mine, setMineMap] = useState<Record<string, Answer>>({});
   const [live, setLive] = useState<Record<string, boolean>>({});
@@ -1125,7 +1135,7 @@ export function ProtoCards() {
 
   return (
     <div className="min-h-full bg-bg px-6 py-8 text-fg">
-      <div className="mx-auto max-w-6xl">
+      <div className="mx-auto max-w-[1560px]">
         <h1 className="font-display text-[28px]">Idea card layouts</h1>
         <p className="mt-1 max-w-3xl text-[14px] text-muted">
           Prototype playground. Same four regions everywhere: <b>what it is</b>, <b>how the group feels</b>, <b>why and fit</b>, <b>decision</b>. Each row shows a layout folded and
@@ -1148,6 +1158,16 @@ export function ProtoCards() {
               </button>
             ))}
           </span>
+          <label className="flex items-center gap-2" title="The idea card's width in the trip page's Ideas area">
+            Card width
+            <select value={widthPick} onChange={(e) => setWidthPick(e.target.value === "auto" ? "auto" : +e.target.value)} className="rounded-lg border border-line bg-bg px-2 py-1">
+              <option value="auto">Like the trip page at this window ({winW}px)</option>
+              <option value={440}>Small window · 440px</option>
+              <option value={560}>Laptop · 560px</option>
+              <option value={660}>Desktop · 660px</option>
+              <option value={740}>Large screen · 740px</option>
+            </select>
+          </label>
           <label className="flex items-center gap-2">
             Group
             <select value={groupSize} onChange={(e) => setGroupSize(+e.target.value)} className="rounded-lg border border-line bg-bg px-2 py-1">
@@ -1179,19 +1199,20 @@ export function ProtoCards() {
                 </b>{" "}
                 <span className="text-muted">· {v.note}</span>
               </p>
+              {/* Cards render at the real Ideas-pane width (pane width minus its 20px padding each side) */}
               {mode === "pair" ? (
-                <div className={`grid items-start gap-6 ${v.wideOpen ? "md:grid-cols-[minmax(0,440px)_minmax(0,1fr)]" : "md:grid-cols-2"}`}>
-                  <div>
+                <div className="flex flex-wrap items-start gap-6">
+                  <div style={{ width: cardW }}>
                     <p className="mb-1 text-[11px] font-semibold tracking-wider text-muted uppercase">Folded</p>
                     <v.C idea={idea} open={false} toggle={() => {}} me={me} setMine={setMine} />
                   </div>
-                  <div>
+                  <div style={{ width: cardW }}>
                     <p className="mb-1 text-[11px] font-semibold tracking-wider text-muted uppercase">Expanded</p>
                     <v.C idea={idea} open toggle={() => {}} me={me} setMine={setMine} />
                   </div>
                 </div>
               ) : (
-                <div className={live[v.id] && v.wideOpen ? "max-w-[720px]" : "max-w-[460px]"}>
+                <div style={{ width: cardW }}>
                   <v.C idea={idea} open={!!live[v.id]} toggle={() => setLive((l) => ({ ...l, [v.id]: !l[v.id] }))} me={me} setMine={setMine} />
                 </div>
               )}
