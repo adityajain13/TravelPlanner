@@ -1393,10 +1393,14 @@ function Detail({ idea, open, toggle, me, setMine, long, group = "track" }: Prop
   );
 
   return (
-    <div className={`rounded-2xl border bg-surface ${answeredOf(idea.answers).includes(1) ? "border-amber-400/60" : "border-line"}`}>
-      <div className="grid" style={{ gridTemplateColumns: "minmax(0,1fr) 252px" }}>
+    // Laid out by the card's own width (container query): side by side from 600px, stacked below that
+    <div className={`@container relative rounded-2xl border bg-surface ${answeredOf(idea.answers).includes(1) ? "border-amber-400/60" : "border-line"}`}>
+      <span className="absolute top-2 right-2 z-10">
+        <More />
+      </span>
+      <div className="grid grid-cols-1 @min-[600px]:grid-cols-[minmax(0,1fr)_252px]">
         {/* Left: the idea, all of its details. Each section keeps its folded lines and grows under them. */}
-        <div className={`min-w-0 px-4 pt-3.5 pb-4 ${leftCap}`}>
+        <div className={`min-w-0 px-4 pt-3.5 pb-4 pr-11 @min-[600px]:pr-4 ${leftCap}`}>
           <div className="flex items-start gap-3">
             <div className="min-w-0 flex-1">
               <Title idea={idea} size={16.5} badge={false} />
@@ -1523,17 +1527,15 @@ function Detail({ idea, open, toggle, me, setMine, long, group = "track" }: Prop
           )}
         </div>
 
-        {/* Right: Group at the top, When + the button at the bottom */}
-        <div className="relative min-w-0 rounded-tr-2xl bg-surface-2/60">
-          <div className="flex h-full flex-col px-4 pt-3.5 pb-4">
-            <span className="absolute top-2 right-2">
-              <More />
-            </span>
-            <div className="pr-6">
+        {/* Right: Group at the top, When + the button at the bottom.
+            Stacked (narrow card): a tinted band under the idea, Group | When side by side. */}
+        <div className="min-w-0 border-t border-line bg-surface-2/60 @min-[600px]:rounded-tr-2xl @min-[600px]:border-t-0">
+          <div className="grid h-full grid-cols-2 gap-x-5 px-4 pt-3.5 pb-4 @min-[600px]:flex @min-[600px]:flex-col">
+            <div className="min-w-0 @min-[600px]:pr-6">
               <GroupView idea={idea} open={open} me={me} setMine={setMine} />
             </div>
 
-            <div className={`mt-auto ${SECTION}`}>
+            <div className="flex min-w-0 flex-col @min-[600px]:mt-auto @min-[600px]:block @min-[600px]:pt-6">
               <Cap>When</Cap>
               {idea.best ? (
                 <p className="text-[13px]">
@@ -1548,7 +1550,7 @@ function Detail({ idea, open, toggle, me, setMine, long, group = "track" }: Prop
                 <div className="space-y-0.5 pt-0.5">{rest.map(vline)}</div>
                 {idea.best && <p className="mt-1 text-[12px] text-muted">Also fits: {idea.days.filter((d) => d.state === "good").map((d) => d.d).join(", ") || "no other day"}</p>}
               </Grow>
-              <div className="mt-4">
+              <div className="mt-auto pt-4 @min-[600px]:mt-0">
                 <span className={`flex w-full items-center overflow-hidden rounded-full text-[12.5px] font-semibold ${idea.best ? "bg-accent text-on-accent" : "border border-line bg-surface text-fg"}`}>
                   <span className="flex-1 px-3 py-1.5 text-center">{label}</span>
                   <span className={`self-stretch border-l px-2 ${idea.best ? "border-white/30" : "border-line"} grid place-items-center`}>
