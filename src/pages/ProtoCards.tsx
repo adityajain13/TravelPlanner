@@ -168,12 +168,38 @@ const DAY_STOPS: Record<string, { name: string; at: [number, number] }[]> = {
     { name: "Shinjuku Gyoen", at: [35.6852, 139.71] },
     { name: "Omoide Yokocho", at: [35.6932, 139.6996] },
   ],
+  "Tue 15": [
+    { name: "Senso-ji", at: [35.7148, 139.7967] },
+    { name: "Ueno Park", at: [35.7156, 139.7745] },
+    { name: "Akihabara", at: [35.6984, 139.7731] },
+  ],
   "Wed 16": [
     { name: "Hakone-Yumoto Station", at: [35.2326, 139.1063] },
     { name: "Lake Ashi", at: [35.2046, 139.0247] },
     { name: "Owakudani", at: [35.2441, 139.0191] },
   ],
+  "Thu 17": [
+    { name: "Tokyo Station", at: [35.6812, 139.7671] },
+    { name: "Kyoto Station", at: [34.9858, 135.7588] },
+  ],
+  "Fri 18": [
+    { name: "Fushimi Inari", at: [34.9671, 135.7727] },
+    { name: "Kiyomizu-dera", at: [34.9949, 135.785] },
+  ],
+  "Sat 19": [
+    { name: "Arashiyama", at: [35.0094, 135.6668] },
+    { name: "Kinkaku-ji", at: [35.0394, 135.7292] },
+  ],
 };
+const DAY_TITLE: Record<string, string> = { "Mon 14": "Land in Tokyo", "Tue 15": "Tokyo east", "Wed 16": "Hakone day trip", "Thu 17": "Shinkansen to Kyoto", "Fri 18": "Kyoto", "Sat 19": "Kyoto west", "Sun 20": "Open day" };
+const CLOSE_AT: Record<string, [number, number]> = {
+  "Inokashira Park": [35.6998, 139.5733],
+  "Kichijoji Harmonica Yokocho": [35.7035, 139.5795],
+  "Hakone Open-Air Museum": [35.2448, 139.0509],
+  "Hakone Shrine": [35.2048, 139.0253],
+};
+const CLOSED_ON: Record<string, string[]> = { ghibli: ["Tue 15"] };
+const TRAVEL_DAYS = ["Thu 17"];
 /** Other ideas in the pool and how far they are, per idea (demo) */
 const CLOSE_IDEAS: Record<string, string[]> = { ghibli: ["Inokashira Park", "Kichijoji Harmonica Yokocho"], hakone: ["Hakone Open-Air Museum", "Hakone Shrine"] };
 
@@ -1750,7 +1776,361 @@ function Detail({ idea, open, toggle, me, setMine, long, group = "track" }: Prop
   );
 }
 
-const VARIANTS: { id: string; name: string; note: string; wideOpen?: boolean; round: 1 | 2 | 3 | 4 | 5 | 6; C: (p: Props) => ReactNode }[] = [
+/* ---------- round 7: evidence | decision ----------
+   Left = everything you weigh: what it is, How it fits (a map of the day plus every ✓ / ⚠ / ✕ reason, once),
+   then a comment count (the thread lives at the bottom when open). Right = only what you act on: your vote,
+   the proposed day, the button. Tapping a day under the map changes the proposal, and the button follows. */
+
+const toRad = (d: number) => (d * Math.PI) / 180;
+function kmBetween(a: [number, number], b: [number, number]) {
+  const dLat = toRad(b[0] - a[0]);
+  const dLon = toRad(b[1] - a[1]);
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(a[0])) * Math.cos(toRad(b[0])) * Math.sin(dLon / 2) ** 2;
+  return 6371 * 2 * Math.asin(Math.sqrt(h));
+}
+const kmText = (k: number) => (k < 1 ? "under 1 km" : `${Math.round(k)} km`);
+
+type Slot = { kind: "start" | "between" | "end"; i: number; detour: number; near: number };
+/** The cheapest place to slot a point into a day's route: before the first stop, between two, or after the last */
+function bestSlot(at: [number, number], stops: { at: [number, number] }[]): Slot {
+  const n = stops.length;
+  let best: Slot = { kind: "start", i: 0, detour: kmBetween(at, stops[0].at), near: 0 };
+  const end = kmBetween(stops[n - 1].at, at);
+  if (end < best.detour) best = { kind: "end", i: n - 1, detour: end, near: n - 1 };
+  for (let i = 0; i < n - 1; i++) {
+    const d = kmBetween(stops[i].at, at) + kmBetween(at, stops[i + 1].at) - kmBetween(stops[i].at, stops[i + 1].at);
+    if (d < best.detour) best = { kind: "between", i, detour: d, near: kmBetween(stops[i].at, at) < kmBetween(stops[i + 1].at, at) ? i : i + 1 };
+  }
+  return best;
+}
+
+type DayFit = { day: string; state: "fits" | "far" | "free" | "closed" | "travel"; slot?: Slot; stops: { name: string; at: [number, number] }[] };
+function fitDays(idea: Demo, at: [number, number] | undefined): DayFit[] {
+  return DAYS.map((day) => {
+    const stops = STAGE === "empty" ? [] : (DAY_STOPS[day] ?? []);
+    if (CLOSED_ON[idea.id]?.includes(day)) return { day, state: "closed", stops };
+    // A long-distance travel day isn't a day to slot sights into, even if the line passes nearby
+    if (TRAVEL_DAYS.includes(day) && stops.length) return { day, state: "travel", stops };
+    if (!at || !stops.length) return { day, state: "free", stops };
+    const slot = bestSlot(at, stops);
+    return { day, state: slot.detour > 40 ? "far" : "fits", slot, stops };
+  });
+}
+function slotText(f: DayFit): string {
+  const s = f.slot!;
+  const st = f.stops;
+  if (f.state === "far") return `Far from ${f.day}'s stops · +${kmText(s.detour)}`;
+  if (s.kind === "between") return `Fits between ${s.i + 1} ${st[s.i].name} and ${s.i + 2} ${st[s.i + 1].name} · ${s.detour < 1 ? "barely a detour" : `+${kmText(s.detour)} detour`}`;
+  if (s.kind === "start") return `Start ${f.day} here · ${kmText(s.detour)} before ${st[0].name}`;
+  return `End ${f.day} here · ${kmText(s.detour)} after ${st[st.length - 1].name}`;
+}
+
+/** The fit, drawn: the day's route (numbered), the detour through this idea (dashed amber), other ideas nearby (hollow) */
+function FitMap({ f, at, near, tall }: { f: DayFit; at: [number, number]; near: [number, number][]; tall: boolean }) {
+  const W = 320;
+  const H = tall ? 132 : 76;
+  const pad = 14;
+  const pts: [number, number][] = [...f.stops.map((x) => x.at), at, ...near];
+  const kx = Math.cos(toRad(pts.reduce((a, p) => a + p[0], 0) / pts.length));
+  const xs = pts.map((p) => p[1] * kx);
+  const ys = pts.map((p) => p[0]);
+  const [x0, x1, y0, y1] = [Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)];
+  const sc = Math.min((W - pad * 2) / (x1 - x0 || 0.01), (H - pad * 2) / (y1 - y0 || 0.01));
+  const ox = (W - (x1 - x0) * sc) / 2;
+  const oy = (H - (y1 - y0) * sc) / 2;
+  const P = (p: [number, number]) => [ox + (p[1] * kx - x0) * sc, H - (oy + (p[0] - y0) * sc)] as const;
+  const sp = f.stops.map((x) => P(x.at));
+  const ip = P(at);
+  const s = f.slot;
+  const detour =
+    s && f.state === "fits" ? (s.kind === "between" ? [sp[s.i], ip, sp[s.i + 1]] : s.kind === "start" ? [ip, sp[0]] : [sp[sp.length - 1], ip]) : s ? [sp[s.near], ip] : [];
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} className="block w-full transition-[height] duration-300" style={{ height: H }} role="img" aria-label={`How it fits on ${f.day}`}>
+      {sp.length > 1 && <polyline points={sp.map((p) => p.join(",")).join(" ")} fill="none" stroke="currentColor" strokeOpacity={s?.kind === "between" ? ".14" : ".28"} strokeWidth="2" strokeLinejoin="round" />}
+      {detour.length > 1 && <polyline points={detour.map((p) => p.join(",")).join(" ")} fill="none" stroke="#d97706" strokeWidth="1.75" strokeDasharray="4 3" strokeLinejoin="round" />}
+      {near.map((n, i) => {
+        const [x, y] = P(n);
+        return <circle key={i} cx={x} cy={y} r="4" fill="none" stroke="#f59e0b" strokeOpacity=".7" strokeWidth="1.5" />;
+      })}
+      {sp.map((p, i) => (
+        <g key={i}>
+          <circle cx={p[0]} cy={p[1]} r="7.5" fill="var(--surface, #fff)" stroke="currentColor" strokeOpacity=".45" strokeWidth="1.5" />
+          <text x={p[0]} y={p[1] + 3} textAnchor="middle" fontSize="9" fontWeight="700" fill="currentColor" fillOpacity=".7">
+            {i + 1}
+          </text>
+        </g>
+      ))}
+      <circle cx={ip[0]} cy={ip[1]} r="6.5" fill="#f59e0b" stroke="#fff" strokeWidth="2" />
+    </svg>
+  );
+}
+
+function FitCard({ idea, open, toggle, me, setMine }: Props) {
+  const ex = EXTRA[idea.id];
+  const place = PLACE[idea.id] ?? {};
+  const solo = Object.keys(idea.answers).length === 1;
+  const comments = solo ? ex.comments.filter((c) => c.by === me) : ex.comments;
+  const bookings = STAGE === "booked" ? ex.bookings : [];
+  const booked = idea.booking?.kind === "booked" ? idea.booking : null;
+  const bookedDay = booked ? booked.text.split(", ")[0] : null;
+  const bookedTime = booked ? booked.text.split(", ")[1] : null;
+  const rough = idea.where === "Needs a place";
+
+  const fits = fitDays(idea, place.at);
+  const planned = fits.some((f) => f.stops.length);
+  const proposal =
+    fits.find((f) => f.day === bookedDay) ??
+    [...fits].filter((f) => f.state === "fits").sort((a, b) => a.slot!.detour - b.slot!.detour)[0] ??
+    (planned ? fits.find((f) => f.state === "free") : undefined);
+  const [pick, setPick] = useState<string | null>(null);
+  useEffect(() => setPick(null), [idea.id, STAGE]);
+  const sel = fits.find((f) => f.day === pick) ?? proposal;
+
+  // Every reason, once, about the selected day; ✕ for other days that are ruled out
+  const bestTime = idea.facts.find((f) => f.startsWith("Best "));
+  const clash = bestTime === "Best early" && bookedTime && parseInt(bookedTime) >= 12 && sel?.day === bookedDay ? `Best early · your slot is ${bookedTime}` : null;
+  type Line = { kind: "good" | "warn" | "out"; text: string };
+  const lines: Line[] = [];
+  if (sel) {
+    if (sel.state === "fits") lines.push({ kind: "good", text: slotText(sel) });
+    if (sel.state === "far") lines.push({ kind: "out", text: slotText(sel) });
+    if (sel.state === "free") lines.push({ kind: "good", text: `Nothing planned on ${sel.day} yet: a free day` });
+    if (sel.state === "closed") lines.push({ kind: "out", text: `Closed on ${sel.day}` });
+    if (sel.state === "travel") lines.push({ kind: "warn", text: `${sel.day} is a travel day (${DAY_TITLE[sel.day]})` });
+    if (sel.day === bookedDay && bookedTime) lines.push({ kind: "good", text: `Booked for ${bookedTime}` });
+  }
+  if (bestTime && !booked) lines.push({ kind: "good", text: bestTime });
+  if (idea.booking?.kind === "needed") lines.push({ kind: "warn", text: "Book ahead · not booked yet" });
+  if (clash) lines.push({ kind: "warn", text: clash });
+  idea.warn.forEach((t) => lines.push({ kind: "warn", text: t }));
+  const closedOther = fits.filter((f) => f.state === "closed" && f.day !== sel?.day);
+  if (closedOther.length) lines.push({ kind: "out", text: `Closed ${closedOther.map((f) => f.day).join(", ")}` });
+  const glance = [lines.find((l) => l.kind === "good"), lines.find((l) => l.kind === "out") ?? lines.find((l) => l.kind === "warn")].filter(Boolean) as Line[];
+  const selWarn = lines.some((l) => l.kind === "warn") && sel?.day;
+
+  const near = Object.entries(CLOSE_AT)
+    .filter(([n]) => (CLOSE_IDEAS[idea.id] ?? []).includes(n))
+    .map(([, at]) => at)
+    .filter((at) => place.at && kmBetween(at, place.at) < 6);
+
+  const line = (l: Line) => (
+    <p key={l.text} className={`flex items-start gap-1.5 text-[12.5px] ${l.kind === "good" ? "text-accent" : l.kind === "out" ? "text-red-600 dark:text-red-400" : "text-amber-700 dark:text-amber-300"}`}>
+      {l.kind === "good" ? <Check className="mt-0.5 size-3.5 shrink-0" /> : l.kind === "out" ? <X className="mt-0.5 size-3.5 shrink-0" /> : <CircleAlert className="mt-0.5 size-3.5 shrink-0" />}
+      <span className={l.kind === "good" ? "text-fg/85" : ""}>{l.text}</span>
+    </p>
+  );
+  const tag = (f: DayFit) => {
+    const on = f.day === sel?.day;
+    const sub = f.state === "closed" ? "closed" : f.state === "travel" ? "travel" : f.state === "free" ? "free" : f.state === "far" ? "far" : `+${kmText(f.slot!.detour).replace("under 1 km", "<1 km")}`;
+    return (
+      <button
+        key={f.day}
+        onClick={() => setPick(f.day)}
+        className={`flex min-w-0 flex-1 flex-col items-center rounded-lg px-1 py-1 text-center leading-tight transition-colors ${
+          on ? "bg-accent text-on-accent" : f.state === "closed" ? "bg-red-500/10 text-red-600 dark:text-red-400" : f.state === "fits" ? "bg-accent/12 text-accent hover:bg-accent/20" : "bg-surface-2 text-muted hover:text-fg"
+        }`}
+      >
+        <span className={`text-[11px] font-semibold ${f.state === "closed" ? "line-through" : ""}`}>{f.day.split(" ")[0]}</span>
+        <span className="text-[10px] opacity-85">{f.day === bookedDay ? "booked" : sub}</span>
+      </button>
+    );
+  };
+
+  const fitSection = rough ? (
+    <p className="text-[12.5px] text-muted">Needs a place first: then it can be fitted into a day</p>
+  ) : !planned ? (
+    // Nothing planned yet: fall back to what helps early on
+    (CLOSE_IDEAS[idea.id]?.length ?? 0) >= 2 ? (
+      <div className="flex flex-wrap items-center gap-1.5">
+        <span className="text-[12.5px] text-fg/80">No days planned yet. Close by:</span>
+        {CLOSE_IDEAS[idea.id].map((n) => (
+          <span key={n} className="rounded-full border border-line px-2.5 py-0.5 text-[12px] text-fg/80">
+            {n}
+          </span>
+        ))}
+        <span className="text-[12px] text-muted">could be one day</span>
+      </div>
+    ) : (
+      <p className="text-[12.5px] text-muted">No days planned yet</p>
+    )
+  ) : (
+    <>
+      {sel && place.at && sel.stops.length > 0 && (
+        // Folded on a narrow card: words only; the map comes with "Show more"
+        <div className={open ? "" : "hidden @min-[600px]:block"}>
+          <div className="overflow-hidden rounded-xl border border-line bg-surface-2/40">
+            <FitMap f={sel} at={place.at} near={open ? near : []} tall={open} />
+          </div>
+          <p className="mt-1 truncate text-[11.5px] text-muted">
+            <b className="font-semibold text-fg/75">{sel.day}:</b> {sel.stops.map((x, i) => `${i + 1} ${x.name}`).join(" · ")}
+            {open && near.length > 0 && <span> · ○ other ideas</span>}
+          </p>
+        </div>
+      )}
+      <Grow open={open}>
+        <div className="flex gap-1 pt-2.5">{fits.map(tag)}</div>
+      </Grow>
+      <div className="mt-2 space-y-0.5">{(open ? lines : glance).map(line)}</div>
+    </>
+  );
+
+  const label = rough ? "Find a place" : sel ? `Add to ${sel.day}${sel.day === bookedDay && bookedTime ? `, ${bookedTime}` : ""}` : "Add to a day";
+
+  return (
+    <div className={`@container relative rounded-2xl border bg-surface ${answeredOf(idea.answers).includes(1) ? "border-amber-400/60" : "border-line"}`}>
+      <span className="absolute top-2 right-2 z-10">
+        <More />
+      </span>
+      <div className="grid grid-cols-1 @min-[600px]:grid-cols-[minmax(0,1fr)_252px]">
+        {/* Evidence */}
+        <div className="min-w-0 px-4 pt-3.5 pr-11 pb-4 @min-[600px]:pr-4">
+          <div className="flex items-start gap-3">
+            <div className="min-w-0 flex-1">
+              <Title idea={idea} size={16.5} badge={false} />
+              {(place.rating || place.costShort) && (
+                <p className="mt-1 flex items-center gap-1.5 text-[12px] text-fg/80">
+                  {place.rating && (
+                    <>
+                      <Star className="size-3 fill-amber-400 text-amber-400" /> {place.rating} <span className="text-muted">({place.ratingCount})</span>
+                    </>
+                  )}
+                  {place.rating && place.costShort && <span className="text-muted">·</span>}
+                  {place.costShort && <span>{place.costShort}</span>}
+                </p>
+              )}
+            </div>
+            {place.photo && (
+              <div className="grid size-[64px] shrink-0 place-items-center rounded-xl text-white/70" style={{ background: `linear-gradient(135deg,hsl(${hue(idea.name)} 35% 72%),hsl(${hue(idea.name) + 50} 30% 52%))` }} title="Cover photo (demo)">
+                <ImageIcon className="size-5" />
+              </div>
+            )}
+          </div>
+          {place.desc && <p className={`mt-2.5 text-[13px] leading-snug text-fg/85 ${open ? "" : "line-clamp-2"}`}>{place.desc}</p>}
+          {idea.address && (
+            <Grow open={open}>
+              <p className="mt-2 flex flex-wrap gap-x-3 text-[12.5px] text-accent">
+                <span className="flex items-center gap-1">
+                  <MapIcon className="size-3.5" /> Map
+                </span>
+                <span className="flex items-center gap-1">
+                  <ExternalLink className="size-3.5" /> Google Maps
+                </span>
+                {place.website && <span>Website</span>}
+              </p>
+            </Grow>
+          )}
+
+          <div className="pt-6">
+            <Cap>How it fits</Cap>
+            {fitSection}
+          </div>
+
+          {(bookings.length > 0 || idea.booking?.kind === "needed") && (
+            <Grow open={open}>
+              <div className="pt-6">
+                <Cap>Bookings</Cap>
+                {bookings.map((bk) => (
+                  <div key={bk.title} className="flex items-start gap-2.5 rounded-xl border border-line px-3 py-2">
+                    <Ticket className="mt-0.5 size-4 shrink-0 text-accent" />
+                    <div className="min-w-0 text-[12.5px]">
+                      <p className="font-semibold">{bk.title}</p>
+                      <p className="text-fg/80">
+                        {bk.when}
+                        {bk.conf && <span className="text-muted"> · #{bk.conf}</span>}
+                      </p>
+                      <p className="text-[11.5px] text-muted">{bk.source}</p>
+                    </div>
+                  </div>
+                ))}
+                {bookings.length === 0 && <p className="rounded-xl border border-dashed border-line px-3 py-2 text-[12.5px] text-muted">Nothing booked yet. Forward the confirmation email and it shows up here.</p>}
+              </div>
+            </Grow>
+          )}
+
+          {/* Comments: a count while folded, the thread at the bottom when open */}
+          {comments.length > 0 && (
+            <div className="pt-6">
+              <button onClick={toggle} className={`flex items-center gap-2 text-[12.5px] ${open ? "pointer-events-none" : "text-muted hover:text-fg"}`}>
+                {open ? (
+                  <Cap>{solo ? "Notes" : `Comments · ${comments.length}`}</Cap>
+                ) : (
+                  <>
+                    <span className="flex items-center -space-x-1.5">
+                      {[...new Set(comments.map((c) => c.by))].slice(0, 3).map((p) => (
+                        <Ava key={p} name={p} size={18} />
+                      ))}
+                    </span>
+                    {comments.length} {solo ? (comments.length === 1 ? "note" : "notes") : comments.length === 1 ? "comment" : "comments"}
+                  </>
+                )}
+              </button>
+              <Grow open={open}>
+                <ul className="space-y-2.5">
+                  {comments.map((c) => (
+                    <li key={c.by + c.when} className="flex gap-2">
+                      <Ava name={c.by} size={20} />
+                      <div className="min-w-0 text-[13px] leading-snug">
+                        <p className="text-[12px]">
+                          <b className="font-semibold">{c.by === me ? "You" : c.by}</b> <span className="text-muted">· {c.when}</span>
+                        </p>
+                        <p className="text-fg/85">
+                          <Mention text={c.text} />
+                        </p>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+                <p className="mt-2.5 rounded-lg border border-line px-3 py-1.5 text-[12.5px] text-muted">{solo ? "Add a note" : "Add a comment · @ to mention"}</p>
+              </Grow>
+            </div>
+          )}
+          {place.source && (
+            <Grow open={open}>
+              <p className="pt-5 text-[11.5px] text-muted">{place.source}</p>
+            </Grow>
+          )}
+        </div>
+
+        {/* Decision: your vote, the proposed day, the button */}
+        <div className="min-w-0 border-t border-line bg-surface-2/60 @min-[600px]:rounded-tr-2xl @min-[600px]:border-t-0">
+          <div className="grid h-full grid-cols-[194px_minmax(0,1fr)] gap-x-5 px-4 pt-3.5 pb-4 @min-[600px]:flex @min-[600px]:flex-col">
+            <div className="min-w-0 @min-[600px]:pr-6">
+              <GroupPoll idea={idea} open={open} me={me} setMine={setMine} />
+            </div>
+            <div className="flex min-w-0 flex-col @min-[600px]:mt-auto @min-[600px]:block @min-[600px]:pt-6">
+              <Cap>Proposed day</Cap>
+              {sel && !rough ? (
+                <>
+                  <p className="text-[13px]">
+                    <b>{sel.day}</b> <span className="text-muted">· {DAY_TITLE[sel.day]}</span>
+                  </p>
+                  {place.hours?.[sel.day] && <p className="text-[12px] text-muted">{place.hours[sel.day] === "Closed" ? "Closed that day" : `Open ${place.hours[sel.day]}`}</p>}
+                </>
+              ) : (
+                <p className="text-[12.5px] text-muted">{rough ? "Needs a place first" : "Pick a day"}</p>
+              )}
+              <div className="mt-auto pt-4 @min-[600px]:mt-0">
+                <span className={`flex w-full items-center overflow-hidden rounded-full text-[12.5px] font-semibold ${sel && !rough && sel.state !== "closed" ? "bg-accent text-on-accent" : "border border-line bg-surface text-fg"}`}>
+                  <span className="flex flex-1 items-center justify-center gap-1.5 px-3 py-1.5">
+                    {label}
+                    {selWarn && <CircleAlert className="size-3.5 text-amber-200" aria-label="Something to watch on the left" />}
+                  </span>
+                  <span className={`grid place-items-center self-stretch border-l px-2 ${sel && !rough ? "border-white/30" : "border-line"}`}>
+                    <ChevronDown className="size-3.5" />
+                  </span>
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <Toggle open={open} toggle={toggle} />
+    </div>
+  );
+}
+
+const VARIANTS: { id: string; name: string; note: string; wideOpen?: boolean; round: 1 | 2 | 3 | 4 | 5 | 6 | 7; C: (p: Props) => ReactNode }[] = [
+  { id: "H1", round: 7, name: "Evidence | decision", note: "left: what it is, how it fits (map of the day, every reason once), comment count; right: your vote, the proposed day, the button. Tap a day under the map (open) to change the proposal", C: (p) => <FitCard {...p} /> },
   { id: "P1", round: 6, name: "Group · poll", note: "WhatsApp-style rows: label · count, faces, a thin bar; tap a row to vote; open adds names and who's missing. Try the label sets above", C: (p) => <Detail {...p} long="sticky" group="P" /> },
   { id: "G1", round: 5, name: "Group · your answer + who's in", note: "a 3-way choice for you; one line of avatars per answer; open lists names", C: (p) => <Detail {...p} long="sticky" group="G1" /> },
   { id: "G2", round: 5, name: "Group · people on one track", note: "everyone's avatar sits at their answer; click a stop to move yours; open lines names up under the stops", C: (p) => <Detail {...p} long="sticky" group="G2" /> },
@@ -1793,7 +2173,7 @@ export function ProtoCards() {
   const [mine, setMineMap] = useState<Record<string, Answer>>({});
   const [live, setLive] = useState<Record<string, boolean>>({});
   const [mode, setMode] = useState<"pair" | "live">("pair");
-  const [earlier, setEarlier] = useState<0 | 1 | 2 | 3 | 4 | 5>(0);
+  const [earlier, setEarlier] = useState(0);
   const base = IDEAS.find((i) => i.id === ideaId)!;
   const sizedAnswers = sized(base.answers, ideaId, groupSize);
   const raw: Demo = { ...base, answers: { ...sizedAnswers, ...(ideaId in mine ? { [me]: mine[ideaId] } : {}) } };
@@ -1868,20 +2248,20 @@ export function ProtoCards() {
           </label>
           <label className="flex items-center gap-2">
             Earlier rounds
-            <select value={earlier} onChange={(e) => setEarlier(+e.target.value as 0 | 1 | 2 | 3 | 4 | 5)} className="rounded-lg border border-line bg-bg px-2 py-1">
+            <select value={earlier} onChange={(e) => setEarlier(+e.target.value)} className="rounded-lg border border-line bg-bg px-2 py-1">
               <option value={0}>Hide</option>
-              <option value={5}>Round 5 (G1–G4)</option>
-              <option value={4}>Rounds 4–5</option>
-              <option value={3}>Rounds 3–5</option>
-              <option value={2}>Rounds 2–5</option>
-              <option value={1}>All rounds</option>
+              {[6, 5, 4, 3, 2, 1].map((r) => (
+                <option key={r} value={r}>
+                  {r === 6 ? "Round 6 (P1 poll)" : `Back to round ${r}`}
+                </option>
+              ))}
             </select>
           </label>
           <span className="text-muted">Colours: {PALETTES.teal.name}</span>
         </div>
 
         <div className="mt-6 space-y-10">
-          {VARIANTS.filter((v) => v.round === 6 || (earlier !== 0 && v.round >= earlier)).map((v) => (
+          {VARIANTS.filter((v) => v.round === 7 || (earlier !== 0 && v.round >= earlier)).map((v) => (
             <section key={v.id}>
               <p className="mb-2 text-[14px]">
                 <b>
