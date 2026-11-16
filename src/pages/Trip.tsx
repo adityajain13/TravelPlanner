@@ -931,6 +931,7 @@ export function TripPage() {
               );
             }}
             subtitles={state.meta.subtitles}
+            dayStarts={state.meta.dayStarts}
             country={(() => {
               try {
                 return state.meta.countryCode

@@ -79,7 +79,7 @@ function DayPreview({ f, name, mins, fixed, open }: { f: Fitted; name: string; m
     </div>
   );
   const note = (key: string, text: string) => more(key, <p className="mt-1 px-2.5 text-[11.5px] text-muted">{text}</p>);
-  if (!st.length) return <div>{[here(fixed ?? ""), note("none", `Nothing else planned on ${dayShort(f.d.date)} yet`)]}</div>;
+  if (!st.length) return <div>{[here(fixed ?? f.d.start ?? "09:00", fixed ? undefined : clockOf(hmOf(fixed ?? f.d.start ?? "09:00") + mins)), note("none", `Nothing else planned on ${dayShort(f.d.date)} yet`)]}</div>;
   if (!timed) {
     const rows: ReactNode[] = st.map((x, i) => row(x.id, "", <><span className="mr-1.5 text-muted tabular-nums">{i + 1}</span>{x.name}</>));
     rows.splice(at, 0, here(fixed ?? ""));
@@ -87,7 +87,9 @@ function DayPreview({ f, name, mins, fixed, open }: { f: Fitted; name: string; m
     return <div>{rows}</div>;
   }
   const times = st.map((x) => ({ start: hmOf(x.start!), end: hmOf(x.start!) + (x.mins ?? 60) }));
-  const start = fixed ? hmOf(fixed) : at === 0 ? times[0].start - BUFFER - mins : times[at - 1].end + BUFFER;
+  // Never before the day starts (its start time in the itinerary; 09:00 unless set): the first stop moves later instead
+  const dayStart = hmOf(f.d.start ?? "09:00");
+  const start = fixed ? hmOf(fixed) : at === 0 ? Math.max(dayStart, times[0].start - BUFFER - mins) : times[at - 1].end + BUFFER;
   const end = start + mins;
   // Ripple: each later stop starts no earlier than the one before it ends (plus travel); free time absorbs the delay
   const shifts: number[] = [];
@@ -114,7 +116,7 @@ function DayPreview({ f, name, mins, fixed, open }: { f: Fitted; name: string; m
   const rows: ReactNode[] = [];
   st.forEach((x, i) => {
     const shift = shifts[i];
-    const prevEnd = i === 0 ? 9 * 60 : i === at ? times[i - 1].end : times[i - 1].end + shifts[i - 1];
+    const prevEnd = i === 0 ? dayStart : i === at ? times[i - 1].end : times[i - 1].end + shifts[i - 1];
     if (i === at) rows.push(gap(`gb${i}`, prevEnd, start), here(clockOf(start), clockOf(end)), gap(`ga${i}`, end + BUFFER, times[i].start + shift));
     else rows.push(gap(`g${i}`, prevEnd, times[i].start + shift));
     rows.push(row(x.id, clockOf(times[i].start + shift), <><span className="mr-1.5 text-muted tabular-nums">{i + 1}</span>{x.name}</>, shift ? `${Math.round(shift / 5) * 5} min later` : undefined));

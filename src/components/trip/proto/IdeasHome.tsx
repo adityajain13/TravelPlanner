@@ -16,6 +16,7 @@ import { CaptureBox, type Existing } from "./CaptureBox";
 import { Avatar, MentionInput } from "./MentionInput";
 import { placesIn } from "./kinds";
 import { isTravelDay } from "../../../lib/protoSlot";
+import { DEFAULT_DAY_START } from "../../../lib/autoTime";
 import type { Idea } from "./IdeasShelf";
 
 type Sort = "suggested" | "area" | "fit" | "wanted" | "newest";
@@ -53,6 +54,7 @@ export function IdeasHome({
   onGroup,
   onFillDay,
   subtitles,
+  dayStarts,
   country,
   existing,
   onExisting,
@@ -91,6 +93,8 @@ export function IdeasHome({
   /** Put several ideas on one (empty) day */
   onFillDay: (itemIds: string[], dayKey: string) => void;
   subtitles?: Record<string, string>;
+  /** Each day's start time ("HH:MM" by date); unset = 09:00. Suggestions never start before it. */
+  dayStarts?: Record<string, string>;
   /** The trip's country, for ideas without an address */
   country?: string;
   existing?: (text: string) => Existing[];
@@ -116,7 +120,7 @@ export function IdeasHome({
     days.map((d, n) => ({ key: d.key, date: d.date!, title: subtitles?.[d.key] || (placesIn(d).length ? placesIn(d).map((x) => x.name).slice(0, 2).join(" · ") : `Day ${n + 1} · nothing planned`), fit: fitFor(i.item, { date: d.date!, items: d.items }), ...withStops(d) }));
   function withStops(d: SectionInfo) {
     const stops = placesIn(d).filter((x) => x.lat != null && x.lng != null).map((x) => ({ id: x.id, name: x.name, at: [x.lat!, x.lng!] as [number, number], start: x.startTime, mins: x.stay }));
-    return { stops, travel: isTravelDay(stops) };
+    return { stops, travel: isTravelDay(stops), start: dayStarts?.[d.date!] ?? DEFAULT_DAY_START };
   }
   const fits = new Map(
     placeIdeas.map((i) => {

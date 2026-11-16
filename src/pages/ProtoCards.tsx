@@ -221,7 +221,7 @@ function placeInDay(f: DayFit, mins: number, openHours?: string, fixed?: string)
   let start = 10 * 60;
   if (fixed) start = hm(fixed);
   else if (s && times.length) {
-    if (s.kind === "start") start = times[0].start - BUFFER - mins;
+    if (s.kind === "start") start = Math.max(9 * 60, times[0].start - BUFFER - mins); // never before the day starts
     else if (s.kind === "end") start = times[times.length - 1].end + BUFFER;
     else start = times[s.i].end + BUFFER;
   }

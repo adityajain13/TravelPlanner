@@ -8,7 +8,7 @@ import { isGoodFit } from "../../../lib/protoFit";
 import { dtf } from "../../../lib/intl";
 import { parseISODate } from "../../../lib/dates";
 
-export type DayFit = { key: string; date: string; title: string; fit: Fit; /** The day's places with coordinates, in order (for the fit map) */ stops?: import("../../../lib/protoSlot").Stop[]; /** A long-distance travel day (stops >100 km apart): not a day to slot sights into */ travel?: boolean };
+export type DayFit = { key: string; date: string; title: string; fit: Fit; /** The day's places with coordinates, in order (for the fit map) */ stops?: import("../../../lib/protoSlot").Stop[]; /** A long-distance travel day (stops >100 km apart): not a day to slot sights into */ travel?: boolean; /** The day's start time ("HH:MM") */ start?: string };
 export const dayShort = (iso: string) => {
   const d = parseISODate(iso);
   return `${dtf(undefined, { weekday: "short", timeZone: "UTC" }).format(d)} ${d.getUTCDate()}`;
