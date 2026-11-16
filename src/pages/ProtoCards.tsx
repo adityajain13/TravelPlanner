@@ -99,6 +99,40 @@ const IDEAS: Demo[] = [
   },
 ];
 
+/* Comments and emailed bookings (round 4), and answers for bigger groups */
+type Comment = { by: string; when: string; text: string };
+type Booking = { title: string; when: string; conf?: string; source: string };
+const EXTRA: Record<string, { comments: Comment[]; bookings: Booking[]; more: Answer[] }> = {
+  ghibli: {
+    comments: [
+      { by: "Vishal", when: "Nov 2", text: "Tickets go on sale the 10th of the month before. @Maya has wanted this for years" },
+      { by: "Maya", when: "Nov 3", text: "Yes!! The Catbus room is only for kids though" },
+      { by: "Sam", when: "Nov 4", text: "Happy to come if we do Kichijoji after" },
+    ],
+    bookings: [{ title: "Ghibli Museum · 4 tickets", when: "Mon 14, 16:00", conf: "GM48213", source: "From a forwarded email · Nov 10" }],
+    more: [1, 0, 0, null, 1, -1],
+  },
+  hakone: {
+    comments: [
+      { by: "Maya", when: "Nov 5", text: "@Sam said Hakone has good day-use ones" },
+      { by: "Sam", when: "Nov 6", text: "I'll sit this one out, I'd rather spend longer at Owakudani" },
+    ],
+    bookings: [],
+    more: [0, 1, null, -1, 0, 0],
+  },
+  onsen: {
+    comments: [{ by: "Sam", when: "Nov 7", text: "Somewhere with an outdoor bath would be amazing" }],
+    bookings: [],
+    more: [null, null, 0, null, 1, null],
+  },
+};
+const NAMES = ["Vishal", "Maya", "Sam", "Aditya", "Priya", "Leo", "Hana", "Omar", "Jules", "Kai"];
+function sized(base: Answers, id: string, n: number): Answers {
+  const out: Answers = {};
+  NAMES.slice(0, n).forEach((p, i) => (out[p] = i < 4 ? (base[p] ?? null) : EXTRA[id].more[i - 4]));
+  return out;
+}
+
 type Props = { idea: Demo; open: boolean; toggle: () => void; me: string; setMine: (a: Answer) => void };
 
 /* ---------- shared pieces ---------- */
@@ -793,7 +827,275 @@ function Verdict({ idea, open, toggle, me, setMine, merge }: Props & { /** Booke
   );
 }
 
-const VARIANTS: { id: string; name: string; note: string; wideOpen?: boolean; round: 1 | 2 | 3; C: (p: Props) => ReactNode }[] = [
+/* ---------- round 4: details on the left, a steady verdict on the right ----------
+   Left = everything about the idea, top to bottom: what it is → about the place → comments (one per person,
+   threaded) → bookings matched from forwarded emails. It's the side that grows. Right = the verdict and the
+   one action: group → when → blockers → day button (day and time only). It stays put while the left grows:
+   either it sticks while the page scrolls (no scroll-in-scroll), or the left side scrolls inside a capped card. */
+
+function Mention({ text }: { text: string }) {
+  return (
+    <>
+      {text.split(/(@\w+)/).map((t, i) =>
+        t.startsWith("@") ? (
+          <span key={i} className="rounded bg-accent/12 px-1 font-semibold text-accent">
+            {t}
+          </span>
+        ) : (
+          t
+        ),
+      )}
+    </>
+  );
+}
+
+/** The group, sized to the group: solo is just your own answer; up to 5 people one row each; 6+ in buckets */
+function GroupBlock({ idea, open, me, setMine }: { idea: Demo; open: boolean; me: string; setMine: (a: Answer) => void }) {
+  const people = Object.keys(idea.answers);
+  const n = people.length;
+  if (n === 1)
+    return (
+      <div>
+        <Cap>Your take</Cap>
+        <div className="-ml-2">
+          <PersonTrackW a={idea.answers[me]} editable onSet={setMine} w={150} />
+        </div>
+        <p className="mt-0.5 text-[11.5px] text-muted">{idea.answers[me] === null ? "Must do, happy either way, or skip?" : LABEL[key(idea.answers[me])]}</p>
+      </div>
+    );
+  const others = people.filter((p) => p !== me);
+  const stack = (names: string[], max = 6) => (
+    <span className="flex items-center -space-x-1.5">
+      {names.slice(0, max).map((p) => (
+        <Ava key={p} name={p} size={18} />
+      ))}
+      {names.length > max && <span className="pl-2.5 text-[11px] text-muted">+{names.length - max}</span>}
+    </span>
+  );
+  const folded = (
+    <>
+      <span className="-ml-2 block">
+        <Band answers={idea.answers} w={150} />
+      </span>
+      <p className="mt-0.5 truncate text-[11.5px] text-muted">{groupSummary(idea.answers)}</p>
+    </>
+  );
+  if (!open)
+    return (
+      <div>
+        <Cap>Group · {n}</Cap>
+        {folded}
+      </div>
+    );
+  if (n <= 5)
+    return (
+      <div>
+        <Cap>Group · {n}</Cap>
+        <People idea={idea} me={me} setMine={setMine} w={96} compact />
+      </div>
+    );
+  // 6+: the summary track, your own row, then everyone else bucketed by answer
+  const buckets: [string, Answer][] = [
+    ["Must do", 1],
+    ["Happy to come", 0],
+    ["Sitting out", -1],
+    ["No answer yet", null],
+  ];
+  return (
+    <div>
+      <Cap>Group · {n}</Cap>
+      {folded}
+      <div className="mt-2.5 flex items-center gap-2 text-[12.5px]">
+        <Ava name={me} size={18} />
+        <span className="w-9 font-semibold">You</span>
+        <PersonTrackW a={idea.answers[me]} editable onSet={setMine} w={96} />
+      </div>
+      <ul className="mt-2 space-y-1.5">
+        {buckets.map(([label, a]) => {
+          const who = others.filter((p) => idea.answers[p] === a);
+          return (
+            who.length > 0 && (
+              <li key={label} className="flex items-center justify-between gap-2 text-[12px]">
+                <span className="text-muted">
+                  {label} <span className="text-fg/70">{who.length}</span>
+                </span>
+                <span title={who.join(", ")}>{stack(who, 5)}</span>
+              </li>
+            )
+          );
+        })}
+      </ul>
+    </div>
+  );
+}
+
+function Detail({ idea, open, toggle, me, setMine, long }: Props & { long: "sticky" | "scroll" }) {
+  const ex = EXTRA[idea.id];
+  // Solo trips: only your own notes (nobody else to comment)
+  const solo = Object.keys(idea.answers).length === 1;
+  const comments = solo ? ex.comments.filter((c) => c.by === me) : ex.comments;
+  const bookings = ex.bookings;
+  const booked = idea.booking?.kind === "booked" ? idea.booking : null;
+  const time = booked?.text.split(", ")[1];
+  const label = idea.best ? `Add to ${idea.best.day}${time ? `, ${time}` : ""}` : idea.where === "Needs a place" ? "Find a place" : "Add to a day";
+  const reason = idea.good.filter((g) => !g.startsWith("Booked"))[0];
+  const blockers = [
+    ...(idea.booking?.kind === "needed" ? [{ out: false, text: "Book ahead · not booked yet" }] : []),
+    ...idea.warn.map((t) => ({ out: false, text: t })),
+    ...(idea.out ? [{ out: true, text: idea.out }] : []),
+  ];
+  const shown = open ? blockers : blockers.slice(0, 1);
+  const leftCap = long === "scroll" && open ? "max-h-[340px] overflow-y-auto" : "";
+
+  const comment = (c: Comment) => (
+    <li key={c.by + c.when} className="flex gap-2">
+      <Ava name={c.by} size={20} />
+      <div className="min-w-0 text-[13px] leading-snug">
+        <p className="text-[12px]">
+          <b className="font-semibold">{c.by === me ? "You" : c.by}</b> <span className="text-muted">· {c.when}</span>
+        </p>
+        <p className="text-fg/85">
+          <Mention text={c.text} />
+        </p>
+      </div>
+    </li>
+  );
+
+  return (
+    // No overflow-hidden here, so the right side can stick while the page scrolls
+    <div className={`rounded-2xl border bg-surface ${answeredOf(idea.answers).includes(1) ? "border-amber-400/60" : "border-line"}`}>
+      <div className="grid" style={{ gridTemplateColumns: "minmax(0,1fr) 252px" }}>
+        {/* Left: the idea, all of its details */}
+        <div className={`min-w-0 space-y-4 px-4 py-3.5 ${leftCap}`}>
+          <div>
+            <Title idea={idea} size={16.5} badge={false} />
+            {idea.facts.length > 0 ? (
+              <p className="mt-1.5 text-[12.5px] text-fg/80">{idea.facts.join(" · ")}</p>
+            ) : (
+              <p className="mt-1.5 text-[12.5px] text-muted">Pick a place to see its details</p>
+            )}
+            {open && idea.address && (
+              <>
+                <p className="mt-0.5 text-[12.5px] text-muted">{idea.address}</p>
+                <p className="mt-1 flex gap-3 text-[12.5px] text-accent">
+                  <span className="flex items-center gap-1">
+                    <MapIcon className="size-3.5" /> Map
+                  </span>
+                  <span className="flex items-center gap-1">
+                    <ExternalLink className="size-3.5" /> Google Maps
+                  </span>
+                </p>
+              </>
+            )}
+          </div>
+
+          {/* Comments: folded shows the first, expanded the thread */}
+          {open ? (
+            <div>
+              <Cap>{solo ? "Notes" : `Comments · ${comments.length}`}</Cap>
+              <ul className="space-y-2.5">{comments.map(comment)}</ul>
+              <p className="mt-2.5 rounded-lg border border-line px-3 py-1.5 text-[12.5px] text-muted">{solo ? "Add a note" : "Add a comment · @ to mention"}</p>
+            </div>
+          ) : (
+            comments[0] && (
+              <div>
+                <p className="line-clamp-2 text-[13px] leading-snug text-fg/85">
+                  <b className="font-semibold">{comments[0].by === me ? "You" : comments[0].by}:</b> <Mention text={comments[0].text} />
+                </p>
+                {comments.length > 1 && <p className="mt-0.5 text-[12px] text-muted">+{comments.length - 1} more {comments.length === 2 ? "comment" : "comments"}</p>}
+              </div>
+            )
+          )}
+
+          {/* Bookings matched from the trip's forwarded emails */}
+          {open && (bookings.length > 0 || idea.booking?.kind === "needed") && (
+            <div>
+              <Cap>Bookings</Cap>
+              {bookings.map((bk) => (
+                <div key={bk.title} className="flex items-start gap-2.5 rounded-xl border border-line px-3 py-2">
+                  <Ticket className="mt-0.5 size-4 shrink-0 text-accent" />
+                  <div className="min-w-0 text-[12.5px]">
+                    <p className="font-semibold">{bk.title}</p>
+                    <p className="text-fg/80">
+                      {bk.when}
+                      {bk.conf && <span className="text-muted"> · #{bk.conf}</span>}
+                    </p>
+                    <p className="text-[11.5px] text-muted">{bk.source}</p>
+                  </div>
+                </div>
+              ))}
+              {bookings.length === 0 && <p className="rounded-xl border border-dashed border-line px-3 py-2 text-[12.5px] text-muted">Nothing booked yet. Forward the confirmation email and it shows up here.</p>}
+            </div>
+          )}
+        </div>
+
+        {/* Right: the verdict, steady */}
+        <div className="relative min-w-0 rounded-tr-2xl bg-surface-2/60">
+          <div className={`flex flex-col px-4 py-3.5 ${long === "sticky" ? "sticky top-4" : ""}`}>
+            <span className="absolute top-2 right-2">
+              <More />
+            </span>
+            <div className="pr-6">
+              <GroupBlock idea={idea} open={open} me={me} setMine={setMine} />
+            </div>
+
+            <div className="mt-6">
+              <Cap>When</Cap>
+              {idea.best ? (
+                <>
+                  <p className="text-[13px]">
+                    <b>{idea.best.day}</b>
+                    <span className="text-muted"> · {idea.best.title}</span>
+                  </p>
+                  {reason && !open && <p className="truncate text-[12px] text-muted">{reason}</p>}
+                  {open && (
+                    <ul className="mt-1 space-y-0.5 text-[12px]">
+                      {idea.good
+                        .filter((g) => !g.startsWith("Booked"))
+                        .map((g) => (
+                          <li key={g} className="flex items-start gap-1.5 text-accent">
+                            <Check className="mt-px size-3.5 shrink-0" />
+                            <span className="text-fg/85">{g}</span>
+                          </li>
+                        ))}
+                    </ul>
+                  )}
+                </>
+              ) : (
+                <p className="text-[12.5px] text-muted">{idea.where === "Needs a place" ? "Needs a place first" : "No day stands out yet"}</p>
+              )}
+              {shown.length > 0 && (
+                <div className="mt-1 space-y-0.5">
+                  {shown.map((x) => (
+                    <p key={x.text} className={`flex items-start gap-1.5 text-[12px] ${x.out ? "text-red-600 dark:text-red-400" : "text-amber-700 dark:text-amber-300"}`}>
+                      {x.out ? <X className="mt-px size-3.5 shrink-0" /> : <CircleAlert className="mt-px size-3.5 shrink-0" />}
+                      <span>{x.text}</span>
+                    </p>
+                  ))}
+                </div>
+              )}
+              {open && idea.best && <p className="mt-1 text-[12px] text-muted">Also fits: {idea.days.filter((d) => d.state === "good").map((d) => d.d).join(", ") || "no other day"}</p>}
+            </div>
+
+            <div className="mt-5">
+              <span className={`flex w-full items-center overflow-hidden rounded-full text-[12.5px] font-semibold ${idea.best ? "bg-accent text-on-accent" : "border border-line bg-surface text-fg"}`}>
+                <span className="flex-1 px-3 py-1.5 text-center">{label}</span>
+                <span className={`self-stretch border-l px-2 ${idea.best ? "border-white/30" : "border-line"} grid place-items-center`}>
+                  <ChevronDown className="size-3.5" />
+                </span>
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <Toggle open={open} toggle={toggle} />
+    </div>
+  );
+}
+
+const VARIANTS: { id: string; name: string; note: string; wideOpen?: boolean; round: 1 | 2 | 3 | 4; C: (p: Props) => ReactNode }[] = [
+  { id: "E1", round: 4, name: "Details | verdict · sticky side", note: "left holds all the details and grows; the right sticks while the page scrolls", C: (p) => <Detail {...p} long="sticky" /> },
+  { id: "E2", round: 4, name: "Details | verdict · scrolling details", note: "same, but an expanded card is capped and the left scrolls inside it", C: (p) => <Detail {...p} long="scroll" /> },
   { id: "D1", round: 3, name: "Idea | verdict · booking in the button", note: "left: what and why; tinted right: group → when → blocker → button. Booked shows on the button itself", C: (p) => <Verdict {...p} merge /> },
   { id: "D2", round: 3, name: "Idea | verdict · booking line", note: "same split; booking is one line above the button", C: (p) => <Verdict {...p} merge={false} /> },
   { id: "C1", round: 2, name: "Corners · whitespace", note: "no lines; a gutter and the grid do the separating", C: (p) => <CleanCorners {...p} sep="space" /> },
@@ -810,13 +1112,15 @@ const VARIANTS: { id: string; name: string; note: string; wideOpen?: boolean; ro
 export function ProtoCards() {
   usePalette("teal");
   const [ideaId, setIdeaId] = useState("ghibli");
+  const [groupSize, setGroupSize] = useState(4);
   const [me] = useState("Vishal");
   const [mine, setMineMap] = useState<Record<string, Answer>>({});
   const [live, setLive] = useState<Record<string, boolean>>({});
   const [mode, setMode] = useState<"pair" | "live">("pair");
-  const [earlier, setEarlier] = useState<0 | 1 | 2>(0);
+  const [earlier, setEarlier] = useState<0 | 1 | 2 | 3>(0);
   const base = IDEAS.find((i) => i.id === ideaId)!;
-  const idea: Demo = { ...base, answers: { ...base.answers, ...(ideaId in mine ? { [me]: mine[ideaId] } : {}) } };
+  const sizedAnswers = sized(base.answers, ideaId, groupSize);
+  const idea: Demo = { ...base, answers: { ...sizedAnswers, ...(ideaId in mine ? { [me]: mine[ideaId] } : {}) } };
   const setMine = (a: Answer) => setMineMap((m) => ({ ...m, [ideaId]: a }));
 
   return (
@@ -845,18 +1149,29 @@ export function ProtoCards() {
             ))}
           </span>
           <label className="flex items-center gap-2">
+            Group
+            <select value={groupSize} onChange={(e) => setGroupSize(+e.target.value)} className="rounded-lg border border-line bg-bg px-2 py-1">
+              {[1, 2, 3, 4, 6, 8, 10].map((n) => (
+                <option key={n} value={n}>
+                  {n === 1 ? "Solo" : `${n} people`}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="flex items-center gap-2">
             Earlier rounds
-            <select value={earlier} onChange={(e) => setEarlier(+e.target.value as 0 | 1 | 2)} className="rounded-lg border border-line bg-bg px-2 py-1">
+            <select value={earlier} onChange={(e) => setEarlier(+e.target.value as 0 | 1 | 2 | 3)} className="rounded-lg border border-line bg-bg px-2 py-1">
               <option value={0}>Hide</option>
-              <option value={2}>Round 2 (C1–C4)</option>
-              <option value={1}>Rounds 1–2 (all)</option>
+              <option value={3}>Round 3 (D1–D2)</option>
+              <option value={2}>Rounds 2–3</option>
+              <option value={1}>All rounds</option>
             </select>
           </label>
           <span className="text-muted">Colours: {PALETTES.teal.name}</span>
         </div>
 
         <div className="mt-6 space-y-10">
-          {VARIANTS.filter((v) => v.round === 3 || (earlier !== 0 && v.round >= earlier)).map((v) => (
+          {VARIANTS.filter((v) => v.round === 4 || (earlier !== 0 && v.round >= earlier)).map((v) => (
             <section key={v.id}>
               <p className="mb-2 text-[14px]">
                 <b>
