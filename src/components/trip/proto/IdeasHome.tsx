@@ -112,7 +112,7 @@ export function IdeasHome({
   const placeIdeas = open.filter((i) => !i.rough);
   const planned = ideas.filter((i) => i.days.length);
   const dayFits = (i: Idea): DayFit[] =>
-    days.map((d, n) => ({ key: d.key, date: d.date!, title: subtitles?.[d.key] || (placesIn(d).length ? placesIn(d).map((x) => x.name).slice(0, 2).join(" · ") : `Day ${n + 1} · nothing planned`), fit: fitFor(i.item, { date: d.date!, items: d.items }), stops: placesIn(d).filter((x) => x.lat != null && x.lng != null).map((x) => ({ id: x.id, name: x.name, at: [x.lat!, x.lng!] as [number, number] })) }));
+    days.map((d, n) => ({ key: d.key, date: d.date!, title: subtitles?.[d.key] || (placesIn(d).length ? placesIn(d).map((x) => x.name).slice(0, 2).join(" · ") : `Day ${n + 1} · nothing planned`), fit: fitFor(i.item, { date: d.date!, items: d.items }), stops: placesIn(d).filter((x) => x.lat != null && x.lng != null).map((x) => ({ id: x.id, name: x.name, at: [x.lat!, x.lng!] as [number, number], start: x.startTime, mins: x.stay })) }));
   const fits = new Map(
     placeIdeas.map((i) => {
       const all = dayFits(i);

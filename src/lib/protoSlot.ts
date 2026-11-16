@@ -1,7 +1,7 @@
 // PROTOTYPE (proto/trip-focus): where an idea would slot into a day's route, in straight-line km.
 // Pure and cheap: runs in the browser for every card on every change (no routing calls).
 export type LatLng = [number, number];
-export type Stop = { id: string; name: string; at: LatLng };
+export type Stop = { id: string; name: string; at: LatLng; /** "HH:MM", when set on the day */ start?: string; /** minutes there */ mins?: number };
 export type Slot = { kind: "start" | "between" | "end"; i: number; detour: number; near: number };
 
 const toRad = (d: number) => (d * Math.PI) / 180;

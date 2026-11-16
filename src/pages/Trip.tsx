@@ -29,6 +29,7 @@ import {
 } from "../lib/trips";
 import { setHistoryAuthor } from "../lib/history";
 import type { AddOptions } from "../components/trip/proto/IdeaFitCard";
+import { dayShort } from "../components/trip/proto/DayMenu";
 import { addPlace, setCollapsed } from "../lib/itemActions";
 import { daysBetween, todayISO } from "../lib/dates";
 import { scrollToEl, scrollToId } from "../lib/scroll";
@@ -307,6 +308,8 @@ export function TripPage() {
   const [toast, setToast] = useState<{
     text: string;
     undo?: boolean;
+    /** A follow-up link, e.g. "Open Mon 14" after adding an idea there */
+    go?: { label: string; run: () => void };
     n: number;
   } | null>(null);
   useEffect(() => {
@@ -599,8 +602,8 @@ export function TripPage() {
     if (me) setExtra(doc, id, { addedBy: me, votes: [me] });
     setJustAdded(id);
   };
-  const say = (text: string, undo?: boolean) =>
-    setToast({ text, undo, n: Date.now() });
+  const say = (text: string, undo?: boolean, go?: { label: string; run: () => void }) =>
+    setToast({ text, undo, go, n: Date.now() });
   // Capturing something that's already an idea (or already on a day) points at it instead of adding it twice
   const captureOrPoint = (p: PlaceResult) => {
     const probe = {
@@ -672,7 +675,11 @@ export function TripPage() {
     revealAdded(newId);
     // The card leaves the open list once it's on a day, so say where it went (with Undo)
     const name = state.items.find((x) => x.id === itemId)?.name ?? "Idea";
-    say(`Added ${name} to ${formatChip(dayKey.slice(4))}${opts?.time ? `, ${opts.time}` : ""}${opts?.who?.length ? ` for ${opts.who.length}` : ""}`, true);
+    // Times are refined on the itinerary, so offer to go there
+    say(`Added ${name} to ${formatChip(dayKey.slice(4))}${opts?.time ? `, ${opts.time}` : ""}${opts?.who?.length ? ` for ${opts.who.length}` : ""}`, true, {
+      label: `Open ${dayShort(dayKey.slice(4))}`,
+      run: () => pickScope({ tab: "plan", key: dayKey }),
+    });
   };
   const ideaMapView = (() => {
     if (!layoutB || area !== "ideas" || tab !== "plan" || focus) return null;
@@ -1424,6 +1431,14 @@ export function TripPage() {
               className="font-semibold text-accent"
             >
               Undo
+            </button>
+          )}
+          {toast.go && (
+            <button
+              onClick={() => (toast.go!.run(), setToast(null))}
+              className="font-semibold text-accent"
+            >
+              {toast.go.label} →
             </button>
           )}
         </div>

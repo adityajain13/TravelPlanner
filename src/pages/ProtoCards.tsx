@@ -2050,7 +2050,7 @@ function WhoGoing({ idea, day, me, onAdd, onCancel }: { idea: Demo; day: DayFit;
 
 function WeekPicker({ fits, sel, bookedDay, onPick }: { fits: DayFit[]; sel?: DayFit; bookedDay: string | null; onPick: (day: string) => void }) {
   return (
-    <div className="flex gap-1">
+    <div className="flex gap-1.5">
       {fits.map((f) => {
         const on = f.day === sel?.day;
         const [wd, dn] = f.day.split(" ");
@@ -2068,7 +2068,7 @@ function WeekPicker({ fits, sel, bookedDay, onPick }: { fits: DayFit[]; sel?: Da
             key={f.day}
             onClick={() => onPick(f.day)}
             title={`${f.day} · ${DAY_TITLE[f.day]}`}
-            className={`flex min-w-0 flex-1 flex-col items-center rounded-lg py-1 leading-tight transition ${tone} ${on ? "ring-2 ring-accent ring-offset-1 ring-offset-surface" : "hover:brightness-95"}`}
+            className={`flex min-w-0 flex-1 flex-col items-center rounded-lg px-0.5 py-1.5 leading-tight transition ${tone} ${on ? "ring-2 ring-inset ring-accent" : "hover:brightness-95"}`}
           >
             <span className="text-[10px] font-semibold uppercase opacity-80">{wd}</span>
             <span className={`text-[13px] font-semibold ${f.state === "closed" ? "line-through" : ""}`}>{dn}</span>
