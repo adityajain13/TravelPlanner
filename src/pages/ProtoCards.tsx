@@ -126,6 +126,34 @@ const EXTRA: Record<string, { comments: Comment[]; bookings: Booking[]; more: An
     more: [null, null, 0, null, 1, null],
   },
 };
+/* Place data the real app already stores (Google details, cover photo, cost), as demo values; plus nearby ideas and source */
+type PlaceInfo = { photo?: boolean; rating?: number; ratingCount?: string; price?: string; cost?: string; hours?: Record<string, string>; website?: string; phone?: string; nearby?: string[]; source?: string };
+const PLACE: Record<string, PlaceInfo> = {
+  ghibli: {
+    photo: true,
+    rating: 4.4,
+    ratingCount: "12k",
+    cost: "¥1,000 per person",
+    hours: { "Mon 14": "10–18", "Tue 15": "Closed", "Wed 16": "10–18", "Thu 17": "10–18", "Fri 18": "10–18", "Sat 19": "10–18", "Sun 20": "10–18" },
+    website: "ghibli-museum.jp",
+    phone: "0570-055777",
+    nearby: ["Inokashira Park", "Kichijoji"],
+    source: "Saved from a Google Maps link · Nov 2",
+  },
+  hakone: {
+    photo: true,
+    rating: 4.3,
+    ratingCount: "3.1k",
+    price: "¥¥",
+    cost: "¥1,500 per person · private baths extra",
+    hours: { "Mon 14": "10–20", "Tue 15": "10–20", "Wed 16": "10–20", "Thu 17": "10–20", "Fri 18": "10–20", "Sat 19": "10–20", "Sun 20": "10–20" },
+    website: "yuryo.jp",
+    nearby: ["Owakudani", "Hakone Open-Air Museum"],
+    source: "From an article Maya shared · Nov 5",
+  },
+  onsen: { source: "Added as a rough idea by Sam · Nov 7" },
+};
+
 const NAMES = ["Vishal", "Maya", "Sam", "Aditya", "Priya", "Leo", "Hana", "Omar", "Jules", "Kai"];
 function sized(base: Answers, id: string, n: number): Answers {
   const out: Answers = {};
@@ -1325,6 +1353,7 @@ function Detail({ idea, open, toggle, me, setMine, long, group = "track" }: Prop
   const solo = Object.keys(idea.answers).length === 1;
   const comments = solo ? ex.comments.filter((c) => c.by === me) : ex.comments;
   const bookings = ex.bookings;
+  const place = PLACE[idea.id] ?? {};
   const booked = idea.booking?.kind === "booked" ? idea.booking : null;
   const time = booked?.text.split(", ")[1];
   const label = idea.best ? `Add to ${idea.best.day}${time ? `, ${time}` : ""}` : idea.where === "Needs a place" ? "Find a place" : "Add to a day";
@@ -1368,25 +1397,68 @@ function Detail({ idea, open, toggle, me, setMine, long, group = "track" }: Prop
       <div className="grid" style={{ gridTemplateColumns: "minmax(0,1fr) 252px" }}>
         {/* Left: the idea, all of its details. Each section keeps its folded lines and grows under them. */}
         <div className={`min-w-0 px-4 pt-3.5 pb-4 ${leftCap}`}>
-          <div>
-            <Title idea={idea} size={16.5} badge={false} />
-            <div className="mt-3">
-              <Cap>About the place</Cap>
-              {idea.facts.length > 0 ? <p className="text-[12.5px] text-fg/80">{idea.facts.join(" · ")}</p> : <p className="text-[12.5px] text-muted">Pick a place to see its details</p>}
-              {idea.address && (
-                <Grow open={open}>
-                  <p className="mt-0.5 text-[12.5px] text-muted">{idea.address}</p>
-                  <p className="mt-1 flex gap-3 text-[12.5px] text-accent">
-                    <span className="flex items-center gap-1">
-                      <MapIcon className="size-3.5" /> Map
-                    </span>
-                    <span className="flex items-center gap-1">
-                      <ExternalLink className="size-3.5" /> Google Maps
-                    </span>
-                  </p>
-                </Grow>
+          <div className="flex items-start gap-3">
+            <div className="min-w-0 flex-1">
+              <Title idea={idea} size={16.5} badge={false} />
+              {(place.rating || place.price) && (
+                <p className="mt-1 flex items-center gap-1.5 text-[12px] text-fg/80">
+                  {place.rating && (
+                    <>
+                      <Star className="size-3 fill-amber-400 text-amber-400" /> {place.rating} <span className="text-muted">({place.ratingCount})</span>
+                    </>
+                  )}
+                  {place.rating && place.price && <span className="text-muted">·</span>}
+                  {place.price && <span>{place.price}</span>}
+                </p>
               )}
             </div>
+            {/* The cover photo the app already keeps per place; no photo, no space */}
+            {place.photo && (
+              <div
+                className="grid size-[76px] shrink-0 place-items-center rounded-xl text-white/70"
+                style={{ background: `linear-gradient(135deg,hsl(${hue(idea.name)} 35% 72%),hsl(${hue(idea.name) + 50} 30% 52%))` }}
+                title="Cover photo (demo)"
+              >
+                <ImageIcon className="size-5" />
+              </div>
+            )}
+          </div>
+          <div className="mt-3">
+            <Cap>About the place</Cap>
+            {idea.facts.length > 0 ? <p className="text-[12.5px] text-fg/80">{idea.facts.join(" · ")}</p> : <p className="text-[12.5px] text-muted">Pick a place to see its details</p>}
+            <Grow open={open}>
+              {/* Hours only for the trip's days; the best day is marked, closed days in red */}
+              {place.hours && (
+                <div className="mt-2 flex flex-wrap gap-1">
+                  {Object.entries(place.hours).map(([d, h]) => {
+                    const closed = h === "Closed";
+                    const best = idea.best?.day === d;
+                    return (
+                      <span
+                        key={d}
+                        className={`rounded-md px-1.5 py-0.5 text-[11px] ${closed ? "bg-red-500/10 text-red-600 line-through dark:text-red-400" : best ? "bg-accent/15 font-semibold text-accent" : "bg-surface-2 text-fg/75"}`}
+                      >
+                        {d.split(" ")[0]} {closed ? "" : h}
+                      </span>
+                    );
+                  })}
+                </div>
+              )}
+              {place.cost && <p className="mt-2 text-[12.5px] text-fg/80">{place.cost} <span className="text-muted">· counted in Budget</span></p>}
+              {idea.address && <p className="mt-1 text-[12.5px] text-muted">{idea.address}</p>}
+              {idea.address && (
+                <p className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-[12.5px] text-accent">
+                  <span className="flex items-center gap-1">
+                    <MapIcon className="size-3.5" /> Map
+                  </span>
+                  <span className="flex items-center gap-1">
+                    <ExternalLink className="size-3.5" /> Google Maps
+                  </span>
+                  {place.website && <span>{place.website}</span>}
+                  {place.phone && <span>{place.phone}</span>}
+                </p>
+              )}
+            </Grow>
           </div>
 
           {comments.length > 0 && (
@@ -1426,6 +1498,27 @@ function Detail({ idea, open, toggle, me, setMine, long, group = "track" }: Prop
                 ))}
                 {bookings.length === 0 && <p className="rounded-xl border border-dashed border-line px-3 py-2 text-[12.5px] text-muted">Nothing booked yet. Forward the confirmation email and it shows up here.</p>}
               </div>
+            </Grow>
+          )}
+
+          {place.nearby && (
+            <Grow open={open}>
+              <div className={SECTION}>
+                <Cap>Also near here</Cap>
+                <div className="flex flex-wrap gap-1.5">
+                  {place.nearby.map((n) => (
+                    <span key={n} className="rounded-full border border-line px-2.5 py-0.5 text-[12px] text-fg/80">
+                      {n}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            </Grow>
+          )}
+
+          {place.source && (
+            <Grow open={open}>
+              <p className="pt-5 text-[11.5px] text-muted">{place.source}</p>
             </Grow>
           )}
         </div>
