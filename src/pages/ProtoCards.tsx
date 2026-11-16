@@ -3,7 +3,7 @@
 // way each region grows is visible side by side. The four regions are always the same:
 //   What it is · How the group feels · Why and fit · Decision
 // To try another layout, add a component to VARIANTS.
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { Check, ChevronDown, CircleAlert, ExternalLink, ImageIcon, Map as MapIcon, MoreHorizontal, Star, Ticket, X } from "lucide-react";
 import { hue, Knob, LABEL, key, PALETTES, PersonTrack, SoftTrack, stopsBetween, usePalette, type Answer, type Answers } from "./ProtoInterest";
 
@@ -127,10 +127,12 @@ const EXTRA: Record<string, { comments: Comment[]; bookings: Booking[]; more: An
   },
 };
 /* Place data the real app already stores (Google details, cover photo, cost), as demo values; plus nearby ideas and source */
-type PlaceInfo = { desc?: string; costShort?: string; photo?: boolean; rating?: number; ratingCount?: string; price?: string; cost?: string; hours?: Record<string, string>; website?: string; phone?: string; nearby?: string[]; source?: string };
+type PlaceInfo = { exception?: string; at?: [number, number]; desc?: string; costShort?: string; photo?: boolean; rating?: number; ratingCount?: string; price?: string; cost?: string; hours?: Record<string, string>; website?: string; phone?: string; nearby?: string[]; source?: string };
 const PLACE: Record<string, PlaceInfo> = {
   ghibli: {
     desc: "Museum of Studio Ghibli's animation, with a short film you can only see here",
+    exception: "Tickets only sold online, from the 10th of the month before",
+    at: [35.6962, 139.5704],
     costShort: "¥1,000 pp",
     photo: true,
     rating: 4.4,
@@ -144,6 +146,8 @@ const PLACE: Record<string, PlaceInfo> = {
   },
   hakone: {
     desc: "Day-use hot spring with outdoor baths over the river, plus private family baths",
+    exception: "Private baths are booked by phone: 0460-85-8411",
+    at: [35.2357, 139.0962],
     costShort: "¥1,500 pp",
     photo: true,
     rating: 4.3,
@@ -157,6 +161,25 @@ const PLACE: Record<string, PlaceInfo> = {
   },
   onsen: { source: "Added as a rough idea by Sam · Nov 7" },
 };
+/** The trip's planned stops per day, with coordinates (demo; the real trip has these) */
+const DAY_STOPS: Record<string, { name: string; at: [number, number] }[]> = {
+  "Mon 14": [
+    { name: "Haneda Airport", at: [35.5494, 139.7798] },
+    { name: "Shinjuku Gyoen", at: [35.6852, 139.71] },
+    { name: "Omoide Yokocho", at: [35.6932, 139.6996] },
+  ],
+  "Wed 16": [
+    { name: "Hakone-Yumoto Station", at: [35.2326, 139.1063] },
+    { name: "Lake Ashi", at: [35.2046, 139.0247] },
+    { name: "Owakudani", at: [35.2441, 139.0191] },
+  ],
+};
+/** Other ideas in the pool and how far they are, per idea (demo) */
+const CLOSE_IDEAS: Record<string, string[]> = { ghibli: ["Inokashira Park", "Kichijoji Harmonica Yokocho"], hakone: ["Hakone Open-Air Museum", "Hakone Shrine"] };
+
+/** Where the trip is: nothing planned yet, days planned (nothing booked), or bookings matched */
+type Stage = "empty" | "planned" | "booked";
+let STAGE: Stage = "booked"; // set by the page's picker on each render
 
 const NAMES = ["Vishal", "Maya", "Sam", "Aditya", "Priya", "Leo", "Hana", "Omar", "Jules", "Kai"];
 function sized(base: Answers, id: string, n: number): Answers {
@@ -1350,13 +1373,130 @@ function GroupPoll({ idea, open, me, setMine }: GroupProps) {
 type GroupProps = { idea: Demo; open: boolean; me: string; setMine: (a: Answer) => void };
 const GROUPS: Record<GroupStyle, (p: GroupProps) => ReactNode> = { track: GroupBlock, G1: GroupChoice, G2: GroupOnTrack, G3: GroupColumns, G4: GroupSentence, P: GroupPoll };
 
+/** A schematic of the best day: its stops in order, joined, and this idea's pin with a dashed line to the nearest stop.
+    No map tiles, just the coordinates the trip already has, so it costs nothing to draw. */
+function DayMap({ day, at, name, reason }: { day: string; at: [number, number]; name: string; reason?: string }) {
+  const stops = DAY_STOPS[day];
+  const W = 300;
+  const H = 64;
+  const pad = 10;
+  const pts = [...stops.map((s) => s.at), at];
+  const kx = Math.cos((pts.reduce((a, p) => a + p[0], 0) / pts.length) * (Math.PI / 180));
+  const xs = pts.map((p) => p[1] * kx);
+  const ys = pts.map((p) => p[0]);
+  const [x0, x1, y0, y1] = [Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)];
+  const sc = Math.min((W - pad * 2) / (x1 - x0 || 1), (H - pad * 2) / (y1 - y0 || 1));
+  const ox = (W - (x1 - x0) * sc) / 2;
+  const oy = (H - (y1 - y0) * sc) / 2;
+  const P = (p: [number, number]) => [ox + (p[1] * kx - x0) * sc, H - (oy + (p[0] - y0) * sc)] as const;
+  const sp = stops.map((s) => P(s.at));
+  const ip = P(at);
+  const near = sp.reduce((b, p) => (Math.hypot(p[0] - ip[0], p[1] - ip[1]) < Math.hypot(b[0] - ip[0], b[1] - ip[1]) ? p : b), sp[0]);
+  return (
+    <div>
+      <div className="overflow-hidden rounded-xl border border-line bg-surface-2/40">
+        <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="xMidYMid meet" className="block h-16 w-full" role="img" aria-label={`${name} and the stops on ${day}`}>
+          <polyline points={sp.map((p) => p.join(",")).join(" ")} fill="none" stroke="currentColor" strokeOpacity=".28" strokeWidth="2" strokeLinejoin="round" />
+          <line x1={near[0]} y1={near[1]} x2={ip[0]} y2={ip[1]} stroke="#d97706" strokeWidth="1.5" strokeDasharray="3 3" />
+          {sp.map((p, i) => (
+            <g key={i}>
+              <circle cx={p[0]} cy={p[1]} r="7" fill="var(--surface, #fff)" stroke="currentColor" strokeOpacity=".45" strokeWidth="1.5" />
+              <text x={p[0]} y={p[1] + 3} textAnchor="middle" fontSize="8.5" fontWeight="700" fill="currentColor" fillOpacity=".7">
+                {i + 1}
+              </text>
+            </g>
+          ))}
+          <circle cx={ip[0]} cy={ip[1]} r="6.5" fill="#f59e0b" stroke="#fff" strokeWidth="2" />
+        </svg>
+      </div>
+      <p className="mt-1 truncate text-[11.5px] text-muted">
+        <b className="font-semibold text-fg/75">On {day}:</b> {stops.map((s, i) => `${i + 1} ${s.name}`).join(" · ")}
+        {reason && <span className="text-amber-700 dark:text-amber-300"> · ● {reason}</span>}
+      </p>
+    </div>
+  );
+}
+
+/** What fills the spare space on a wide, folded card: the first two candidates whose condition holds, in this order.
+    1 booking summary · 2 the best day's map · 3 other ideas close by · 4 one Google exception · 5 a second comment · else nothing.
+    Each has an estimated height; the card only takes the ones that fit in the space the right side leaves (at most two). */
+function spareSlot(idea: Demo, place: PlaceInfo, bookings: Booking[], comments: Comment[], me: string, reason?: string): { key: string; h: number; node: ReactNode }[] {
+  const out: { key: string; h: number; node: ReactNode }[] = [];
+  if (bookings[0])
+    out.push({
+      key: "booking",
+      h: 44,
+      node: (
+        <div>
+          <Cap>Booked</Cap>
+          <p className="flex items-center gap-2 text-[12.5px]">
+            <Ticket className="size-4 shrink-0 text-accent" />
+            <span>
+              <b className="font-semibold">{bookings[0].when}</b>
+              {bookings[0].conf && <span className="text-muted"> · #{bookings[0].conf}</span>}
+              <span className="text-muted"> · {bookings[0].title.split(" · ")[1] ?? bookings[0].title}</span>
+            </span>
+          </p>
+        </div>
+      ),
+    });
+  if (idea.best && place.at && (DAY_STOPS[idea.best.day]?.length ?? 0) >= 2) out.push({ key: "map", h: 86, node: <DayMap day={idea.best.day} at={place.at} name={idea.name} reason={reason} /> });
+  const close = CLOSE_IDEAS[idea.id] ?? [];
+  if (close.length >= 2)
+    out.push({
+      key: "close",
+      h: 56,
+      node: (
+        <div>
+          <Cap>{close.length} ideas close by</Cap>
+          <div className="flex flex-wrap items-center gap-1.5">
+            {close.map((n) => (
+              <span key={n} className="rounded-full border border-line px-2.5 py-0.5 text-[12px] text-fg/80">
+                {n}
+              </span>
+            ))}
+            <span className="text-[12px] text-muted">could be one day</span>
+          </div>
+        </div>
+      ),
+    });
+  if (place.exception)
+    out.push({
+      key: "google",
+      h: 50,
+      node: (
+        <div>
+          <Cap>Good to know</Cap>
+          <p className="flex items-start gap-1.5 text-[12.5px] text-fg/85">
+            <CircleAlert className="mt-px size-3.5 shrink-0 text-muted" />
+            {place.exception}
+          </p>
+        </div>
+      ),
+    });
+  if (comments[1])
+    out.push({
+      key: "comment",
+      h: 44,
+      node: (
+        <div className="flex gap-2 pl-0">
+          <Ava name={comments[1].by} size={20} />
+          <p className="line-clamp-2 min-w-0 text-[13px] leading-snug text-fg/85">
+            <b className="font-semibold">{comments[1].by === me ? "You" : comments[1].by}:</b> <Mention text={comments[1].text} />
+          </p>
+        </div>
+      ),
+    });
+  return out;
+}
+
 function Detail({ idea, open, toggle, me, setMine, long, group = "track" }: Props & { long: "sticky" | "scroll"; group?: GroupStyle }) {
   const GroupView = GROUPS[group];
   const ex = EXTRA[idea.id];
   // Solo trips: only your own notes (nobody else to comment)
   const solo = Object.keys(idea.answers).length === 1;
   const comments = solo ? ex.comments.filter((c) => c.by === me) : ex.comments;
-  const bookings = ex.bookings;
+  const bookings = STAGE === "booked" ? ex.bookings : [];
   const place = PLACE[idea.id] ?? {};
   const booked = idea.booking?.kind === "booked" ? idea.booking : null;
   const time = booked?.text.split(", ")[1];
@@ -1382,6 +1522,32 @@ function Detail({ idea, open, toggle, me, setMine, long, group = "track" }: Prop
   const glance = [firstGood, firstBad].filter(Boolean) as typeof lines;
   const rest = lines.filter((l) => !glance.includes(l));
   const leftCap = long === "scroll" && open ? "max-h-[360px] overflow-y-auto" : "";
+  // How much room the right side leaves under the left side's own content (folded, wide cards)
+  const leftTop = useRef<HTMLDivElement>(null);
+  const rGroup = useRef<HTMLDivElement>(null);
+  const rWhen = useRef<HTMLDivElement>(null);
+  const [room, setRoom] = useState(0);
+  useLayoutEffect(() => {
+    const measure = () => {
+      if (!leftTop.current || !rGroup.current || !rWhen.current) return;
+      const right = rGroup.current.offsetHeight + 24 + rWhen.current.offsetHeight;
+      setRoom(right - leftTop.current.offsetHeight);
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    [leftTop.current, rGroup.current, rWhen.current].forEach((el) => el && ro.observe(el));
+    return () => ro.disconnect();
+  }, []);
+  const spare: ReturnType<typeof spareSlot> = [];
+  {
+    let used = 0;
+    for (const c of spareSlot(idea, place, bookings, comments, me, reasons[0])) {
+      const need = (spare.length ? 20 : 24) + c.h;
+      // The first item may stretch the card a little (24px); a second one has to fit
+      const slack = spare.length ? 0 : 24;
+      if (spare.length < 2 && used + need <= room + slack) (spare.push(c), (used += need));
+    }
+  }
   const SECTION = "pt-6"; // the one gap between sections, on both sides
 
   const vline = (l: (typeof lines)[number]) => (
@@ -1413,6 +1579,7 @@ function Detail({ idea, open, toggle, me, setMine, long, group = "track" }: Prop
       <div className="grid grid-cols-1 @min-[600px]:grid-cols-[minmax(0,1fr)_252px]">
         {/* Left: the idea, all of its details. Each section keeps its folded lines and grows under them. */}
         <div className={`min-w-0 px-4 pt-3.5 pb-4 pr-11 @min-[600px]:pr-4 ${leftCap}`}>
+          <div ref={leftTop}>
           {/* What is it, and is it worth it? Timing lives on the When side. */}
           <div className="flex items-start gap-3">
             <div className="min-w-0 flex-1">
@@ -1476,6 +1643,21 @@ function Detail({ idea, open, toggle, me, setMine, long, group = "track" }: Prop
             </div>
           )}
 
+          </div>
+          {/* Spare space on wide cards: the first two candidates that apply (see spareSlot). Folded only;
+              open, the full sections below take over. */}
+          {spare.length > 0 && (
+            <div className="hidden @min-[600px]:block">
+              <Grow open={!open}>
+                <div className="space-y-5 pt-6">
+                  {spare.map((x) => (
+                    <div key={x.key}>{x.node}</div>
+                  ))}
+                </div>
+              </Grow>
+            </div>
+          )}
+
           {(bookings.length > 0 || idea.booking?.kind === "needed") && (
             <Grow open={open}>
               <div className={SECTION}>
@@ -1525,11 +1707,12 @@ function Detail({ idea, open, toggle, me, setMine, long, group = "track" }: Prop
         <div className="min-w-0 border-t border-line bg-surface-2/60 @min-[600px]:rounded-tr-2xl @min-[600px]:border-t-0">
           {/* Stacked: Group keeps its small-window width (194px); When takes the rest, since it carries the longer text */}
           <div className="grid h-full grid-cols-[194px_minmax(0,1fr)] gap-x-5 px-4 pt-3.5 pb-4 @min-[600px]:flex @min-[600px]:flex-col">
-            <div className="min-w-0 @min-[600px]:pr-6">
+            <div ref={rGroup} className="min-w-0 @min-[600px]:pr-6">
               <GroupView idea={idea} open={open} me={me} setMine={setMine} />
             </div>
 
             <div className="flex min-w-0 flex-col @min-[600px]:mt-auto @min-[600px]:block @min-[600px]:pt-6">
+              <div ref={rWhen} className="flex h-full flex-col">
               <Cap>When</Cap>
               {idea.best ? (
                 <>
@@ -1556,6 +1739,7 @@ function Detail({ idea, open, toggle, me, setMine, long, group = "track" }: Prop
                     <ChevronDown className="size-3.5" />
                   </span>
                 </span>
+              </div>
               </div>
             </div>
           </div>
@@ -1593,6 +1777,8 @@ export function ProtoCards() {
   const [groupSize, setGroupSize] = useState(4);
   const [labelSet, setLabelSet] = useState("yes");
   POLL = LABEL_SETS[labelSet].l;
+  const [stage, setStage] = useState<Stage>("booked");
+  STAGE = stage;
   // The trip page's Ideas pane is 480 / 600 / 700 / 780px at md / lg / xl / 2xl, with 20px padding each side
   const autoW = () => { const w = window.innerWidth; return w >= 1536 ? 740 : w >= 1280 ? 660 : w >= 1024 ? 560 : 440; };
   const [widthPick, setWidthPick] = useState<"auto" | number>("auto");
@@ -1610,7 +1796,11 @@ export function ProtoCards() {
   const [earlier, setEarlier] = useState<0 | 1 | 2 | 3 | 4 | 5>(0);
   const base = IDEAS.find((i) => i.id === ideaId)!;
   const sizedAnswers = sized(base.answers, ideaId, groupSize);
-  const idea: Demo = { ...base, answers: { ...sizedAnswers, ...(ideaId in mine ? { [me]: mine[ideaId] } : {}) } };
+  const raw: Demo = { ...base, answers: { ...sizedAnswers, ...(ideaId in mine ? { [me]: mine[ideaId] } : {}) } };
+  // Trip stage: before bookings, a booked idea is "book ahead" again; before any days are planned, nothing has a best day
+  const unbooked: Demo = { ...raw, booking: raw.booking?.kind === "booked" ? { kind: "needed" } : raw.booking, good: raw.good.filter((g) => !g.startsWith("Booked")) };
+  const idea: Demo =
+    stage === "booked" ? raw : stage === "planned" ? unbooked : { ...unbooked, best: null, good: [], days: unbooked.days.map((d) => ({ ...d, state: d.state === "out" ? "out" : "ok" })) };
   const setMine = (a: Answer) => setMineMap((m) => ({ ...m, [ideaId]: a }));
 
   return (
@@ -1656,6 +1846,14 @@ export function ProtoCards() {
                   {n === 1 ? "Solo" : `${n} people`}
                 </option>
               ))}
+            </select>
+          </label>
+          <label className="flex items-center gap-2">
+            Trip stage
+            <select value={stage} onChange={(e) => setStage(e.target.value as Stage)} className="rounded-lg border border-line bg-bg px-2 py-1">
+              <option value="empty">Nothing planned yet</option>
+              <option value="planned">Days planned</option>
+              <option value="booked">Booked</option>
             </select>
           </label>
           <label className="flex items-center gap-2">
