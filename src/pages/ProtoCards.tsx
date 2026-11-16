@@ -1530,7 +1530,8 @@ function Detail({ idea, open, toggle, me, setMine, long, group = "track" }: Prop
         {/* Right: Group at the top, When + the button at the bottom.
             Stacked (narrow card): a tinted band under the idea, Group | When side by side. */}
         <div className="min-w-0 border-t border-line bg-surface-2/60 @min-[600px]:rounded-tr-2xl @min-[600px]:border-t-0">
-          <div className="grid h-full grid-cols-2 gap-x-5 px-4 pt-3.5 pb-4 @min-[600px]:flex @min-[600px]:flex-col">
+          {/* Stacked: Group keeps its small-window width (194px); When takes the rest, since it carries the longer text */}
+          <div className="grid h-full grid-cols-[194px_minmax(0,1fr)] gap-x-5 px-4 pt-3.5 pb-4 @min-[600px]:flex @min-[600px]:flex-col">
             <div className="min-w-0 @min-[600px]:pr-6">
               <GroupView idea={idea} open={open} me={me} setMine={setMine} />
             </div>
