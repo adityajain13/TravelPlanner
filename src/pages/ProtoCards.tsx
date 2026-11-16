@@ -2217,20 +2217,20 @@ function CalmWeek({ fits, sel, bookedDay, onPick, tab, small }: { fits: DayFit[]
             title={`${f.day} · ${DAY_TITLE[f.day]}`}
             aria-pressed={on}
             className={`relative flex min-w-0 flex-1 flex-col items-center leading-tight transition ${small ? "rounded-md py-1" : "py-1.5"} ${
-              on ? `bg-accent text-on-accent ${tab ? "z-10 -mb-[2px] rounded-t-lg pb-3" : "rounded-lg"}` : `${small ? "" : "rounded-lg"} bg-surface-2/70 text-fg/80 hover:bg-surface-2`
+              on ? `bg-fg text-bg ${tab ? "z-10 -mb-[2px] rounded-t-lg pb-3" : "rounded-lg"}` : `${small ? "" : "rounded-lg"} bg-surface-2/70 text-fg/80 hover:bg-surface-2`
             }`}
           >
             <span className={`text-[10px] font-semibold uppercase ${on ? "opacity-90" : "text-muted"}`}>{wd}</span>
             <span className={`${small ? "text-[12px]" : "text-[13px]"} font-semibold ${f.state === "closed" ? "line-through" : ""}`}>{dn}</span>
             {!small && (
               <span className="flex items-center gap-1 text-[9.5px]">
-                <span className="size-1.5 rounded-full" style={{ background: on ? "currentColor" : DOT[f.state] }} />
+                <span className="size-1.5 rounded-full" style={{ background: DOT[f.state] }} />
                 <span style={on ? undefined : { color: f.state === "free" ? undefined : DOT[f.state] }} className={on ? "" : f.state === "free" ? "text-muted" : ""}>
                   {sub}
                 </span>
               </span>
             )}
-            {small && <span className="mt-0.5 size-1.5 rounded-full" style={{ background: on ? "currentColor" : DOT[f.state] }} />}
+            {small && <span className={`mt-0.5 size-1.5 rounded-full ${on ? "ring-1 ring-bg/60" : ""}`} style={{ background: DOT[f.state] }} />}
           </button>
         );
       })}
@@ -2361,11 +2361,26 @@ function FitCard({ idea, open, toggle, me, setMine, view = "map", strip = "week"
         // X2: the day leads; the week sits below as a smaller "other days" picker
         <>
           <p className="text-[15px] leading-snug">
-            <b className="font-semibold">{sel.day}</b> <span className="text-muted">· {DAY_TITLE[sel.day]}</span>
+            <b className="font-semibold">{sel.day}</b>{" "}
+            {sel.state === "closed" || sel.state === "far" || sel.state === "travel" ? (
+              <span className={sel.state === "travel" ? "text-amber-700 dark:text-amber-300" : "text-red-600 dark:text-red-400"}>
+                · {sel.state === "closed" ? "Closed that day" : sel.state === "far" ? "Too far from this day's stops" : "A travel day"}
+              </span>
+            ) : (
+              <span className="text-muted">· {DAY_TITLE[sel.day]}</span>
+            )}
             {sel.day === bookedDay && <span className="ml-1.5 rounded-full bg-accent/15 px-1.5 py-0.5 align-middle text-[10.5px] font-semibold text-accent">booked</span>}
           </p>
-          <div className="mt-1.5">{slotOrNote}</div>
-          <div className="mt-2 space-y-0.5">{(open ? lines : glance).map(line)}</div>
+          {/* A bad day is already explained in the header: no slot, and its own reason line isn't repeated */}
+          {(sel.state === "fits" || sel.state === "free") && <div className="mt-1.5">{slotOrNote}</div>}
+          <div className="mt-2 space-y-0.5">
+            {(() => {
+              const bad = !(sel.state === "fits" || sel.state === "free");
+              const ls = bad ? lines.slice(1) : lines;
+              const gl = [ls.find((l) => l.kind === "good"), ls.find((l) => l.kind === "out") ?? ls.find((l) => l.kind === "warn")].filter(Boolean) as typeof lines;
+              return (open ? ls : gl).map(line);
+            })()}
+          </div>
           <div className="mt-3">
             <p className="mb-1 text-[10.5px] font-semibold tracking-wider text-muted uppercase">Other days</p>
             <CalmWeek fits={fits} sel={sel} bookedDay={bookedDay} onPick={setPick} small />
@@ -2424,7 +2439,9 @@ function FitCard({ idea, open, toggle, me, setMine, view = "map", strip = "week"
   const goingCount = Object.keys(idea.answers).length - sittingOut.length;
   const label = rough
     ? "Find a place"
-    : sel
+    : sel?.state === "closed"
+      ? "Closed that day"
+      : sel
       ? `Add to ${sel.day}${sel.day === bookedDay && bookedTime ? `, ${bookedTime}` : ""}${groupTrip && sittingOut.length ? ` · ${goingCount} going` : ""}`
       : "Add to a day";
   const [asking, setAsking] = useState(false);
