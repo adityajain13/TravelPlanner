@@ -2081,7 +2081,7 @@ function WeekPicker({ fits, sel, bookedDay, onPick }: { fits: DayFit[]; sel?: Da
 }
 
 /** The chosen day as its stop list, with the idea slotted in where it fits (and anything it pushes back) */
-function DayList({ f, idea, mins, openHours, fixed, open = true }: { f: DayFit; idea: Demo; mins: number; openHours?: string; fixed?: string; open?: boolean }) {
+function DayList({ f, idea, mins, openHours, fixed, open = true, plain }: { f: DayFit; idea: Demo; mins: number; openHours?: string; fixed?: string; open?: boolean; /** The panel around it carries the colour */ plain?: boolean }) {
   // Folded: only the suggested slot (day and time). Open: the rest of the day grows in around it.
   // Read-only: the day is picked in the week strip, the time on the itinerary.
   const p = placeInDay(f, mins, openHours, fixed);
@@ -2099,7 +2099,7 @@ function DayList({ f, idea, mins, openHours, fixed, open = true }: { f: DayFit; 
   const at = f.slot?.kind === "start" ? 0 : f.slot?.kind === "between" ? f.slot.i + 1 : f.stops.length;
   // The suggestion is a recommendation, so it takes the accent colour (red only when it lands outside opening hours)
   const here = (
-    <div key="here" className={`flex items-start gap-2.5 rounded-lg px-2.5 py-1.5 ${p.outside ? "bg-red-500/8" : "bg-accent/10"}`} style={{ boxShadow: `inset 3px 0 0 ${p.outside ? "#ef4444" : "var(--accent)"}` }}>
+    <div key="here" className={`flex items-start gap-2.5 rounded-lg px-2.5 py-1.5 ${plain ? "" : p.outside ? "bg-red-500/8" : "bg-accent/10"}`} style={plain ? undefined : { boxShadow: `inset 3px 0 0 ${p.outside ? "#ef4444" : "var(--accent)"}` }}>
       <span className={`w-11 shrink-0 text-[11.5px] font-semibold tabular-nums ${p.outside ? "text-red-600" : "text-accent"}`}>{clock(p.start)}</span>
       <span className="min-w-0 text-[12.5px]">
         <span className="font-semibold">{idea.name}</span>
@@ -2198,7 +2198,47 @@ function DayClock({ f, idea, mins, openHours, fixed }: { f: DayFit; idea: Demo; 
   );
 }
 
-function FitCard({ idea, open, toggle, me, setMine, view = "map" }: Props & { view?: "map" | "list" | "clock" }) {
+/* ---------- round 9: which day is the slot for? ----------
+   The week stops being a wall of colour: neutral cells, status as a coloured dot and word, and only the selected
+   day is filled. X1 joins that day to its slot like a tab; X2 leads with the day and moves the week below. */
+
+const DOT: Record<string, string> = { fits: "var(--accent)", closed: "#dc2626", far: "#dc2626", travel: "#d97706", free: "#9aa19d" };
+function CalmWeek({ fits, sel, bookedDay, onPick, tab, small }: { fits: DayFit[]; sel?: DayFit; bookedDay: string | null; onPick: (day: string) => void; tab?: boolean; small?: boolean }) {
+  return (
+    <div className={`flex items-start ${small ? "gap-1" : "gap-1.5"}`}>
+      {fits.map((f) => {
+        const on = f.day === sel?.day;
+        const [wd, dn] = f.day.split(" ");
+        const sub = f.day === bookedDay ? "booked" : f.state === "fits" ? (f.slot!.detour < 1 ? "+<1 km" : `+${Math.round(f.slot!.detour)} km`) : f.state;
+        return (
+          <button
+            key={f.day}
+            onClick={() => onPick(f.day)}
+            title={`${f.day} · ${DAY_TITLE[f.day]}`}
+            aria-pressed={on}
+            className={`relative flex min-w-0 flex-1 flex-col items-center leading-tight transition ${small ? "rounded-md py-1" : "py-1.5"} ${
+              on ? `bg-accent text-on-accent ${tab ? "z-10 -mb-[2px] rounded-t-lg pb-3" : "rounded-lg"}` : `${small ? "" : "rounded-lg"} bg-surface-2/70 text-fg/80 hover:bg-surface-2`
+            }`}
+          >
+            <span className={`text-[10px] font-semibold uppercase ${on ? "opacity-90" : "text-muted"}`}>{wd}</span>
+            <span className={`${small ? "text-[12px]" : "text-[13px]"} font-semibold ${f.state === "closed" ? "line-through" : ""}`}>{dn}</span>
+            {!small && (
+              <span className="flex items-center gap-1 text-[9.5px]">
+                <span className="size-1.5 rounded-full" style={{ background: on ? "currentColor" : DOT[f.state] }} />
+                <span style={on ? undefined : { color: f.state === "free" ? undefined : DOT[f.state] }} className={on ? "" : f.state === "free" ? "text-muted" : ""}>
+                  {sub}
+                </span>
+              </span>
+            )}
+            {small && <span className="mt-0.5 size-1.5 rounded-full" style={{ background: on ? "currentColor" : DOT[f.state] }} />}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function FitCard({ idea, open, toggle, me, setMine, view = "map", strip = "week" }: Props & { view?: "map" | "list" | "clock"; /** How the day and its slot are shown (round 9) */ strip?: "week" | "tab" | "dayfirst" }) {
   const ex = EXTRA[idea.id];
   const place = PLACE[idea.id] ?? {};
   const solo = Object.keys(idea.answers).length === 1;
@@ -2298,6 +2338,41 @@ function FitCard({ idea, open, toggle, me, setMine, view = "map" }: Props & { vi
     ) : (
       <p className="text-[12.5px] text-muted">No days planned yet</p>
     )
+  ) : strip !== "week" && sel ? (
+    (() => {
+      const idx = fits.findIndex((f) => f.day === sel.day);
+      const fixed = sel.day === bookedDay ? (bookedTime ?? undefined) : undefined;
+      const slotOrNote =
+        sel.state === "fits" || sel.state === "free" ? (
+          <DayList f={sel} idea={idea} mins={VISIT_MIN[idea.id] ?? 90} openHours={place.hours?.[sel.day]} fixed={fixed} open={open} plain={strip === "tab"} />
+        ) : (
+          <p className={`px-2.5 py-1.5 text-[12.5px] ${sel.state === "closed" ? "text-red-600 dark:text-red-400" : "text-muted"}`}>
+            {sel.state === "closed" ? "Closed that day" : sel.state === "far" ? `Too far from ${sel.day}'s stops to slot in` : `${sel.day} is a travel day`}
+          </p>
+        );
+      return strip === "tab" ? (
+        // X1: the selected day is filled and opens into its slot like a tab
+        <>
+          <CalmWeek fits={fits} sel={sel} bookedDay={bookedDay} onPick={setPick} tab />
+          <div className={`rounded-lg border-2 border-accent bg-accent/6 px-0.5 py-1 ${idx === 0 ? "rounded-tl-none" : ""} ${idx === fits.length - 1 ? "rounded-tr-none" : ""}`}>{slotOrNote}</div>
+          <div className="mt-2.5 space-y-0.5">{(open ? lines : glance).map(line)}</div>
+        </>
+      ) : (
+        // X2: the day leads; the week sits below as a smaller "other days" picker
+        <>
+          <p className="text-[15px] leading-snug">
+            <b className="font-semibold">{sel.day}</b> <span className="text-muted">· {DAY_TITLE[sel.day]}</span>
+            {sel.day === bookedDay && <span className="ml-1.5 rounded-full bg-accent/15 px-1.5 py-0.5 align-middle text-[10.5px] font-semibold text-accent">booked</span>}
+          </p>
+          <div className="mt-1.5">{slotOrNote}</div>
+          <div className="mt-2 space-y-0.5">{(open ? lines : glance).map(line)}</div>
+          <div className="mt-3">
+            <p className="mb-1 text-[10.5px] font-semibold tracking-wider text-muted uppercase">Other days</p>
+            <CalmWeek fits={fits} sel={sel} bookedDay={bookedDay} onPick={setPick} small />
+          </div>
+        </>
+      );
+    })()
   ) : view !== "map" ? (
     // The week is the one day control; open, where in that day it lands
     <>
@@ -2493,8 +2568,8 @@ function FitCard({ idea, open, toggle, me, setMine, view = "map" }: Props & { vi
               <GroupPoll idea={idea} open={open} me={me} setMine={setMine} />
             </div>
             <div className="flex min-w-0 flex-col @min-[600px]:mt-auto @min-[600px]:block @min-[600px]:pt-6">
-              <Cap>Proposed day</Cap>
-              {sel && !rough ? (
+              {strip !== "dayfirst" && <Cap>Proposed day</Cap>}
+              {strip === "dayfirst" ? null : sel && !rough ? (
                 <>
                   <p className="text-[13px]">
                     <b>{sel.day}</b> <span className="text-muted">· {DAY_TITLE[sel.day]}</span>
@@ -2559,7 +2634,9 @@ function FitCard({ idea, open, toggle, me, setMine, view = "map" }: Props & { vi
   );
 }
 
-const VARIANTS: { id: string; name: string; note: string; wideOpen?: boolean; round: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8; C: (p: Props) => ReactNode }[] = [
+const VARIANTS: { id: string; name: string; note: string; wideOpen?: boolean; round: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9; C: (p: Props) => ReactNode }[] = [
+  { id: "X1", round: 9, name: "Calm week + tab", note: "neutral days with a status dot; only the chosen day is filled, and it opens into its slot like a tab", C: (p) => <FitCard {...p} view="list" strip="tab" /> },
+  { id: "X2", round: 9, name: "Day first", note: "the proposed day leads, its slot under it, then the reasons; the week sits below as a small 'other days' picker. The right side drops its own 'Proposed day'", C: (p) => <FitCard {...p} view="list" strip="dayfirst" /> },
   { id: "W1", round: 8, name: "Week strip → the day's stops", note: "folded: the week is the day control (green fits, red closed/far, grey free); open: the chosen day's stop list with the idea slotted in, and what it pushes back", C: (p) => <FitCard {...p} view="list" /> },
   { id: "W2", round: 8, name: "Week strip → the day's clock", note: "same week strip; open: the day on a clock with the idea as a block against its opening hours", C: (p) => <FitCard {...p} view="clock" /> },
   { id: "H1", round: 7, name: "Evidence | decision", note: "left: what it is, how it fits (map of the day, every reason once), comment count; right: your vote, the proposed day, the button. Tap a day under the map (open) to change the proposal", C: (p) => <FitCard {...p} /> },
@@ -2693,7 +2770,7 @@ export function ProtoCards() {
         </div>
 
         <div className="mt-6 space-y-10">
-          {VARIANTS.filter((v) => v.round === 8 || (earlier !== 0 && v.round >= earlier)).map((v) => (
+          {VARIANTS.filter((v) => v.round === 9 || v.id === "W1" || (earlier !== 0 && v.round >= earlier)).map((v) => (
             <section key={v.id}>
               <p className="mb-2 text-[14px]">
                 <b>
