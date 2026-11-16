@@ -2081,9 +2081,9 @@ function WeekPicker({ fits, sel, bookedDay, onPick }: { fits: DayFit[]; sel?: Da
 }
 
 /** The chosen day as its stop list, with the idea slotted in where it fits (and anything it pushes back) */
-function DayList({ f, idea, mins, openHours, fixed }: { f: DayFit; idea: Demo; mins: number; openHours?: string; fixed?: string }) {
-  // The day's stops and the free time between them. Nothing here is tappable: the gap it would go in is tinted
-  // and named, and adding stays with the button on the right.
+function DayList({ f, idea, mins, openHours, fixed, open = true }: { f: DayFit; idea: Demo; mins: number; openHours?: string; fixed?: string; open?: boolean }) {
+  // Folded: only the suggested slot (day and time). Open: the rest of the day grows in around it.
+  // Read-only: the day is picked in the week strip, the time on the itinerary.
   const p = placeInDay(f, mins, openHours, fixed);
   const DAY_START = 9 * 60;
   const DAY_END = 21 * 60;
@@ -2091,10 +2091,16 @@ function DayList({ f, idea, mins, openHours, fixed }: { f: DayFit; idea: Demo; m
     const m = Math.round((b - a) / 30) * 30;
     return m >= 60 ? `${m / 60} h` : `${m} min`;
   };
+  const more = (key: string, node: ReactNode) => (
+    <Grow key={key} open={open}>
+      {node}
+    </Grow>
+  );
   const at = f.slot?.kind === "start" ? 0 : f.slot?.kind === "between" ? f.slot.i + 1 : f.stops.length;
+  // The suggestion is a recommendation, so it takes the accent colour (red only when it lands outside opening hours)
   const here = (
-    <li key="here" className={`flex items-start gap-2.5 rounded-lg px-2.5 py-1.5 ${p.outside ? "bg-red-500/8" : "bg-amber-400/15"}`} style={{ boxShadow: `inset 3px 0 0 ${p.outside ? "#ef4444" : "#f59e0b"}` }}>
-      <span className="w-11 shrink-0 text-[11.5px] font-semibold text-amber-800 tabular-nums dark:text-amber-300">{clock(p.start)}</span>
+    <div key="here" className={`flex items-start gap-2.5 rounded-lg px-2.5 py-1.5 ${p.outside ? "bg-red-500/8" : "bg-accent/10"}`} style={{ boxShadow: `inset 3px 0 0 ${p.outside ? "#ef4444" : "var(--accent)"}` }}>
+      <span className={`w-11 shrink-0 text-[11.5px] font-semibold tabular-nums ${p.outside ? "text-red-600" : "text-accent"}`}>{clock(p.start)}</span>
       <span className="min-w-0 text-[12.5px]">
         <span className="font-semibold">{idea.name}</span>
         <span className="text-muted">
@@ -2104,53 +2110,44 @@ function DayList({ f, idea, mins, openHours, fixed }: { f: DayFit; idea: Demo; m
         </span>
         {p.outside && <span className="block text-red-600 dark:text-red-400">Outside opening hours ({openHours})</span>}
       </span>
-    </li>
+    </div>
   );
   const gap = (key: string, a: number, b: number) =>
-    b - a >= 30 && (
-      <li key={key} className="flex items-center gap-2.5 px-2.5 py-0.5 text-[11.5px] text-muted">
+    b - a >= 30 &&
+    more(
+      key,
+      <div className="flex items-center gap-2.5 px-2.5 py-0.5 text-[11.5px] text-muted">
         <span className="w-11 shrink-0 tabular-nums">{clock(a)}</span>
         <span className="h-px flex-1 border-t border-dashed border-line" />
         <span>free · {dur(a, b)}</span>
-      </li>
+      </div>,
     );
-  if (!f.stops.length)
-    return (
-      <ul className="space-y-1">
-        {here}
-        <li className="px-2.5 text-[12px] text-muted">The rest of {f.day} is free</li>
-      </ul>
-    );
+  if (!f.stops.length) return <div>{[here, more("none", <p className="mt-1 px-2.5 text-[12px] text-muted">The rest of {f.day} is free</p>)]}</div>;
   const rows: ReactNode[] = [];
   f.stops.forEach((x, i) => {
     const t = p.times[i];
     const shift = p.nextIndex >= 0 && i >= p.nextIndex ? p.push : 0;
-    // the free time before this stop (or, where the idea goes, the idea instead)
     const prevEnd = i === 0 ? DAY_START : p.times[i - 1] ? p.times[i - 1].end + (p.nextIndex >= 0 && i - 1 >= p.nextIndex ? p.push : 0) : DAY_START;
     if (i === at) rows.push(gap(`gb${i}`, prevEnd, p.start), here);
     else if (t) rows.push(gap(`g${i}`, prevEnd, t.start + shift));
     rows.push(
-      <li key={x.name} className="flex items-start gap-2.5 px-2.5 py-1">
-        <span className="w-11 shrink-0 text-[11.5px] text-muted tabular-nums">
-          {t ? clock(t.start + shift) : ""}
-          {shift > 0 && t && <span className="block text-[10px] line-through decoration-1">{clock(t.start)}</span>}
-        </span>
-        <span className="min-w-0 text-[12.5px] text-fg/85">
-          <span className="mr-1.5 text-muted tabular-nums">{i + 1}</span>
-          {x.name}
-        </span>
-      </li>,
+      more(
+        x.name,
+        <div className="flex items-start gap-2.5 px-2.5 py-1">
+          <span className="w-11 shrink-0 text-[11.5px] text-muted tabular-nums">{t ? clock(t.start + shift) : ""}</span>
+          <span className="min-w-0 text-[12.5px] text-fg/85">
+            <span className="mr-1.5 text-muted tabular-nums">{i + 1}</span>
+            {x.name}
+            {shift > 0 && <span className="text-amber-700 dark:text-amber-300"> · {Math.round(shift / 5) * 5} min later</span>}
+          </span>
+        </div>,
+      ),
     );
   });
   const last = p.times[p.times.length - 1];
   if (at >= f.stops.length) rows.push(gap("gb-end", last ? last.end : DAY_START, p.start), here);
   else if (last) rows.push(gap("gend", last.end + (p.push > 0 ? p.push : 0), DAY_END));
-  return (
-    <div>
-      <ul className="space-y-0.5">{rows}</ul>
-      {p.push > 0 && <p className="mt-1.5 text-[12px] text-amber-700 dark:text-amber-300">Pushes the rest of {f.day} back about {Math.round(p.push / 5) * 5} min</p>}
-    </div>
-  );
+  return <div>{rows}</div>;
 }
 
 /** The chosen day on a clock (8:00–22:00): stops as blocks, the idea as an amber block, its opening hours behind it */
@@ -2180,7 +2177,7 @@ function DayClock({ f, idea, mins, openHours, fixed }: { f: DayFit; idea: Demo; 
           );
         })}
         <div
-          className={`absolute bottom-2 grid h-[18px] place-items-center rounded border border-dashed text-[10px] font-bold ${p.outside ? "border-red-500 bg-red-500/15 text-red-700" : "border-amber-500 bg-amber-400/40 text-amber-800 dark:text-amber-200"}`}
+          className={`absolute bottom-2 grid h-[18px] place-items-center rounded border border-dashed text-[10px] font-bold ${p.outside ? "border-red-500 bg-red-500/15 text-red-700" : "border-accent bg-accent/25 text-accent"}`}
           style={{ left: x(p.start), width: w(p.start, p.end) }}
           title={`${idea.name} · ${clock(p.start)}–${clock(p.end)}`}
         />
@@ -2306,16 +2303,19 @@ function FitCard({ idea, open, toggle, me, setMine, view = "map" }: Props & { vi
     <>
       <WeekPicker fits={fits} sel={sel} bookedDay={bookedDay} onPick={setPick} />
       {/* Day first, then that day's times (open), then the reasons */}
-      {sel && (
+      {sel && view === "list" && (sel.state === "fits" || sel.state === "free") ? (
+        // The suggested slot shows folded; open, the rest of that day grows in around it
+        <div className="pt-2.5">
+          <DayList f={sel} idea={idea} mins={VISIT_MIN[idea.id] ?? 90} openHours={place.hours?.[sel.day]} fixed={sel.day === bookedDay ? (bookedTime ?? undefined) : undefined} open={open} />
+        </div>
+      ) : sel && (
         <Grow open={open}>
           <div className="pt-3">
             {sel.state === "closed" ? (
               <p className="text-[12.5px] text-red-600 dark:text-red-400">Closed that day</p>
             ) : sel.state === "far" || sel.state === "travel" ? (
               <p className="text-[12.5px] text-muted">{sel.state === "far" ? `Too far from ${sel.day}'s stops to slot in` : `${sel.day} is a travel day`}</p>
-            ) : view === "list" ? (
-              <DayList f={sel} idea={idea} mins={VISIT_MIN[idea.id] ?? 90} openHours={place.hours?.[sel.day]} fixed={sel.day === bookedDay ? (bookedTime ?? undefined) : undefined} />
-            ) : (
+            ) : view === "list" ? null : (
               <DayClock f={sel} idea={idea} mins={VISIT_MIN[idea.id] ?? 90} openHours={place.hours?.[sel.day]} fixed={sel.day === bookedDay ? (bookedTime ?? undefined) : undefined} />
             )}
           </div>

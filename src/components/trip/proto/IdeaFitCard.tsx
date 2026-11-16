@@ -47,44 +47,44 @@ const BUFFER = 20; // minutes to get between stops (straight-line; routing comes
 /** Read-only: the chosen day with the idea where it would land. With times set on the day, also the free gaps and
     what it would push later; without, just the order. Nothing here is a control: the day is picked in the week strip,
     the time on the itinerary. */
-function DayPreview({ f, name, mins, fixed }: { f: Fitted; name: string; mins: number; fixed?: string }) {
+function DayPreview({ f, name, mins, fixed, open }: { f: Fitted; name: string; mins: number; fixed?: string; open: boolean }) {
+  // Folded: only the suggested slot shows (day and time, when known). Open: the rest of the day grows in around it.
   const st = f.stops;
   const at = !f.slot ? 0 : f.slot.kind === "start" ? 0 : f.slot.kind === "between" ? f.slot.i + 1 : st.length;
   const timed = st.length > 0 && st.every((x) => x.start);
-  const row = (key: string, time: string, body: ReactNode, note?: string) => (
-    <li key={key} className="flex items-start gap-2.5 px-2.5 py-1">
-      <span className="w-11 shrink-0 text-[11.5px] text-muted tabular-nums">{time}</span>
-      <span className="min-w-0 text-[12.5px] text-fg/85">
-        {body}
-        {note && <span className="text-amber-700 dark:text-amber-300"> · {note}</span>}
-      </span>
-    </li>
+  const more = (key: string, node: ReactNode) => (
+    <Grow key={key} open={open}>
+      {node}
+    </Grow>
   );
+  const row = (key: string, time: string, body: ReactNode, note?: string) =>
+    more(
+      key,
+      <div className="flex items-start gap-2.5 px-2.5 py-1">
+        <span className="w-11 shrink-0 text-[11.5px] text-muted tabular-nums">{time}</span>
+        <span className="min-w-0 text-[12.5px] text-fg/85">
+          {body}
+          {note && <span className="text-amber-700 dark:text-amber-300"> · {note}</span>}
+        </span>
+      </div>,
+    );
+  // The suggestion: the accent colour (a recommendation, not a warning)
   const here = (time: string, until?: string) => (
-    <li key="here" className="flex items-start gap-2.5 rounded-lg bg-amber-400/15 px-2.5 py-1.5" style={{ boxShadow: "inset 3px 0 0 #f59e0b" }}>
-      <span className="w-11 shrink-0 text-[11.5px] font-semibold text-amber-800 tabular-nums dark:text-amber-300">{time}</span>
+    <div key="here" className="flex items-start gap-2.5 rounded-lg bg-accent/10 px-2.5 py-1.5" style={{ boxShadow: "inset 3px 0 0 var(--accent)" }}>
+      <span className="w-11 shrink-0 text-[11.5px] font-semibold text-accent tabular-nums">{time || dayShort(f.d.date)}</span>
       <span className="min-w-0 text-[12.5px]">
         <span className="font-semibold">{name}</span>
         <span className="text-muted"> would go here{until ? ` · until ${until}` : ""}</span>
       </span>
-    </li>
+    </div>
   );
-  if (!st.length)
-    return (
-      <ul className="space-y-0.5">
-        {here(fixed ?? "")}
-        <li className="px-2.5 text-[12px] text-muted">Nothing else planned on {dayShort(f.d.date)} yet</li>
-      </ul>
-    );
+  const note = (key: string, text: string) => more(key, <p className="mt-1 px-2.5 text-[11.5px] text-muted">{text}</p>);
+  if (!st.length) return <div>{[here(fixed ?? ""), note("none", `Nothing else planned on ${dayShort(f.d.date)} yet`)]}</div>;
   if (!timed) {
     const rows: ReactNode[] = st.map((x, i) => row(x.id, "", <><span className="mr-1.5 text-muted tabular-nums">{i + 1}</span>{x.name}</>));
     rows.splice(at, 0, here(fixed ?? ""));
-    return (
-      <div>
-        <ul className="space-y-0.5">{rows}</ul>
-        <p className="mt-1.5 px-2.5 text-[11.5px] text-muted">No times set on {dayShort(f.d.date)} yet: set them on the itinerary</p>
-      </div>
-    );
+    rows.push(note("untimed", `No times set on ${dayShort(f.d.date)} yet: set them on the itinerary`));
+    return <div>{rows}</div>;
   }
   const times = st.map((x) => ({ start: hmOf(x.start!), end: hmOf(x.start!) + (x.mins ?? 60) }));
   const start = fixed ? hmOf(fixed) : at === 0 ? times[0].start - BUFFER - mins : times[at - 1].end + BUFFER;
@@ -102,12 +102,14 @@ function DayPreview({ f, name, mins, fixed }: { f: Fitted; name: string; mins: n
     prevEndAfter = s0 + (times[i].end - times[i].start);
   }
   const gap = (key: string, a: number, b: number) =>
-    b - a >= 30 && (
-      <li key={key} className="flex items-center gap-2.5 px-2.5 py-0.5 text-[11.5px] text-muted">
+    b - a >= 30 &&
+    more(
+      key,
+      <div className="flex items-center gap-2.5 px-2.5 py-0.5 text-[11.5px] text-muted">
         <span className="w-11 shrink-0 tabular-nums">{clockOf(a)}</span>
         <span className="h-px flex-1 border-t border-dashed border-line" />
         <span>free · {Math.round((b - a) / 30) / 2} h</span>
-      </li>
+      </div>,
     );
   const rows: ReactNode[] = [];
   st.forEach((x, i) => {
@@ -118,7 +120,7 @@ function DayPreview({ f, name, mins, fixed }: { f: Fitted; name: string; mins: n
     rows.push(row(x.id, clockOf(times[i].start + shift), <><span className="mr-1.5 text-muted tabular-nums">{i + 1}</span>{x.name}</>, shift ? `${Math.round(shift / 5) * 5} min later` : undefined));
   });
   if (at >= st.length) rows.push(gap("gb-end", times[st.length - 1].end, start), here(clockOf(start), clockOf(end)));
-  return <ul className="space-y-0.5">{rows}</ul>;
+  return <div>{rows}</div>;
 }
 
 /** The group poll: three rows that are both the result and your vote (tap again to clear) */
@@ -530,19 +532,19 @@ export function IdeaFitCard({
               <>
                 {/* The day, then (open) where it would land in that day, then the reasons */}
                 <div className="flex gap-1.5">{fitted.map(cell)}</div>
-                {sel && (
-                  <Grow open={open}>
-                    <div className="pt-3">
-                      {sel.state === "closed" ? (
-                        <p className="text-[12.5px] text-red-600 dark:text-red-400">Closed that day</p>
-                      ) : sel.state === "far" || sel.state === "travel" ? (
-                        <p className="text-[12.5px] text-muted">{sel.state === "far" ? `Too far from ${dayShort(sel.d.date)}'s stops to slot in` : `${dayShort(sel.d.date)} is a travel day`}</p>
-                      ) : (
-                        <DayPreview f={sel} name={it.name} mins={stay ?? 90} fixed={bookedTimeOn(sel)} />
-                      )}
+                {/* The suggested slot shows folded; open, the rest of that day grows in around it */}
+                {sel &&
+                  (sel.state === "fits" || sel.state === "free" ? (
+                    <div className="pt-2.5">
+                      <DayPreview f={sel} name={it.name} mins={stay ?? 90} fixed={bookedTimeOn(sel)} open={open} />
                     </div>
-                  </Grow>
-                )}
+                  ) : (
+                    <Grow open={open}>
+                      <p className={`pt-3 text-[12.5px] ${sel.state === "closed" ? "text-red-600 dark:text-red-400" : "text-muted"}`}>
+                        {sel.state === "closed" ? "Closed that day" : sel.state === "far" ? `Too far from ${dayShort(sel.d.date)}'s stops to slot in` : `${dayShort(sel.d.date)} is a travel day`}
+                      </p>
+                    </Grow>
+                  ))}
                 <div className="mt-2.5 space-y-0.5">{(open ? lines : glance).map(line)}</div>
               </>
             )}
