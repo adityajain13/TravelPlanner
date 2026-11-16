@@ -2517,9 +2517,6 @@ function FitCard({ idea, open, toggle, me, setMine, view = "map" }: Props & { vi
                   <button onClick={press} className="flex min-w-0 flex-1 items-center justify-center gap-1.5 px-3 py-1.5">
                     <span className="truncate">{label}</span>
                   </button>
-                  <span className={`grid place-items-center self-stretch border-l px-2 ${sel && !rough ? "border-white/30" : "border-line"}`}>
-                    <ChevronDown className="size-3.5" />
-                  </span>
                 </span>
               </div>
             </div>
