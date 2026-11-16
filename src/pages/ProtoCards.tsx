@@ -2371,6 +2371,13 @@ function FitCard({ idea, open, toggle, me, setMine, view = "map", strip = "week"
             )}
             {sel.day === bookedDay && <span className="ml-1.5 rounded-full bg-accent/15 px-1.5 py-0.5 align-middle text-[10.5px] font-semibold text-accent">booked</span>}
           </p>
+          {(sel.state === "fits" || sel.state === "free") &&
+            (() => {
+              const h = place.hours?.[sel.day];
+              const v = VISIT_MIN[idea.id];
+              const bits = [h === "Closed" ? "Closed that day" : h ? `Open ${h}` : null, v ? `takes about ${Math.round((v / 60) * 2) / 2} h` : null].filter(Boolean) as string[];
+              return bits.length > 0 && <p className="text-[12px] text-muted">{bits.join(" · ").replace(/^takes/, "Takes")}</p>;
+            })()}
           {/* A bad day is already explained in the header: no slot, and its own reason line isn't repeated */}
           {(sel.state === "fits" || sel.state === "free") && <div className="mt-1.5">{slotOrNote}</div>}
           <div className="mt-2 space-y-0.5">

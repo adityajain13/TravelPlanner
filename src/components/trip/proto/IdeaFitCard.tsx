@@ -377,7 +377,6 @@ export function IdeaFitCard({
   if (booking.kind === "needed") lines.push({ kind: "warn", text: "Book ahead · not booked yet" });
   const closedOther = fitted.filter((f) => f.state === "closed" && f !== sel);
   if (closedOther.length) lines.push({ kind: "out", text: `${closedOther[0].d.fit.blockers[0]?.text ?? "Closed"}: ${closedOther.map((f) => dayShort(f.d.date)).join(", ")}` });
-  const glance = [lines.find((l) => l.kind === "good"), lines.find((l) => l.kind === "out") ?? lines.find((l) => l.kind === "warn")].filter(Boolean) as Line[];
   // The card picks the day only; a booking's time comes along automatically (times are refined on the itinerary)
   const bookedTimeOn = (f: Fitted) => (booked?.date === f.d.date ? booked.time : undefined);
 
@@ -413,29 +412,35 @@ export function IdeaFitCard({
       <span className={l.kind === "good" ? "text-fg/85" : ""}>{l.text}</span>
     </p>
   );
-  // The week: the one day control. Green fits (+km), red closed/far, grey free; ring = the proposed day.
+  // Other days: neutral cells, status as a coloured dot (green fits, red closed/far, amber travel, grey free).
+  // The selected day is a raised outlined chip: "you're looking at this one", whatever its status.
+  const DOT: Record<DayState, string> = { fits: "var(--accent)", closed: "#dc2626", far: "#dc2626", travel: "#d97706", free: "#9aa19d" };
   const cell = (f: Fitted) => {
     const on = f === sel;
     const [wd, dn] = dayShort(f.d.date).split(" ");
-    const tone = f.state === "fits" ? "bg-accent/14 text-accent" : f.state === "closed" || f.state === "far" ? "bg-red-500/10 text-red-600 dark:text-red-400" : f.state === "travel" ? "bg-amber-400/15 text-amber-700 dark:text-amber-300" : "bg-surface-2 text-muted";
     const sub = booked?.date === f.d.date ? "booked" : f.state === "fits" ? (f.slot!.detour < 1 ? "+<1 km" : `+${Math.round(f.slot!.detour)} km`) : f.state;
     return (
       <button
         key={f.d.key}
         onClick={() => setPick(f.d.key)}
-        title={`${dayShort(f.d.date)} · ${f.d.title}`}
+        title={`${dayShort(f.d.date)} · ${f.d.title} · ${sub}`}
         aria-pressed={on}
-        className={`flex min-w-0 flex-1 flex-col items-center rounded-lg px-0.5 py-1.5 leading-tight transition ${tone} ${on ? "ring-2 ring-inset ring-accent" : "hover:brightness-95"}`}
+        className={`flex min-w-0 flex-1 flex-col items-center rounded-md py-1 leading-tight transition ${on ? "bg-surface text-fg shadow-sm ring-[1.5px] ring-fg/55 ring-inset" : "bg-surface-2/70 text-fg/70 hover:bg-surface-2"}`}
       >
-        <span className="text-[10px] font-semibold uppercase opacity-80">{wd}</span>
-        <span className={`text-[13px] font-semibold ${f.state === "closed" ? "line-through" : ""}`}>{dn}</span>
-        <span className="text-[9.5px] opacity-85">{sub}</span>
+        <span className={`text-[10px] font-semibold uppercase ${on ? "text-fg/80" : "text-muted"}`}>{wd}</span>
+        <span className={`text-[12px] font-semibold ${f.state === "closed" ? "line-through" : ""}`}>{dn}</span>
+        <span className="mt-0.5 size-1.5 rounded-full" style={{ background: DOT[f.state] }} />
       </button>
     );
   };
+  const dayFacts = (f: Fitted) => {
+    const h = hoursOn(f.d.date);
+    const bits = [h === null ? "Closed that day" : h ? `Open ${h}` : null, visit && `takes ${visit}`].filter(Boolean) as string[];
+    return bits.join(" · ").replace(/^takes/, "Takes");
+  };
 
   const shownTime = sel ? bookedTimeOn(sel) : undefined;
-  const label = rough ? "Find a place" : sel ? `Add to ${dayShort(sel.d.date)}${shownTime ? `, ${shownTime}` : ""}${group && sittingOut.length ? ` · ${goingN} going` : ""}` : "Add to a day";
+  const label = rough ? "Find a place" : sel?.state === "closed" ? "Closed that day" : sel ? `Add to ${dayShort(sel.d.date)}${shownTime ? `, ${shownTime}` : ""}${group && sittingOut.length ? ` · ${goingN} going` : ""}` : "Add to a day";
   const cost = place.cost;
   const rating = place.rating;
 
@@ -530,22 +535,41 @@ export function IdeaFitCard({
               <p className="text-[12.5px] text-muted">No days planned yet</p>
             ) : (
               <>
-                {/* The day, then (open) where it would land in that day, then the reasons */}
-                <div className="flex gap-1.5">{fitted.map(cell)}</div>
-                {/* The suggested slot shows folded; open, the rest of that day grows in around it */}
-                {sel &&
-                  (sel.state === "fits" || sel.state === "free" ? (
-                    <div className="pt-2.5">
-                      <DayPreview f={sel} name={it.name} mins={stay ?? 90} fixed={bookedTimeOn(sel)} open={open} />
-                    </div>
-                  ) : (
-                    <Grow open={open}>
-                      <p className={`pt-3 text-[12.5px] ${sel.state === "closed" ? "text-red-600 dark:text-red-400" : "text-muted"}`}>
-                        {sel.state === "closed" ? "Closed that day" : sel.state === "far" ? `Too far from ${dayShort(sel.d.date)}'s stops to slot in` : `${dayShort(sel.d.date)} is a travel day`}
-                      </p>
-                    </Grow>
-                  ))}
-                <div className="mt-2.5 space-y-0.5">{(open ? lines : glance).map(line)}</div>
+                {/* The day leads; its slot; the reasons; then the other days to pick from */}
+                {sel && (
+                  <>
+                    <p className="text-[15px] leading-snug">
+                      <b className="font-semibold">{dayShort(sel.d.date)}</b>{" "}
+                      {sel.state === "closed" || sel.state === "far" || sel.state === "travel" ? (
+                        <span className={sel.state === "travel" ? "text-amber-700 dark:text-amber-300" : "text-red-600 dark:text-red-400"}>
+                          · {sel.state === "closed" ? "Closed that day" : sel.state === "far" ? "Too far from this day's stops" : "A travel day"}
+                        </span>
+                      ) : (
+                        <span className="text-muted">· {sel.d.title}</span>
+                      )}
+                      {booked?.date === sel.d.date && <span className="ml-1.5 rounded-full bg-accent/15 px-1.5 py-0.5 align-middle text-[10.5px] font-semibold text-accent">booked</span>}
+                    </p>
+                    {(sel.state === "fits" || sel.state === "free") && dayFacts(sel) && <p className="text-[12px] text-muted">{dayFacts(sel)}</p>}
+                    {(sel.state === "fits" || sel.state === "free") && (
+                      <div className="pt-2">
+                        <DayPreview f={sel} name={it.name} mins={stay ?? 90} fixed={bookedTimeOn(sel)} open={open} />
+                      </div>
+                    )}
+                  </>
+                )}
+                <div className="mt-2 space-y-0.5">
+                  {(() => {
+                    // A bad day is already explained in the header, so its own reason line isn't repeated
+                    const bad = !!sel && !(sel.state === "fits" || sel.state === "free");
+                    const ls = bad ? lines.slice(1) : lines;
+                    const gl = [ls.find((l) => l.kind === "good"), ls.find((l) => l.kind === "out") ?? ls.find((l) => l.kind === "warn")].filter(Boolean) as Line[];
+                    return (open ? ls : gl).map(line);
+                  })()}
+                </div>
+                <div className="mt-3">
+                  <p className="mb-1 text-[10.5px] font-semibold tracking-wider text-muted uppercase">Other days</p>
+                  <div className="flex gap-1">{fitted.map(cell)}</div>
+                </div>
               </>
             )}
           </div>
@@ -630,21 +654,7 @@ export function IdeaFitCard({
               <Poll answers={answers} me={me} open={open} readOnly={readOnly} onAnswer={onAnswer} />
             </div>
             <div className="flex min-w-0 flex-col @min-[600px]:mt-auto @min-[600px]:block @min-[600px]:pt-6">
-              <Cap>Proposed day</Cap>
-              {sel && !rough ? (
-                <>
-                  <p className="truncate text-[13px]">
-                    <b>{dayShort(sel.d.date)}</b> <span className="text-muted">· {sel.d.title}</span>
-                  </p>
-                  {(() => {
-                    const h = hoursOn(sel.d.date);
-                    const bits = [h === null ? "Closed that day" : h ? `Open ${h}` : null, visit && `takes ${visit}`].filter(Boolean) as string[];
-                    return bits.length > 0 && <p className="text-[12px] text-muted">{bits.join(" · ").replace(/^takes/, "Takes")}</p>;
-                  })()}
-                </>
-              ) : (
-                <p className="text-[12.5px] text-muted">{rough ? "Needs a place first" : "Pick a day"}</p>
-              )}
+              {rough && <p className="text-[12.5px] text-muted">Needs a place first</p>}
               {drift.length > 0 && (
                 <p className="mt-2 rounded-lg bg-amber-400/15 px-2 py-1.5 text-[12px] text-amber-800 dark:text-amber-300">
                   {names(drift, me)} changed {drift.length === 1 && drift[0] === me ? "your" : "their"} {drift.length > 1 ? "answers" : "answer"} since this was added. Check who's going on {added!.day}.
