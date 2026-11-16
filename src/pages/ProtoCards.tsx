@@ -1031,7 +1031,8 @@ function Detail({ idea, open, toggle, me, setMine, long }: Props & { long: "stic
 
         {/* Right: the verdict, steady */}
         <div className="relative min-w-0 rounded-tr-2xl bg-surface-2/60">
-          <div className={`flex flex-col px-4 py-3.5 ${long === "sticky" ? "sticky top-4" : ""}`}>
+          {/* Group sits at the top, When + the button sit on the bottom; the gap between them flexes */}
+          <div className="flex h-full flex-col px-4 py-3.5">
             <span className="absolute top-2 right-2">
               <More />
             </span>
@@ -1039,7 +1040,7 @@ function Detail({ idea, open, toggle, me, setMine, long }: Props & { long: "stic
               <GroupBlock idea={idea} open={open} me={me} setMine={setMine} />
             </div>
 
-            <div className="mt-6">
+            <div className="mt-auto pt-6">
               <Cap>When</Cap>
               {idea.best ? (
                 <>
@@ -1075,7 +1076,6 @@ function Detail({ idea, open, toggle, me, setMine, long }: Props & { long: "stic
                 </div>
               )}
               {open && idea.best && <p className="mt-1 text-[12px] text-muted">Also fits: {idea.days.filter((d) => d.state === "good").map((d) => d.d).join(", ") || "no other day"}</p>}
-            </div>
 
             <div className="mt-5">
               <span className={`flex w-full items-center overflow-hidden rounded-full text-[12.5px] font-semibold ${idea.best ? "bg-accent text-on-accent" : "border border-line bg-surface text-fg"}`}>
@@ -1084,6 +1084,7 @@ function Detail({ idea, open, toggle, me, setMine, long }: Props & { long: "stic
                   <ChevronDown className="size-3.5" />
                 </span>
               </span>
+            </div>
             </div>
           </div>
         </div>
@@ -1094,7 +1095,7 @@ function Detail({ idea, open, toggle, me, setMine, long }: Props & { long: "stic
 }
 
 const VARIANTS: { id: string; name: string; note: string; wideOpen?: boolean; round: 1 | 2 | 3 | 4; C: (p: Props) => ReactNode }[] = [
-  { id: "E1", round: 4, name: "Details | verdict · sticky side", note: "left holds all the details and grows; the right sticks while the page scrolls", C: (p) => <Detail {...p} long="sticky" /> },
+  { id: "E1", round: 4, name: "Details | verdict · growing card", note: "left holds all the details and grows; right: group at the top, when + button at the bottom", C: (p) => <Detail {...p} long="sticky" /> },
   { id: "E2", round: 4, name: "Details | verdict · scrolling details", note: "same, but an expanded card is capped and the left scrolls inside it", C: (p) => <Detail {...p} long="scroll" /> },
   { id: "D1", round: 3, name: "Idea | verdict · booking in the button", note: "left: what and why; tinted right: group → when → blocker → button. Booked shows on the button itself", C: (p) => <Verdict {...p} merge /> },
   { id: "D2", round: 3, name: "Idea | verdict · booking line", note: "same split; booking is one line above the button", C: (p) => <Verdict {...p} merge={false} /> },
