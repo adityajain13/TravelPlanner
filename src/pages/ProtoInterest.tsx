@@ -571,8 +571,8 @@ function KnobBand2(props: VariantProps) {
 }
 
 /** One person's row in the expanded view: the same track and knob as the summary. Yours is clickable at the three stops. */
-export function PersonTrack({ a, editable, onSet }: { a: Answer; editable: boolean; onSet: (a: Answer) => void }) {
-  const W = 132;
+export function PersonTrack({ a, editable, onSet, w = 132 }: { a: Answer; editable: boolean; onSet: (a: Answer) => void; w?: number }) {
+  const W = w;
   const x = (v: number) => ((v + 1) / 2) * W;
   return (
     <SoftTrack w={W} faint={a === null} chosen={a}>

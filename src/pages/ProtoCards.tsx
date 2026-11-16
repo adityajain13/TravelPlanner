@@ -849,52 +849,83 @@ function Mention({ text }: { text: string }) {
   );
 }
 
-/** The group, sized to the group: solo is just your own answer; up to 5 people one row each; 6+ in buckets */
+/** Grows in place: animates height (grid rows 0fr → 1fr) and fades, so opening only ever adds below what's there */
+function Grow({ open, children, className = "" }: { open: boolean; children: ReactNode; className?: string }) {
+  return (
+    <div className={`grid transition-[grid-template-rows,opacity] duration-300 ease-out ${open ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0"}`} aria-hidden={!open}>
+      <div className={`min-h-0 overflow-hidden ${className}`}>{children}</div>
+    </div>
+  );
+}
+
+/* Group rows share one grid: a fixed lead (avatar(s) + name) and the track at the same x and width, in every mode */
+const LEAD = 64;
+const TW = 104;
+function TrackRow({ lead, children }: { lead: ReactNode; children: ReactNode }) {
+  return (
+    <div className="flex h-6 items-center text-[12.5px]">
+      <span className="flex shrink-0 items-center gap-1.5" style={{ width: LEAD }}>
+        {lead}
+      </span>
+      {children}
+    </div>
+  );
+}
+function SummaryTrack({ answers }: { answers: Answers }) {
+  const a = answeredOf(answers);
+  const x = (v: number) => ((v + 1) / 2) * TW;
+  if (!a.length) return <SoftTrack faint w={TW} />;
+  const lo = Math.min(...a);
+  const hi = Math.max(...a);
+  const mean = a.reduce((p, q) => p + q, 0) / a.length;
+  return (
+    <SoftTrack faint w={TW}>
+      {hi > lo && (
+        <span
+          className="absolute top-1/2 h-3 -translate-y-1/2 rounded-full"
+          style={{ left: x(lo) - 6, width: x(hi) - x(lo) + 12, background: `linear-gradient(90deg,${stopsBetween(lo, hi, "66")})`, maskImage: "linear-gradient(90deg,transparent,#000 22%,#000 78%,transparent)" }}
+        />
+      )}
+      <Knob value={mean} x={x(mean)} />
+    </SoftTrack>
+  );
+}
+
+/** The group, sized to the group. The summary row never moves: folded it's all you see; open, the detail grows under it.
+    Solo: your own track only. 2–5: a row per person. 6+: your row, then everyone else bucketed by answer. */
 function GroupBlock({ idea, open, me, setMine }: { idea: Demo; open: boolean; me: string; setMine: (a: Answer) => void }) {
   const people = Object.keys(idea.answers);
   const n = people.length;
+  const others = people.filter((p) => p !== me);
+  const name = (p: string) => (
+    <>
+      <Ava name={p} size={18} />
+      <span className={`truncate ${p === me ? "font-semibold" : ""}`}>{p === me ? "You" : p}</span>
+    </>
+  );
+  const mine = (
+    <TrackRow lead={name(me)}>
+      <PersonTrack a={idea.answers[me]} editable onSet={setMine} w={TW} />
+    </TrackRow>
+  );
   if (n === 1)
     return (
       <div>
         <Cap>Your take</Cap>
-        <div className="-ml-2">
-          <PersonTrackW a={idea.answers[me]} editable onSet={setMine} w={150} />
-        </div>
-        <p className="mt-0.5 text-[11.5px] text-muted">{idea.answers[me] === null ? "Must do, happy either way, or skip?" : LABEL[key(idea.answers[me])]}</p>
+        {mine}
+        <p className="mt-0.5 text-[11.5px] text-muted" style={{ paddingLeft: LEAD }}>
+          {idea.answers[me] === null ? "Must do, happy either way, or skip?" : LABEL[key(idea.answers[me])]}
+        </p>
       </div>
     );
-  const others = people.filter((p) => p !== me);
-  const stack = (names: string[], max = 6) => (
+  const stack = (names: string[], max: number) => (
     <span className="flex items-center -space-x-1.5">
       {names.slice(0, max).map((p) => (
         <Ava key={p} name={p} size={18} />
       ))}
-      {names.length > max && <span className="pl-2.5 text-[11px] text-muted">+{names.length - max}</span>}
+      {names.length > max && <span className="pl-2 text-[11px] text-muted">+{names.length - max}</span>}
     </span>
   );
-  const folded = (
-    <>
-      <span className="-ml-2 block">
-        <Band answers={idea.answers} w={150} />
-      </span>
-      <p className="mt-0.5 truncate text-[11.5px] text-muted">{groupSummary(idea.answers)}</p>
-    </>
-  );
-  if (!open)
-    return (
-      <div>
-        <Cap>Group · {n}</Cap>
-        {folded}
-      </div>
-    );
-  if (n <= 5)
-    return (
-      <div>
-        <Cap>Group · {n}</Cap>
-        <People idea={idea} me={me} setMine={setMine} w={96} compact />
-      </div>
-    );
-  // 6+: the summary track, your own row, then everyone else bucketed by answer
   const buckets: [string, Answer][] = [
     ["Must do", 1],
     ["Happy to come", 0],
@@ -904,27 +935,42 @@ function GroupBlock({ idea, open, me, setMine }: { idea: Demo; open: boolean; me
   return (
     <div>
       <Cap>Group · {n}</Cap>
-      {folded}
-      <div className="mt-2.5 flex items-center gap-2 text-[12.5px]">
-        <Ava name={me} size={18} />
-        <span className="w-9 font-semibold">You</span>
-        <PersonTrackW a={idea.answers[me]} editable onSet={setMine} w={96} />
-      </div>
-      <ul className="mt-2 space-y-1.5">
-        {buckets.map(([label, a]) => {
-          const who = others.filter((p) => idea.answers[p] === a);
-          return (
-            who.length > 0 && (
-              <li key={label} className="flex items-center justify-between gap-2 text-[12px]">
-                <span className="text-muted">
-                  {label} <span className="text-fg/70">{who.length}</span>
-                </span>
-                <span title={who.join(", ")}>{stack(who, 5)}</span>
-              </li>
-            )
-          );
-        })}
-      </ul>
+      <TrackRow lead={stack(people, n <= 3 ? 3 : 2)}>
+        <SummaryTrack answers={idea.answers} />
+      </TrackRow>
+      <p className="truncate text-[11.5px] text-muted" style={{ paddingLeft: LEAD }}>
+        {groupSummary(idea.answers)}
+      </p>
+      <Grow open={open}>
+        <div className="mt-2.5 space-y-1 border-t border-line/70 pt-2.5">
+          {n <= 5
+            ? [me, ...others].map((p) => (
+                <TrackRow key={p} lead={name(p)}>
+                  <PersonTrack a={idea.answers[p]} editable={p === me} onSet={setMine} w={TW} />
+                </TrackRow>
+              ))
+            : (
+              <>
+                {mine}
+                <ul className="space-y-1.5 pt-1">
+                  {buckets.map(([label, a]) => {
+                    const who = others.filter((p) => idea.answers[p] === a);
+                    return (
+                      who.length > 0 && (
+                        <li key={label} className="flex items-center justify-between gap-2 text-[12px]">
+                          <span className="text-muted">
+                            {label} <span className="text-fg/70">{who.length}</span>
+                          </span>
+                          <span title={who.join(", ")}>{stack(who, 5)}</span>
+                        </li>
+                      )
+                    );
+                  })}
+                </ul>
+              </>
+            )}
+        </div>
+      </Grow>
     </div>
   );
 }
@@ -938,23 +984,35 @@ function Detail({ idea, open, toggle, me, setMine, long }: Props & { long: "stic
   const booked = idea.booking?.kind === "booked" ? idea.booking : null;
   const time = booked?.text.split(", ")[1];
   const label = idea.best ? `Add to ${idea.best.day}${time ? `, ${time}` : ""}` : idea.where === "Needs a place" ? "Find a place" : "Add to a day";
-  const reason = idea.good.filter((g) => !g.startsWith("Booked"))[0];
+  const reasons = idea.good.filter((g) => !g.startsWith("Booked"));
   const blockers = [
     ...(idea.booking?.kind === "needed" ? [{ out: false, text: "Book ahead · not booked yet" }] : []),
     ...idea.warn.map((t) => ({ out: false, text: t })),
     ...(idea.out ? [{ out: true, text: idea.out }] : []),
   ];
-  const shown = open ? blockers : blockers.slice(0, 1);
-  const leftCap = long === "scroll" && open ? "max-h-[340px] overflow-y-auto" : "";
+  // Folded shows the first reason and the first blocker; open adds the rest under them, in the same format
+  const lines = [...reasons.map((t) => ({ kind: "good" as const, text: t })), ...blockers.map((b) => ({ kind: b.out ? ("out" as const) : ("warn" as const), text: b.text }))];
+  const firstGood = lines.find((l) => l.kind === "good");
+  const firstBad = lines.find((l) => l.kind !== "good");
+  const glance = [firstGood, firstBad].filter(Boolean) as typeof lines;
+  const rest = lines.filter((l) => !glance.includes(l));
+  const leftCap = long === "scroll" && open ? "max-h-[360px] overflow-y-auto" : "";
+  const SECTION = "pt-6"; // the one gap between sections, on both sides
 
-  const comment = (c: Comment) => (
+  const vline = (l: (typeof lines)[number]) => (
+    <p key={l.text} className={`flex items-start gap-1.5 text-[12px] ${l.kind === "good" ? "text-accent" : l.kind === "out" ? "text-red-600 dark:text-red-400" : "text-amber-700 dark:text-amber-300"}`}>
+      {l.kind === "good" ? <Check className="mt-px size-3.5 shrink-0" /> : l.kind === "out" ? <X className="mt-px size-3.5 shrink-0" /> : <CircleAlert className="mt-px size-3.5 shrink-0" />}
+      <span className={l.kind === "good" ? "text-fg/85" : ""}>{l.text}</span>
+    </p>
+  );
+  const comment = (c: Comment, clamp: boolean) => (
     <li key={c.by + c.when} className="flex gap-2">
       <Ava name={c.by} size={20} />
       <div className="min-w-0 text-[13px] leading-snug">
         <p className="text-[12px]">
           <b className="font-semibold">{c.by === me ? "You" : c.by}</b> <span className="text-muted">· {c.when}</span>
         </p>
-        <p className="text-fg/85">
+        <p className={`text-fg/85 ${clamp ? "line-clamp-2" : ""}`}>
           <Mention text={c.text} />
         </p>
       </div>
@@ -962,129 +1020,103 @@ function Detail({ idea, open, toggle, me, setMine, long }: Props & { long: "stic
   );
 
   return (
-    // No overflow-hidden here, so the right side can stick while the page scrolls
     <div className={`rounded-2xl border bg-surface ${answeredOf(idea.answers).includes(1) ? "border-amber-400/60" : "border-line"}`}>
       <div className="grid" style={{ gridTemplateColumns: "minmax(0,1fr) 252px" }}>
-        {/* Left: the idea, all of its details */}
-        <div className={`min-w-0 space-y-4 px-4 py-3.5 ${leftCap}`}>
+        {/* Left: the idea, all of its details. Each section keeps its folded lines and grows under them. */}
+        <div className={`min-w-0 px-4 pt-3.5 pb-4 ${leftCap}`}>
           <div>
             <Title idea={idea} size={16.5} badge={false} />
-            {idea.facts.length > 0 ? (
-              <p className="mt-1.5 text-[12.5px] text-fg/80">{idea.facts.join(" · ")}</p>
-            ) : (
-              <p className="mt-1.5 text-[12.5px] text-muted">Pick a place to see its details</p>
-            )}
-            {open && idea.address && (
-              <>
-                <p className="mt-0.5 text-[12.5px] text-muted">{idea.address}</p>
-                <p className="mt-1 flex gap-3 text-[12.5px] text-accent">
-                  <span className="flex items-center gap-1">
-                    <MapIcon className="size-3.5" /> Map
-                  </span>
-                  <span className="flex items-center gap-1">
-                    <ExternalLink className="size-3.5" /> Google Maps
-                  </span>
-                </p>
-              </>
-            )}
+            <div className="mt-3">
+              <Cap>About the place</Cap>
+              {idea.facts.length > 0 ? <p className="text-[12.5px] text-fg/80">{idea.facts.join(" · ")}</p> : <p className="text-[12.5px] text-muted">Pick a place to see its details</p>}
+              {idea.address && (
+                <Grow open={open}>
+                  <p className="mt-0.5 text-[12.5px] text-muted">{idea.address}</p>
+                  <p className="mt-1 flex gap-3 text-[12.5px] text-accent">
+                    <span className="flex items-center gap-1">
+                      <MapIcon className="size-3.5" /> Map
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <ExternalLink className="size-3.5" /> Google Maps
+                    </span>
+                  </p>
+                </Grow>
+              )}
+            </div>
           </div>
 
-          {/* Comments: folded shows the first, expanded the thread */}
-          {open ? (
-            <div>
+          {comments.length > 0 && (
+            <div className={SECTION}>
               <Cap>{solo ? "Notes" : `Comments · ${comments.length}`}</Cap>
-              <ul className="space-y-2.5">{comments.map(comment)}</ul>
-              <p className="mt-2.5 rounded-lg border border-line px-3 py-1.5 text-[12.5px] text-muted">{solo ? "Add a note" : "Add a comment · @ to mention"}</p>
+              <ul className="space-y-2.5">{comment(comments[0], !open)}</ul>
+              {comments.length > 1 && (
+                <Grow open={!open}>
+                  <p className="mt-1 pl-7 text-[12px] text-muted">
+                    +{comments.length - 1} more {comments.length === 2 ? "comment" : "comments"}
+                  </p>
+                </Grow>
+              )}
+              <Grow open={open}>
+                <ul className="space-y-2.5 pt-2.5">{comments.slice(1).map((c) => comment(c, false))}</ul>
+                <p className="mt-2.5 rounded-lg border border-line px-3 py-1.5 text-[12.5px] text-muted">{solo ? "Add a note" : "Add a comment · @ to mention"}</p>
+              </Grow>
             </div>
-          ) : (
-            comments[0] && (
-              <div>
-                <p className="line-clamp-2 text-[13px] leading-snug text-fg/85">
-                  <b className="font-semibold">{comments[0].by === me ? "You" : comments[0].by}:</b> <Mention text={comments[0].text} />
-                </p>
-                {comments.length > 1 && <p className="mt-0.5 text-[12px] text-muted">+{comments.length - 1} more {comments.length === 2 ? "comment" : "comments"}</p>}
-              </div>
-            )
           )}
 
-          {/* Bookings matched from the trip's forwarded emails */}
-          {open && (bookings.length > 0 || idea.booking?.kind === "needed") && (
-            <div>
-              <Cap>Bookings</Cap>
-              {bookings.map((bk) => (
-                <div key={bk.title} className="flex items-start gap-2.5 rounded-xl border border-line px-3 py-2">
-                  <Ticket className="mt-0.5 size-4 shrink-0 text-accent" />
-                  <div className="min-w-0 text-[12.5px]">
-                    <p className="font-semibold">{bk.title}</p>
-                    <p className="text-fg/80">
-                      {bk.when}
-                      {bk.conf && <span className="text-muted"> · #{bk.conf}</span>}
-                    </p>
-                    <p className="text-[11.5px] text-muted">{bk.source}</p>
+          {(bookings.length > 0 || idea.booking?.kind === "needed") && (
+            <Grow open={open}>
+              <div className={SECTION}>
+                <Cap>Bookings</Cap>
+                {bookings.map((bk) => (
+                  <div key={bk.title} className="flex items-start gap-2.5 rounded-xl border border-line px-3 py-2">
+                    <Ticket className="mt-0.5 size-4 shrink-0 text-accent" />
+                    <div className="min-w-0 text-[12.5px]">
+                      <p className="font-semibold">{bk.title}</p>
+                      <p className="text-fg/80">
+                        {bk.when}
+                        {bk.conf && <span className="text-muted"> · #{bk.conf}</span>}
+                      </p>
+                      <p className="text-[11.5px] text-muted">{bk.source}</p>
+                    </div>
                   </div>
-                </div>
-              ))}
-              {bookings.length === 0 && <p className="rounded-xl border border-dashed border-line px-3 py-2 text-[12.5px] text-muted">Nothing booked yet. Forward the confirmation email and it shows up here.</p>}
-            </div>
+                ))}
+                {bookings.length === 0 && <p className="rounded-xl border border-dashed border-line px-3 py-2 text-[12.5px] text-muted">Nothing booked yet. Forward the confirmation email and it shows up here.</p>}
+              </div>
+            </Grow>
           )}
         </div>
 
-        {/* Right: the verdict, steady */}
+        {/* Right: Group at the top, When + the button at the bottom */}
         <div className="relative min-w-0 rounded-tr-2xl bg-surface-2/60">
-          {/* Group sits at the top, When + the button sit on the bottom; the gap between them flexes */}
-          <div className="flex h-full flex-col px-4 py-3.5">
+          <div className="flex h-full flex-col px-4 pt-3.5 pb-4">
             <span className="absolute top-2 right-2">
               <More />
             </span>
-            <div className="pr-6">
-              <GroupBlock idea={idea} open={open} me={me} setMine={setMine} />
-            </div>
+            <GroupBlock idea={idea} open={open} me={me} setMine={setMine} />
 
-            <div className="mt-auto pt-6">
+            <div className={`mt-auto ${SECTION}`}>
               <Cap>When</Cap>
               {idea.best ? (
-                <>
-                  <p className="text-[13px]">
-                    <b>{idea.best.day}</b>
-                    <span className="text-muted"> · {idea.best.title}</span>
-                  </p>
-                  {reason && !open && <p className="truncate text-[12px] text-muted">{reason}</p>}
-                  {open && (
-                    <ul className="mt-1 space-y-0.5 text-[12px]">
-                      {idea.good
-                        .filter((g) => !g.startsWith("Booked"))
-                        .map((g) => (
-                          <li key={g} className="flex items-start gap-1.5 text-accent">
-                            <Check className="mt-px size-3.5 shrink-0" />
-                            <span className="text-fg/85">{g}</span>
-                          </li>
-                        ))}
-                    </ul>
-                  )}
-                </>
+                <p className="text-[13px]">
+                  <b>{idea.best.day}</b>
+                  <span className="text-muted"> · {idea.best.title}</span>
+                </p>
               ) : (
                 <p className="text-[12.5px] text-muted">{idea.where === "Needs a place" ? "Needs a place first" : "No day stands out yet"}</p>
               )}
-              {shown.length > 0 && (
-                <div className="mt-1 space-y-0.5">
-                  {shown.map((x) => (
-                    <p key={x.text} className={`flex items-start gap-1.5 text-[12px] ${x.out ? "text-red-600 dark:text-red-400" : "text-amber-700 dark:text-amber-300"}`}>
-                      {x.out ? <X className="mt-px size-3.5 shrink-0" /> : <CircleAlert className="mt-px size-3.5 shrink-0" />}
-                      <span>{x.text}</span>
-                    </p>
-                  ))}
-                </div>
-              )}
-              {open && idea.best && <p className="mt-1 text-[12px] text-muted">Also fits: {idea.days.filter((d) => d.state === "good").map((d) => d.d).join(", ") || "no other day"}</p>}
-
-            <div className="mt-5">
-              <span className={`flex w-full items-center overflow-hidden rounded-full text-[12.5px] font-semibold ${idea.best ? "bg-accent text-on-accent" : "border border-line bg-surface text-fg"}`}>
-                <span className="flex-1 px-3 py-1.5 text-center">{label}</span>
-                <span className={`self-stretch border-l px-2 ${idea.best ? "border-white/30" : "border-line"} grid place-items-center`}>
-                  <ChevronDown className="size-3.5" />
+              <div className="mt-1 space-y-0.5">{glance.map(vline)}</div>
+              <Grow open={open}>
+                <div className="space-y-0.5 pt-0.5">{rest.map(vline)}</div>
+                {idea.best && <p className="mt-1 text-[12px] text-muted">Also fits: {idea.days.filter((d) => d.state === "good").map((d) => d.d).join(", ") || "no other day"}</p>}
+              </Grow>
+              <div className="mt-4">
+                <span className={`flex w-full items-center overflow-hidden rounded-full text-[12.5px] font-semibold ${idea.best ? "bg-accent text-on-accent" : "border border-line bg-surface text-fg"}`}>
+                  <span className="flex-1 px-3 py-1.5 text-center">{label}</span>
+                  <span className={`self-stretch border-l px-2 ${idea.best ? "border-white/30" : "border-line"} grid place-items-center`}>
+                    <ChevronDown className="size-3.5" />
+                  </span>
                 </span>
-              </span>
-            </div>
+              </div>
             </div>
           </div>
         </div>
