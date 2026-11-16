@@ -31,7 +31,10 @@ export function groupOf(it: Item): Group {
 }
 export const hasOwnGroup = (it: Item) => !!(it as Item & { groupOverride?: Group }).groupOverride;
 /** The app's own guess, ignoring any category the user picked */
+/** Words in a place's own name that are surer than its map category (a hot spring tagged as a restaurant is still a hot spring) */
+const NAME_FIRST: [Group, RegExp][] = [["experiences", /onsen|yuryo|hot spring|ryokan|spa\b/i]];
 export function autoGroupOf(it: Item): Group {
+  for (const [g, re] of NAME_FIRST) if (re.test(it.name)) return g;
   const text = `${it.category ?? ""} ${it.name}`;
   for (const [g, re] of RULES) if (re.test(text)) return g;
   return "other";

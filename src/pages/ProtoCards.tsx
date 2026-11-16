@@ -2499,7 +2499,12 @@ function FitCard({ idea, open, toggle, me, setMine, view = "map" }: Props & { vi
                   <p className="text-[13px]">
                     <b>{sel.day}</b> <span className="text-muted">· {DAY_TITLE[sel.day]}</span>
                   </p>
-                  {place.hours?.[sel.day] && <p className="text-[12px] text-muted">{place.hours[sel.day] === "Closed" ? "Closed that day" : `Open ${place.hours[sel.day]}`}</p>}
+                  {(() => {
+                    const h = place.hours?.[sel.day];
+                    const v = VISIT_MIN[idea.id];
+                    const bits = [h === "Closed" ? "Closed that day" : h ? `Open ${h}` : null, v ? `takes about ${Math.round((v / 60) * 2) / 2} h` : null].filter(Boolean) as string[];
+                    return bits.length > 0 && <p className="text-[12px] text-muted">{bits.join(" · ").replace(/^takes/, "Takes")}</p>;
+                  })()}
                 </>
               ) : (
                 <p className="text-[12.5px] text-muted">{rough ? "Needs a place first" : "Pick a day"}</p>

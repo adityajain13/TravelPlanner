@@ -124,6 +124,7 @@ export function IdeaCard({
         onAnswer={onAnswer}
         onWhy={onWhy}
         onRemove={onRemove}
+        onGroup={onGroup}
         onDoneWhy={onDoneWhy}
       />
     );

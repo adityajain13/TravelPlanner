@@ -15,6 +15,7 @@ import { formatChip } from "../DayChips";
 import { CaptureBox, type Existing } from "./CaptureBox";
 import { Avatar, MentionInput } from "./MentionInput";
 import { placesIn } from "./kinds";
+import { isTravelDay } from "../../../lib/protoSlot";
 import type { Idea } from "./IdeasShelf";
 
 type Sort = "suggested" | "area" | "fit" | "wanted" | "newest";
@@ -112,7 +113,11 @@ export function IdeasHome({
   const placeIdeas = open.filter((i) => !i.rough);
   const planned = ideas.filter((i) => i.days.length);
   const dayFits = (i: Idea): DayFit[] =>
-    days.map((d, n) => ({ key: d.key, date: d.date!, title: subtitles?.[d.key] || (placesIn(d).length ? placesIn(d).map((x) => x.name).slice(0, 2).join(" · ") : `Day ${n + 1} · nothing planned`), fit: fitFor(i.item, { date: d.date!, items: d.items }), stops: placesIn(d).filter((x) => x.lat != null && x.lng != null).map((x) => ({ id: x.id, name: x.name, at: [x.lat!, x.lng!] as [number, number], start: x.startTime, mins: x.stay })) }));
+    days.map((d, n) => ({ key: d.key, date: d.date!, title: subtitles?.[d.key] || (placesIn(d).length ? placesIn(d).map((x) => x.name).slice(0, 2).join(" · ") : `Day ${n + 1} · nothing planned`), fit: fitFor(i.item, { date: d.date!, items: d.items }), ...withStops(d) }));
+  function withStops(d: SectionInfo) {
+    const stops = placesIn(d).filter((x) => x.lat != null && x.lng != null).map((x) => ({ id: x.id, name: x.name, at: [x.lat!, x.lng!] as [number, number], start: x.startTime, mins: x.stay }));
+    return { stops, travel: isTravelDay(stops) };
+  }
   const fits = new Map(
     placeIdeas.map((i) => {
       const all = dayFits(i);

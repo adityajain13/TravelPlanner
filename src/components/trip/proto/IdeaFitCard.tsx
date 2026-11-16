@@ -4,9 +4,12 @@
 // Right = what you act on: your answer in the group poll, the proposed day, the button. On wide cards the two sit
 // side by side; under 600px (the card's own width) they stack. Adding when someone said "Not for me" asks who's going.
 import { useEffect, useState, type ReactNode } from "react";
-import { Check, ChevronDown, CircleAlert, ExternalLink, Map as MapIcon, Star, Ticket, Trash2, X } from "lucide-react";
+import { Check, ChevronDown, CircleAlert, ExternalLink, ImageIcon, Map as MapIcon, Star, Ticket, Trash2, X } from "lucide-react";
 import { googleMapsLink } from "../../../lib/photon";
-import { addedByOf, GROUP_LABEL, mentionParts, type Answer, type BookingState } from "../../../lib/protoIdeas";
+import { addedByOf, autoGroupOf, GROUP_LABEL, GROUP_ORDER, hasOwnGroup, mentionParts, type Answer, type BookingState, type Group } from "../../../lib/protoIdeas";
+import { factsOf } from "../../../lib/protoFit";
+import { placeDetails } from "../../../lib/protoPlaceDemo";
+import { parseISODate } from "../../../lib/dates";
 import { bestSlot, kmBetween, kmText, slotText, type LatLng, type Slot, type Stop } from "../../../lib/protoSlot";
 import { Avatar, MentionInput } from "./MentionInput";
 import { dayShort, type DayFit } from "./DayMenu";
@@ -17,7 +20,7 @@ const C = { must: "#178a7c", along: "#8f9a95", out: "#c8604a" };
 
 export type AddOptions = { who?: string[]; afterId?: string | null; /** "HH:MM", sets the stop's start time */ time?: string };
 
-type DayState = "fits" | "far" | "free" | "closed";
+type DayState = "fits" | "far" | "free" | "closed" | "travel";
 type Fitted = { d: DayFit; state: DayState; slot?: Slot; stops: Stop[] };
 
 const Cap = ({ children }: { children: ReactNode }) => <p className="mb-1 text-[10.5px] font-semibold tracking-wider text-muted uppercase">{children}</p>;
@@ -285,6 +288,7 @@ export function IdeaFitCard({
   onAnswer,
   onWhy,
   onRemove,
+  onGroup,
   onDoneWhy,
 }: {
   idea: Idea;
@@ -304,6 +308,8 @@ export function IdeaFitCard({
   onAnswer: (a: Answer) => void;
   onWhy: (text: string) => void;
   onRemove: () => void;
+  /** Pick the category (undefined = let the app decide) */
+  onGroup: (g: Group | undefined) => void;
   onDoneWhy: () => void;
 }) {
   const it = idea.item;
@@ -316,12 +322,17 @@ export function IdeaFitCard({
   const group = people.length >= 2;
   const booked = booking.kind === "booked" ? booking : null;
   const by = addedByOf(it);
-  const visit = it.stay ? (it.stay >= 60 ? `about ${Math.round((it.stay / 60) * 2) / 2} h` : `about ${it.stay} min`) : undefined;
+  const stay = factsOf(it).stay;
+  const visit = stay ? (stay >= 60 ? `about ${Math.round((stay / 60) * 2) / 2} h` : `about ${stay} min`) : undefined;
+  const place = placeDetails(it);
+  const hoursOn = (date: string) => place.hoursOn(parseISODate(date).getUTCDay());
+  const [menu, setMenu] = useState(false);
 
   // Each day: closed (his fit rules it out), free (nothing planned), far (>40 km detour) or fits (+N km)
   const fitted: Fitted[] = days.map((d) => {
     const stops = d.stops ?? [];
     if (d.fit.out) return { d, state: "closed", stops };
+    if (d.travel) return { d, state: "travel", stops };
     if (!at || !stops.length) return { d, state: "free", stops };
     const slot = bestSlot(at, stops);
     return { d, state: slot.detour > 40 ? "far" : "fits", slot, stops };
@@ -353,6 +364,7 @@ export function IdeaFitCard({
   const lines: Line[] = [];
   if (sel) {
     if (sel.state === "fits" && sel.slot) lines.push({ kind: "good", text: slotText(dayShort(sel.d.date), sel.slot, sel.stops) });
+    if (sel.state === "travel") lines.push({ kind: "warn", text: `${dayShort(sel.d.date)} is a travel day (${sel.d.title})` });
     if (sel.state === "far" && sel.slot) lines.push({ kind: "out", text: `Far from ${dayShort(sel.d.date)}'s stops · +${kmText(sel.slot.detour)}` });
     if (sel.state === "free" && planned) lines.push({ kind: "good", text: `Nothing planned on ${dayShort(sel.d.date)} yet: a free day` });
     if (sel.state === "closed") lines.push({ kind: "out", text: `${sel.d.fit.blockers[0]?.text ?? "Closed"} (${dayShort(sel.d.date)})` });
@@ -403,7 +415,7 @@ export function IdeaFitCard({
   const cell = (f: Fitted) => {
     const on = f === sel;
     const [wd, dn] = dayShort(f.d.date).split(" ");
-    const tone = f.state === "fits" ? "bg-accent/14 text-accent" : f.state === "closed" || f.state === "far" ? "bg-red-500/10 text-red-600 dark:text-red-400" : "bg-surface-2 text-muted";
+    const tone = f.state === "fits" ? "bg-accent/14 text-accent" : f.state === "closed" || f.state === "far" ? "bg-red-500/10 text-red-600 dark:text-red-400" : f.state === "travel" ? "bg-amber-400/15 text-amber-700 dark:text-amber-300" : "bg-surface-2 text-muted";
     const sub = booked?.date === f.d.date ? "booked" : f.state === "fits" ? (f.slot!.detour < 1 ? "+<1 km" : `+${Math.round(f.slot!.detour)} km`) : f.state;
     return (
       <button
@@ -422,8 +434,8 @@ export function IdeaFitCard({
 
   const shownTime = sel ? bookedTimeOn(sel) : undefined;
   const label = rough ? "Find a place" : sel ? `Add to ${dayShort(sel.d.date)}${shownTime ? `, ${shownTime}` : ""}${group && sittingOut.length ? ` · ${goingN} going` : ""}` : "Add to a day";
-  const cost = it.cost ? `${it.costCurrency ?? ""} ${it.cost.toLocaleString()}`.trim() : null;
-  const rating = it.google?.rating;
+  const cost = place.cost;
+  const rating = place.rating;
 
   return (
     <div
@@ -440,12 +452,38 @@ export function IdeaFitCard({
               <button onClick={onOpen} className="block max-w-full truncate text-left text-[16.5px] font-semibold hover:underline" title="Show on the map">
                 {it.name}
               </button>
-              <p className="mt-0.5 truncate text-[12.5px] text-muted">{[where, GROUP_LABEL[idea.group]].filter(Boolean).join(" · ")}</p>
+              <div className="relative mt-0.5 flex min-w-0 items-center gap-x-1.5 text-[12.5px] text-muted">
+                {where && <span className="truncate">{where}</span>}
+                {where && <span aria-hidden>·</span>}
+                <button onClick={() => !readOnly && setMenu((m) => !m)} title={readOnly ? undefined : "Change category"} className="flex shrink-0 items-center gap-0.5 rounded hover:text-fg">
+                  {GROUP_LABEL[idea.group]}
+                  {!readOnly && <ChevronDown className="size-3" />}
+                </button>
+                {menu && (
+                  <ul className="absolute top-full left-0 z-40 mt-1 w-44 rounded-xl border border-line bg-surface p-1 text-fg shadow-xl" onMouseLeave={() => setMenu(false)}>
+                    <li>
+                      <button onClick={() => (onGroup(undefined), setMenu(false))} className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-[13px] hover:bg-surface-2">
+                        <span className="w-3.5">{!hasOwnGroup(it) && <Check className="size-3.5 text-accent" />}</span>
+                        Automatic <span className="text-muted">({GROUP_LABEL[autoGroupOf(it)]})</span>
+                      </button>
+                    </li>
+                    <li className="my-1 border-t border-line" aria-hidden />
+                    {GROUP_ORDER.map((g) => (
+                      <li key={g}>
+                        <button onClick={() => (onGroup(g), setMenu(false))} className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-[13px] hover:bg-surface-2">
+                          <span className="w-3.5">{hasOwnGroup(it) && idea.group === g && <Check className="size-3.5 text-accent" />}</span>
+                          {GROUP_LABEL[g]}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
               {(rating || cost) && (
                 <p className="mt-1 flex items-center gap-1.5 text-[12px] text-fg/80">
                   {rating && (
                     <>
-                      <Star className="size-3 fill-amber-400 text-amber-400" /> {rating} {it.google?.ratingCount && <span className="text-muted">({it.google.ratingCount.toLocaleString()})</span>}
+                      <Star className="size-3 fill-amber-400 text-amber-400" /> {rating} {place.ratingCount && <span className="text-muted">({place.ratingCount >= 1000 ? `${Math.round(place.ratingCount / 100) / 10}k` : place.ratingCount})</span>}
                     </>
                   )}
                   {rating && cost && <span className="text-muted">·</span>}
@@ -453,8 +491,17 @@ export function IdeaFitCard({
                 </p>
               )}
             </div>
-            {it.image?.thumb && <img src={it.image.thumb} alt="" className="size-16 shrink-0 rounded-xl object-cover" title={it.image.credit} />}
+            {place.photo ? (
+              <img src={place.photo} alt="" className="size-16 shrink-0 rounded-xl object-cover" title={it.image?.credit} />
+            ) : (
+              place.demoPhoto && (
+                <div className="grid size-16 shrink-0 place-items-center rounded-xl text-white/70" style={{ background: "linear-gradient(135deg,#9fc3c9,#6a64a6)" }} title="Cover photo (demo)">
+                  <ImageIcon className="size-5" />
+                </div>
+              )
+            )}
           </div>
+          {place.summary && <p className={`mt-2.5 text-[13px] leading-snug text-fg/85 ${open ? "" : "line-clamp-2"}`}>{place.summary}</p>}
           {!rough && (
             <Grow open={open}>
               <p className="mt-2 flex flex-wrap gap-x-3 text-[12.5px] text-accent">
@@ -488,10 +535,10 @@ export function IdeaFitCard({
                     <div className="pt-3">
                       {sel.state === "closed" ? (
                         <p className="text-[12.5px] text-red-600 dark:text-red-400">Closed that day</p>
-                      ) : sel.state === "far" ? (
-                        <p className="text-[12.5px] text-muted">Too far from {dayShort(sel.d.date)}'s stops to slot in</p>
+                      ) : sel.state === "far" || sel.state === "travel" ? (
+                        <p className="text-[12.5px] text-muted">{sel.state === "far" ? `Too far from ${dayShort(sel.d.date)}'s stops to slot in` : `${dayShort(sel.d.date)} is a travel day`}</p>
                       ) : (
-                        <DayPreview f={sel} name={it.name} mins={it.stay ?? 90} fixed={bookedTimeOn(sel)} />
+                        <DayPreview f={sel} name={it.name} mins={stay ?? 90} fixed={bookedTimeOn(sel)} />
                       )}
                     </div>
                   </Grow>
@@ -587,7 +634,11 @@ export function IdeaFitCard({
                   <p className="truncate text-[13px]">
                     <b>{dayShort(sel.d.date)}</b> <span className="text-muted">· {sel.d.title}</span>
                   </p>
-                  {visit && <p className="text-[12px] text-muted">Takes {visit}</p>}
+                  {(() => {
+                    const h = hoursOn(sel.d.date);
+                    const bits = [h === null ? "Closed that day" : h ? `Open ${h}` : null, visit && `takes ${visit}`].filter(Boolean) as string[];
+                    return bits.length > 0 && <p className="text-[12px] text-muted">{bits.join(" · ").replace(/^takes/, "Takes")}</p>;
+                  })()}
                 </>
               ) : (
                 <p className="text-[12.5px] text-muted">{rough ? "Needs a place first" : "Pick a day"}</p>

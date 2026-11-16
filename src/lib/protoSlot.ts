@@ -32,3 +32,6 @@ export function slotText(day: string, s: Slot, stops: Stop[]): string {
   if (s.kind === "start") return `Start ${day} here · ${kmText(s.detour)} before ${stops[0].name}`;
   return `End ${day} here · ${kmText(s.detour)} after ${stops[stops.length - 1].name}`;
 }
+
+/** A day whose consecutive stops are more than 100 km apart is a travel day (a shinkansen or a long drive) */
+export const isTravelDay = (stops: Stop[]) => stops.some((x, i) => i > 0 && kmBetween(stops[i - 1].at, x.at) > 100);
