@@ -2082,41 +2082,69 @@ function WeekPicker({ fits, sel, bookedDay, onPick }: { fits: DayFit[]; sel?: Da
 
 /** The chosen day as its stop list, with the idea slotted in where it fits (and anything it pushes back) */
 function DayList({ f, idea, mins, openHours, fixed }: { f: DayFit; idea: Demo; mins: number; openHours?: string; fixed?: string }) {
+  // The day's stops and the free time between them. Nothing here is tappable: the gap it would go in is tinted
+  // and named, and adding stays with the button on the right.
   const p = placeInDay(f, mins, openHours, fixed);
-  const ghost = (
-    <li key="ghost" className={`flex items-start gap-2.5 rounded-lg border border-dashed px-2.5 py-1.5 ${p.outside ? "border-red-400 bg-red-500/5" : "border-amber-500 bg-amber-400/10"}`}>
-      <span className="w-11 shrink-0 text-[11.5px] font-semibold text-amber-700 tabular-nums dark:text-amber-300">{clock(p.start)}</span>
-      <span className="grid size-5 shrink-0 place-items-center rounded-full bg-amber-400 text-[11px] font-bold text-white">+</span>
+  const DAY_START = 9 * 60;
+  const DAY_END = 21 * 60;
+  const dur = (a: number, b: number) => {
+    const m = Math.round((b - a) / 30) * 30;
+    return m >= 60 ? `${m / 60} h` : `${m} min`;
+  };
+  const at = f.slot?.kind === "start" ? 0 : f.slot?.kind === "between" ? f.slot.i + 1 : f.stops.length;
+  const here = (
+    <li key="here" className={`flex items-start gap-2.5 rounded-lg px-2.5 py-1.5 ${p.outside ? "bg-red-500/8" : "bg-amber-400/15"}`} style={{ boxShadow: `inset 3px 0 0 ${p.outside ? "#ef4444" : "#f59e0b"}` }}>
+      <span className="w-11 shrink-0 text-[11.5px] font-semibold text-amber-800 tabular-nums dark:text-amber-300">{clock(p.start)}</span>
       <span className="min-w-0 text-[12.5px]">
-        <b className="font-semibold">{idea.name}</b>
-        <span className="text-muted"> · until {clock(p.end)}{p.cut ? " (closing)" : ""}</span>
+        <span className="font-semibold">{idea.name}</span>
+        <span className="text-muted">
+          {" "}
+          would go here · until {clock(p.end)}
+          {p.cut ? " (closing)" : ""}
+        </span>
         {p.outside && <span className="block text-red-600 dark:text-red-400">Outside opening hours ({openHours})</span>}
       </span>
     </li>
   );
+  const gap = (key: string, a: number, b: number) =>
+    b - a >= 30 && (
+      <li key={key} className="flex items-center gap-2.5 px-2.5 py-0.5 text-[11.5px] text-muted">
+        <span className="w-11 shrink-0 tabular-nums">{clock(a)}</span>
+        <span className="h-px flex-1 border-t border-dashed border-line" />
+        <span>free · {dur(a, b)}</span>
+      </li>
+    );
   if (!f.stops.length)
     return (
       <ul className="space-y-1">
-        {ghost}
-        <li className="pl-14 text-[12px] text-muted">Nothing else planned on {f.day} yet</li>
+        {here}
+        <li className="px-2.5 text-[12px] text-muted">The rest of {f.day} is free</li>
       </ul>
     );
-  const at = f.slot?.kind === "start" ? 0 : f.slot?.kind === "between" ? f.slot.i + 1 : f.stops.length;
-  const rows: ReactNode[] = f.stops.map((x, i) => {
+  const rows: ReactNode[] = [];
+  f.stops.forEach((x, i) => {
     const t = p.times[i];
-    const pushed = i >= p.nextIndex && p.nextIndex >= 0 && p.push > 0;
-    return (
+    const shift = p.nextIndex >= 0 && i >= p.nextIndex ? p.push : 0;
+    // the free time before this stop (or, where the idea goes, the idea instead)
+    const prevEnd = i === 0 ? DAY_START : p.times[i - 1] ? p.times[i - 1].end + (p.nextIndex >= 0 && i - 1 >= p.nextIndex ? p.push : 0) : DAY_START;
+    if (i === at) rows.push(gap(`gb${i}`, prevEnd, p.start), here);
+    else if (t) rows.push(gap(`g${i}`, prevEnd, t.start + shift));
+    rows.push(
       <li key={x.name} className="flex items-start gap-2.5 px-2.5 py-1">
         <span className="w-11 shrink-0 text-[11.5px] text-muted tabular-nums">
-          {t ? clock(t.start + (pushed ? p.push : 0)) : ""}
-          {pushed && <span className="block text-[10px] text-amber-700 line-through decoration-1 dark:text-amber-300">{clock(t.start)}</span>}
+          {t ? clock(t.start + shift) : ""}
+          {shift > 0 && t && <span className="block text-[10px] line-through decoration-1">{clock(t.start)}</span>}
         </span>
-        <span className="grid size-5 shrink-0 place-items-center rounded-full border border-fg/30 text-[10.5px] font-bold text-fg/70">{i + 1}</span>
-        <span className="min-w-0 text-[12.5px] text-fg/85">{x.name}</span>
-      </li>
+        <span className="min-w-0 text-[12.5px] text-fg/85">
+          <span className="mr-1.5 text-muted tabular-nums">{i + 1}</span>
+          {x.name}
+        </span>
+      </li>,
     );
   });
-  rows.splice(at, 0, ghost);
+  const last = p.times[p.times.length - 1];
+  if (at >= f.stops.length) rows.push(gap("gb-end", last ? last.end : DAY_START, p.start), here);
+  else if (last) rows.push(gap("gend", last.end + (p.push > 0 ? p.push : 0), DAY_END));
   return (
     <div>
       <ul className="space-y-0.5">{rows}</ul>
@@ -2155,9 +2183,7 @@ function DayClock({ f, idea, mins, openHours, fixed }: { f: DayFit; idea: Demo; 
           className={`absolute bottom-2 grid h-[18px] place-items-center rounded border border-dashed text-[10px] font-bold ${p.outside ? "border-red-500 bg-red-500/15 text-red-700" : "border-amber-500 bg-amber-400/40 text-amber-800 dark:text-amber-200"}`}
           style={{ left: x(p.start), width: w(p.start, p.end) }}
           title={`${idea.name} · ${clock(p.start)}–${clock(p.end)}`}
-        >
-          +
-        </div>
+        />
       </div>
       <div className="mt-0.5 flex justify-between text-[10px] text-muted tabular-nums">
         {[8, 10, 12, 14, 16, 18, 20, 22].map((h) => (
