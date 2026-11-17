@@ -1,4 +1,4 @@
-// PROTOTYPE (proto/new-trip): destination search for the new-trip flow.
+// Destination search for the new-trip pop-up.
 // Two sources, merged:
 //  1. A built-in list of countries (names from Intl) + popular cities, matched instantly and forgivingly:
 //     nicknames ("korea" → South Korea, "uk", "holland") and typos ("korae", "thailnd", "nwe york").

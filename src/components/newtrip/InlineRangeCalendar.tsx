@@ -1,4 +1,4 @@
-// PROTOTYPE (proto/new-trip): the trip date range shown right on the page instead of in a popover.
+// The trip date range shown right on the page instead of in a popover.
 import { Suspense, useState } from "react";
 import type { DateRange } from "react-day-picker";
 import { calendarClassNames, calendarComponents, CalendarLoading, fromISO, LazyDayPicker, toISO } from "../DatePicker";

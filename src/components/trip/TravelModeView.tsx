@@ -11,6 +11,7 @@ import type { ItineraryData, PlanLegs, TimedPlan, TripView } from "./types";
 /** Travel mode (phones): the light day view in place of the whole trip page, plus Settings. */
 export function TravelModeView({
   doc,
+  tripId,
   state,
   view,
   timed,
@@ -28,6 +29,7 @@ export function TravelModeView({
   onViewing,
 }: {
   doc: Y.Doc;
+  tripId?: string;
   state: TripState;
   view: TripView;
   timed: TimedPlan;
@@ -67,7 +69,7 @@ export function TravelModeView({
           return { pins: m.pins, routes: m.routes };
         }}
       />
-      {showSettings && <SettingsDialog doc={doc} scope={readOnly ? null : settingsScope} onClose={() => setShowSettings(false)} />}
+      {showSettings && <SettingsDialog doc={doc} tripId={tripId} people={state.meta.travelers ?? []} scope={readOnly ? null : settingsScope} onClose={() => setShowSettings(false)} />}
     </>
   );
 }

@@ -1,4 +1,4 @@
-// PROTOTYPE (proto/new-trip) — Variant B: a wide pop-up. Form + inline calendar left, globe right.
+// New-trip pop-up: form and inline calendar on the left, globe on the right.
 // Phones: a plain full-screen form, no map.
 import { X } from "lucide-react";
 import { DestinationField } from "./DestinationField";

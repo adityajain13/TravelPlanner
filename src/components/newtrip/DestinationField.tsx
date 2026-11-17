@@ -1,4 +1,4 @@
-// PROTOTYPE (proto/new-trip): destination input with suggestions and validation.
+// Destination input with suggestions and validation.
 import { useEffect, useRef, useState } from "react";
 import { Loader2, MapPin, Globe2, AlertCircle } from "lucide-react";
 import { localDestinations, resolveDestination, searchDestinations, type Destination } from "../../lib/destinations";

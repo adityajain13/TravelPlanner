@@ -1,4 +1,4 @@
-// PROTOTYPE (proto/new-trip): an ambient globe for the new-trip flow.
+// Ambient globe for the new-trip pop-up.
 //  Idle:    no labels, a slow drift that eases in.
 //  Typing:  `preview` (the highlighted suggestion) pulls the globe toward it, staying zoomed out.
 //  Picked:  `place` flies in, then everything outside its boundary dims (labels included): the trip's focus.

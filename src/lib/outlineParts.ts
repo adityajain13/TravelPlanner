@@ -1,4 +1,4 @@
-// PROTOTYPE (proto/new-trip): picking which pieces of a place's official boundary to highlight and frame.
+// Picking which pieces of a place's official boundary to highlight and frame.
 import type { Position } from "geojson";
 import type { Outline } from "./destinations";
 

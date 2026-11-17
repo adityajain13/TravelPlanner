@@ -8,12 +8,27 @@ import { downloadIcs } from "../lib/ics";
 import { withNotes, tidyNotes } from "../lib/tidyNotes";
 import { useTheme, type Theme } from "../lib/theme";
 import { useSettings, type Settings, type SettingsScope } from "../lib/settings";
+import { useMe, useTripLayout, type TripLayout } from "../lib/protoTripLayout";
 
 /** App settings (this device). Grouped into sections; each option is a selectable segmented control. */
-export function SettingsDialog({ onClose, scope, doc }: { onClose: () => void; scope?: SettingsScope | null; doc?: Y.Doc }) {
+export function SettingsDialog({
+  onClose,
+  scope,
+  doc,
+  tripId,
+  people = [],
+}: {
+  onClose: () => void;
+  scope?: SettingsScope | null;
+  doc?: Y.Doc;
+  /** The trip being viewed (with doc): its travellers pick "You are" for Ideas */
+  tripId?: string;
+  people?: string[];
+}) {
   const [settings, update, where] = useSettings(scope);
   const [theme, , setTheme] = useTheme();
   const [travel, setTravel] = useTravelMode();
+  const [layout, setLayout] = useTripLayout();
   const phone = useIsPhone();
   useEffect(() => {
     const esc = (e: KeyboardEvent) => e.key === "Escape" && onClose();
@@ -33,6 +48,8 @@ export function SettingsDialog({ onClose, scope, doc }: { onClose: () => void; s
 
         <Section title="Display" first>
           <AppearanceRow theme={theme} onPick={setTheme} />
+          {doc && <TripLayoutRow value={layout} onPick={setLayout} />}
+          {doc && layout === "b" && people.length >= 2 && <WhoRow tripId={tripId} people={people} />}
           {phone && <TravelModeRow travel={travel} setTravel={setTravel} onClose={onClose} />}
         </Section>
         <Section title="Map">
@@ -53,7 +70,7 @@ export function SettingsDialog({ onClose, scope, doc }: { onClose: () => void; s
           </Section>
         )}
         <p className="mt-6 text-[12px] text-muted">
-          {where === "trip" ? "Saved to your account for this trip; appearance is saved on this device." : "Settings are saved on this device."}
+          {where === "trip" ? "Saved to your account for this trip; appearance and layout are saved on this device." : "Settings are saved on this device."}
         </p>
       </div>
     </div>,
@@ -78,6 +95,37 @@ function AppearanceRow({ theme, onPick }: { theme: Theme; onPick: (t: Theme) => 
     { key: "amoled", icon: <MoonStar />, short: "Black", hint: "True black, for OLED screens" },
   ];
   return <Row title="Appearance" hint={themes.find((t) => t.key === theme)!.hint} value={theme} options={themes} onPick={onPick} />;
+}
+
+/** Preview of the trip page layouts (Current / A / B), saved on this device. Shown where a trip is open. */
+function TripLayoutRow({ value, onPick }: { value: TripLayout; onPick: (k: TripLayout) => void }) {
+  return (
+    <Row
+      title="Trip layout"
+      hint="Preview of new layouts. A: pick a day or list to focus on. B: no sidebar, an Ideas area and ideas beside each day (desktop)."
+      value={value}
+      options={[
+        { key: "current", short: "Current" },
+        { key: "a", short: "A" },
+        { key: "b", short: "B" },
+      ]}
+      onPick={onPick}
+    />
+  );
+}
+
+/** Which traveller "I" am on this trip, for Ideas votes and interest. Saved on this device, per trip. */
+function WhoRow({ tripId, people }: { tripId?: string; people: string[] }) {
+  const [me, setMe] = useMe(tripId, people);
+  return (
+    <Row
+      title="You are"
+      hint="Whose answers you give in Ideas polls, on this device."
+      value={me ?? people[0]}
+      options={people.map((p) => ({ key: p, short: p }))}
+      onPick={setMe}
+    />
+  );
 }
 
 function TravelModeRow({ travel, setTravel, onClose }: { travel: boolean; setTravel: ReturnType<typeof useTravelMode>[1]; onClose: () => void }) {

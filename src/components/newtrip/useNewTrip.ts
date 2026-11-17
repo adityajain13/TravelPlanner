@@ -1,4 +1,4 @@
-// PROTOTYPE (proto/new-trip): form state + create, shared by variants A and B.
+// Form state and create for the new-trip pop-up.
 import { useState } from "react";
 import { addDays, todayISO } from "../../lib/dates";
 import { createTrip } from "../../lib/trips";

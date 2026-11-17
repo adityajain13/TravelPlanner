@@ -54,7 +54,7 @@ const components = {
     orientation === "left" ? <ChevronLeft className="size-4" /> : <ChevronRight className="size-4" />,
 };
 
-// PROTOTYPE (proto/new-trip): shared with the inline calendar in components/newtrip
+// Shared with the inline calendar in components/newtrip
 export { classNames as calendarClassNames, components as calendarComponents, DayPicker as LazyDayPicker, CalendarLoading };
 
 /** Popover anchored to a trigger, rendered in <body> so it escapes overflow/containment. */

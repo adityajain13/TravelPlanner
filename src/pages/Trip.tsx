@@ -84,6 +84,7 @@ import type {
 // PROTOTYPE (proto/trip-focus)
 import {
   useCardStyle,
+  useMe,
   useTripLayout,
   type CardStyle,
 } from "../lib/protoTripLayout";
@@ -317,14 +318,8 @@ export function TripPage() {
     const t = setTimeout(() => setToast(null), 5000);
     return () => clearTimeout(t);
   }, [toast]);
-  // Who "I" am among the trip's people, for votes (prototype: picked in Ideas, kept per browser)
-  const [meStored, setMeStored] = useState<string | null>(() => {
-    try {
-      return localStorage.getItem("proto:me");
-    } catch {
-      return null;
-    }
-  });
+  // Who "I" am among the trip's people, for votes and interest (kept per trip on this device)
+  const [me, setMe] = useMe(id, state?.meta.travelers ?? []);
   const autoScoped = useRef<string | null>(null);
   useEffect(() => {
     if (!scoped || !view || !id || autoScoped.current === id) return;
@@ -586,16 +581,6 @@ export function TripPage() {
   const ideas = allIdeas.filter((i) => !removedByOf(i.item));
   const removedIdeas = allIdeas.filter((i) => removedByOf(i.item));
   const people = state.meta.travelers ?? [];
-  const me =
-    meStored && people.includes(meStored) ? meStored : (people[0] ?? null);
-  const setMe = (who: string) => {
-    setMeStored(who);
-    try {
-      localStorage.setItem("proto:me", who);
-    } catch {
-      /* private mode */
-    }
-  };
   // New ideas go into the first idea list (the pool); one is made if there's none
   const poolKey = () => ideaLists[0]?.key ?? `list:${addList(doc, "Ideas")}`;
   const captured = (id: string) => {
@@ -778,6 +763,7 @@ export function TripPage() {
       <>
         <TravelModeView
           doc={doc}
+          tripId={id}
           state={state}
           view={view}
           timed={timed}
@@ -881,7 +867,7 @@ export function TripPage() {
             removed={removedIdeas}
             days={overviewSections.filter((s) => s.kind === "day")}
             people={people}
-            me={me}
+            me={me ?? null}
             readOnly={readOnly}
             flash={flash}
             near={near}
