@@ -17,6 +17,10 @@ import { useTheme } from "../lib/theme";
 import { SettingsDialog } from "../components/SettingsDialog";
 import { Settings as SettingsIcon } from "lucide-react";
 import { NewTripDialog } from "../components/NewTripDialog";
+// PROTOTYPE (proto/new-trip)
+import { NewTripModalB } from "../components/newtrip/NewTripModalB";
+import { VariantSwitch } from "../components/newtrip/VariantSwitch";
+import { useNewTripVariant } from "../lib/protoVariant";
 import { WanderlogImport } from "../components/WanderlogImport";
 
 export function Home() {
@@ -60,6 +64,7 @@ export function Home() {
     };
   }, [loadInbox]);
   const [creating, setCreating] = useState(false);
+  const [variant] = useNewTripVariant(); // PROTOTYPE (proto/new-trip)
   const [importing, setImporting] = useState(false);
   const navigate = useNavigate();
   const trips = useLiveQuery(() => db.trips.orderBy("startDate").toArray(), []);
@@ -109,7 +114,7 @@ export function Home() {
           <FileUp className="size-4" /> <span className="max-sm:hidden">Import</span>
         </button>
         <button
-          onClick={() => setCreating(true)}
+          onClick={() => (variant === "a" ? navigate("/new", { viewTransition: true }) : setCreating(true))}
           className="flex shrink-0 items-center gap-1.5 rounded-full bg-accent px-4 py-2 text-sm font-semibold text-on-accent"
         >
           <Plus className="size-4" /> New trip
@@ -129,7 +134,9 @@ export function Home() {
       <TripGroup title="Done" trips={done} collapsible />
 
       {importing && <WanderlogImport onClose={() => setImporting(false)} />}
-      {creating && <NewTripDialog onClose={() => setCreating(false)} onCreated={(id) => navigate(`/trip/${id}`)} />}
+      {creating && variant === "b" && <NewTripModalB onClose={() => setCreating(false)} onCreated={(id) => navigate(`/trip/${id}`)} />}
+      {creating && variant !== "b" && <NewTripDialog onClose={() => setCreating(false)} onCreated={(id) => navigate(`/trip/${id}`)} />}
+      <VariantSwitch />
     </div>
   );
 }
