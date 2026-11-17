@@ -15,8 +15,11 @@ export function ItineraryDays({
   sensors,
   dragging,
   setDragging,
+  only,
 }: {
   c: PlanContext;
+  /** PROTOTYPE (proto/trip-focus): render just this day or list */
+  only?: string;
   sensors: Sensors;
   dragging: Item | null;
   setDragging: Dispatch<SetStateAction<Item | null>>;
@@ -43,9 +46,7 @@ export function ItineraryDays({
 
   return (
     <DndContext sensors={readOnly ? [] : sensors} collisionDetection={closestCorners} onDragStart={onDragStart} onDragEnd={onDragEnd}>
-      {timed.sections.map((s, si) => (
-        <ItinerarySection key={s.key} c={c} s={s} si={si} />
-      ))}
+      {timed.sections.map((s, si) => (only && s.key !== only ? null : <ItinerarySection key={s.key} c={c} s={s} si={only ? si + 1 : si} />))}
       <DragOverlay>
         {dragging && (
           <ItemCardDragPreview
