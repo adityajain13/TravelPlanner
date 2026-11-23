@@ -522,7 +522,10 @@ export function viaLegs(sections: SectionInfo[], state: TripState, direct: Itine
         : opening && { ll: opening.req.from, label: after ? opening.label : undefined };
       for (const { p } of list) {
         const to: [number, number] = [p.lng, p.lat];
-        if (from && !p.rideFrom) {
+        if (from && p.rideFrom) {
+          // The ride itself, drawn on the map from station to station (the train card is its row in the plan)
+          add(`res:${p.pid}`, from.ll, to, { mode: "transit", at: from.at ?? p.at, label: p.r.title });
+        } else if (from) {
           // A counter in the terminal or next door (the rental desk at the airport): a short walk, still shown
           const km = crowKm(from.ll, to);
           // To or off a train you walk or take transit (no car to park at the station)
