@@ -446,6 +446,8 @@ export interface BookingPoint {
   lat: number;
   lng: number;
   title: string;
+  /** A train's arrival: the pid of its departure. Nothing is routed into it (you're on the train). */
+  rideFrom?: string;
 }
 
 /**
@@ -462,6 +464,12 @@ export function bookingPoints(reservations: Reservation[], date: string): Bookin
         cands.push({ pid: r.id, r, at: hm(r.startTime)!, title: `Pick up ${r.title}`, kind: "pick", lat: r.fromAt?.lat, lng: r.fromAt?.lng });
       if (r.endDate === date && r.endDate !== r.startDate && hm(r.endTime))
         cands.push({ pid: `${r.id}:drop`, r, at: hm(r.endTime)!, title: `Drop off ${r.title}`, kind: "drop", lat: r.toAt?.lat, lng: r.toAt?.lng });
+    } else if (r.type === "train") {
+      // Board at the departure station, get off at the arrival one: legs run to the first and from the second
+      if (r.startDate === date && hm(r.startTime))
+        cands.push({ pid: r.id, r, at: hm(r.startTime)!, title: r.title, kind: "dep", lat: r.fromAt?.lat, lng: r.fromAt?.lng });
+      if ((r.endDate || r.startDate) === date && hm(r.endTime))
+        cands.push({ pid: `${r.id}:arr`, r, at: hm(r.endTime)!, title: r.title, kind: "arr", rideFrom: r.id, lat: r.toAt?.lat, lng: r.toAt?.lng });
     } else if ((r.type === "restaurant" || r.type === "other") && r.startDate === date && hm(r.startTime)) {
       cands.push({ pid: r.id, r, at: hm(r.startTime)!, end: hm(r.endTime), title: r.title, kind: "", lat: r.lat, lng: r.lng });
     }
@@ -509,19 +517,24 @@ export function viaLegs(sections: SectionInfo[], state: TripState, direct: Itine
       // Before the first stop: from where the day starts (the hotel / arrival airport leg it takes over)
       // (a day with no stops: the leg to tonight's hotel, e.g. from the arrival airport)
       const opening = first.before ? undefined : direct.find((l) => l.ver === ver && l.toId === (after ? after.id : "end") && !l.who);
-      let from: { ll: [number, number]; at?: string; label?: string } | undefined = first.before
+      let from: { ll: [number, number]; at?: string; label?: string; offTrain?: boolean } | undefined = first.before
         ? { ll: [first.before.lng!, first.before.lat!], at: first.before.endTime ?? first.before.startTime }
         : opening && { ll: opening.req.from, label: after ? opening.label : undefined };
       for (const { p } of list) {
         const to: [number, number] = [p.lng, p.lat];
-        if (from) {
+        if (from && !p.rideFrom) {
           // A counter in the terminal or next door (the rental desk at the airport): a short walk, still shown
-          const close = crowKm(from.ll, to) < 0.4;
-          const mode = (state.meta.hotelLegModes?.[`${s.key}|res:${p.pid}`] ?? (close ? "walk" : defaultMode)) as TravelMode;
+          const km = crowKm(from.ll, to);
+          // To or off a train you walk or take transit (no car to park at the station)
+          const byTrain = from.offTrain || p.r.type === "train";
+          const fallback = km < 0.4 ? "walk" : byTrain ? (km < 1.5 ? "walk" : "transit") : defaultMode;
+          const mode = (state.meta.hotelLegModes?.[`${s.key}|res:${p.pid}`] ?? fallback) as TravelMode;
           add(`res:${p.pid}`, from.ll, to, { mode, at: from.at ?? p.at, label: from.label ?? `To ${p.r.title}` });
         }
+        // Off the train: the next leg starts at the arrival station ("From Odawara")
+        const label = p.rideFrom ? `From ${p.r.toAt?.q.split(",")[0] ?? p.r.title}` : undefined;
         if (after) slotMap.set(p.pid, after.id);
-        from = { ll: to, at: p.end ?? p.at };
+        from = { ll: to, at: p.end ?? p.at, label, offTrain: !!p.rideFrom };
       }
       if (after && from) {
         out.replaces.add(`${ver}|${after.id}`);
